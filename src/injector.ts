@@ -35,19 +35,41 @@ function buildParentSelector(el: Element): string {
 	return `${parentParent} > ${tag}:nth-child(${idx + 1})`;
 }
 
+function resolveRoseyKey(el: Element): string | null {
+	const localKey = el.getAttribute("data-rosey");
+	if (!localKey) return null;
+
+	const nsParts: string[] = [];
+	let current = el.parentElement;
+
+	while (current) {
+		const root = current.getAttribute("data-rosey-root");
+		if (root !== null) {
+			if (root) nsParts.push(root);
+			break;
+		}
+		const ns = current.getAttribute("data-rosey-ns");
+		if (ns) nsParts.push(ns);
+		current = current.parentElement;
+	}
+
+	nsParts.reverse();
+	return [...nsParts, localKey].join(":");
+}
+
 function snapshotElements(): void {
 	snapshots.clear();
 	const elements = document.querySelectorAll("[data-rcc]");
 	elements.forEach((el) => {
-		const roseyKey = el.getAttribute("data-rosey");
-		if (!roseyKey) return;
+		const resolvedKey = resolveRoseyKey(el);
+		if (!resolvedKey) return;
 
 		const parent = el.parentElement;
 		if (!parent) return;
 		const children = Array.from(parent.children);
 		const index = children.indexOf(el);
 
-		snapshots.set(roseyKey, {
+		snapshots.set(resolvedKey, {
 			outerHTML: el.outerHTML,
 			parentSelector: buildParentSelector(el),
 			index,
@@ -65,12 +87,14 @@ function cloneFromHTML(html: string): Element {
 function switchLocale(locale: string | null): void {
 	currentLocale = locale;
 
-	snapshots.forEach((snap, roseyKey) => {
-		const currentEl = document.querySelector(
-			`[data-rcc][data-rosey="${roseyKey}"]`,
-		);
-		if (!currentEl) {
-			warn(`Could not find element for key "${roseyKey}"`);
+	const elements = document.querySelectorAll("[data-rcc][data-rosey]");
+	elements.forEach((el) => {
+		const resolvedKey = resolveRoseyKey(el);
+		if (!resolvedKey) return;
+
+		const snap = snapshots.get(resolvedKey);
+		if (!snap) {
+			warn(`No snapshot for resolved key "${resolvedKey}"`);
 			return;
 		}
 
@@ -79,11 +103,11 @@ function switchLocale(locale: string | null): void {
 		if (locale) {
 			clone.setAttribute(
 				"data-prop",
-				`@data[locales_${locale}].${roseyKey}.value`,
+				`@data[locales_${locale}].${resolvedKey}.value`,
 			);
 		}
 
-		currentEl.parentNode?.replaceChild(clone, currentEl);
+		el.parentNode?.replaceChild(clone, el);
 	});
 
 	log(`Switched to ${locale ?? "Original"}`);
