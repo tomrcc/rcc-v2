@@ -15,18 +15,32 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "./write-locales": {
+      "import": {
+        "types": "./dist/write-locales.d.mts",
+        "default": "./dist/write-locales.mjs"
+      },
+      "require": {
+        "types": "./dist/write-locales.d.ts",
+        "default": "./dist/write-locales.js"
+      }
     }
+  },
+  "bin": {
+    "rcc-v2": "./dist/cli/index.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "rm -rf dist && tsup",
     "dev": "tsup --watch",
     "biome": "biome check --write"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
+    "@types/node": "^25.3.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   },

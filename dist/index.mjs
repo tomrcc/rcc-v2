@@ -49,7 +49,7 @@ function resolveRoseyKey(el) {
 }
 function snapshotElements() {
   snapshots.clear();
-  const elements = document.querySelectorAll("[data-rcc]");
+  const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
   elements.forEach((el) => {
     const resolvedKey = resolveRoseyKey(el);
     if (!resolvedKey) return;
@@ -72,7 +72,7 @@ function cloneFromHTML(html) {
 }
 function switchLocale(locale) {
   currentLocale = locale;
-  const elements = document.querySelectorAll("[data-rcc][data-rosey]");
+  const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
   elements.forEach((el) => {
     const resolvedKey = resolveRoseyKey(el);
     if (!resolvedKey) return;
@@ -163,7 +163,7 @@ function init() {
   if (locales.length === 0) return;
   snapshotElements();
   if (snapshots.size === 0) {
-    warn("No translatable elements found (missing data-rcc attributes)");
+    warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
   injectSwitcher(locales);

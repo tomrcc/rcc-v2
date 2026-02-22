@@ -1,12 +1,15 @@
 /**
  * Locale injector for CloudCannon Visual Editor.
  *
- * Finds all [data-rcc] elements, injects a floating locale switcher,
+ * Finds all [data-rosey] elements, injects a floating locale switcher,
  * and uses clone+replace to swap data-prop between the original value
  * and @data[locales_{locale}].{roseyKey}.value paths.
  *
  * setAttribute alone does NOT trigger CC re-binding — only removing
  * the element and inserting a fresh clone works.
+ *
+ * Add data-rcc-ignore to any [data-rosey] element to opt it out of
+ * visual editing.
  */
 
 import { log, warn } from "./logger";
@@ -59,7 +62,7 @@ function resolveRoseyKey(el: Element): string | null {
 
 function snapshotElements(): void {
 	snapshots.clear();
-	const elements = document.querySelectorAll("[data-rcc]");
+	const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
 	elements.forEach((el) => {
 		const resolvedKey = resolveRoseyKey(el);
 		if (!resolvedKey) return;
@@ -87,7 +90,7 @@ function cloneFromHTML(html: string): Element {
 function switchLocale(locale: string | null): void {
 	currentLocale = locale;
 
-	const elements = document.querySelectorAll("[data-rcc][data-rosey]");
+	const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
 	elements.forEach((el) => {
 		const resolvedKey = resolveRoseyKey(el);
 		if (!resolvedKey) return;
@@ -200,7 +203,7 @@ function init(): void {
 	snapshotElements();
 
 	if (snapshots.size === 0) {
-		warn("No translatable elements found (missing data-rcc attributes)");
+		warn("No translatable elements found (missing data-rosey attributes)");
 		return;
 	}
 

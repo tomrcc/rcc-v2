@@ -1,4 +1,4 @@
-# rosey-cloudcannon-connector
+# Rosey CloudCannon Connector
 
 Client-side locale switching for [Rosey](https://rosey.app/) translations in [CloudCannon's](https://cloudcannon.com/) Visual Editor.
 
@@ -43,7 +43,7 @@ Add `data-rcc` and `data-rosey="{key}"` to any `editable-text` element:
 ```
 
 - `data-rcc` marks the element as translatable (the script looks for this)
-- `data-rosey` provides the Rosey translation key, following the `{pageSlug}_{fieldName}` convention
+- `data-rosey` provides the Rosey translation key
 
 ### 2. Declare available locales
 
