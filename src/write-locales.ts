@@ -23,6 +23,14 @@ interface LocaleEntry {
 	value: string;
 }
 
+function sortKeys(
+	obj: Record<string, LocaleEntry>,
+): Record<string, LocaleEntry> {
+	return Object.fromEntries(
+		Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)),
+	);
+}
+
 export async function writeLocales(
 	options: WriteLocalesOptions = {},
 ): Promise<void> {
@@ -82,7 +90,7 @@ export async function writeLocales(
 
 		await fs.promises.writeFile(
 			localePath,
-			JSON.stringify(existing, null, 2),
+			JSON.stringify(sortKeys(existing), null, 2),
 		);
 		console.log(`RCC: Wrote ${Object.keys(existing).length} keys to ${localePath}`);
 	}
