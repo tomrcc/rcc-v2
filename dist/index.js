@@ -18,19 +18,11 @@ function warn(...args) {
 }
 
 // src/injector.ts
-var snapshots = /* @__PURE__ */ new Map();
+var tracked = [];
 var currentLocale = null;
-function buildParentSelector(el) {
-  const parent = el.parentElement;
-  if (!parent) return "body";
-  if (parent.id) return `#${parent.id}`;
-  if (parent.tagName === "BODY") return "body";
-  const tag = parent.tagName.toLowerCase();
-  const siblings = Array.from(parent.parentElement?.children ?? []);
-  const idx = siblings.indexOf(parent);
-  const parentParent = buildParentSelector(parent);
-  return `${parentParent} > ${tag}:nth-child(${idx + 1})`;
-}
+var api = null;
+var activeDataset = null;
+var activeDatasetListener = null;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
   if (!localKey) return null;
@@ -49,62 +41,96 @@ function resolveRoseyKey(el) {
   nsParts.reverse();
   return [...nsParts, localKey].join(":");
 }
-function snapshotElements() {
-  snapshots.clear();
-  const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
-  elements.forEach((el) => {
-    const resolvedKey = resolveRoseyKey(el);
-    if (!resolvedKey) return;
-    const parent = el.parentElement;
-    if (!parent) return;
-    const children = Array.from(parent.children);
-    const index = children.indexOf(el);
-    snapshots.set(resolvedKey, {
-      outerHTML: el.outerHTML,
-      parentSelector: buildParentSelector(el),
-      index
+function trackElements() {
+  tracked.length = 0;
+  const elements = document.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
+  );
+  for (const el of elements) {
+    const roseyKey = resolveRoseyKey(el);
+    if (!roseyKey) continue;
+    tracked.push({
+      element: el,
+      roseyKey,
+      originalContent: el.innerHTML
     });
-  });
-  log(`Snapshotted ${snapshots.size} translatable elements`);
+  }
+  log(`Tracked ${tracked.length} translatable elements`);
 }
-function cloneFromHTML(html) {
-  const template = document.createElement("template");
-  template.innerHTML = html.trim();
-  return template.content.firstElementChild;
+function teardownEditors() {
+  if (activeDataset && activeDatasetListener) {
+    activeDataset.removeEventListener("change", activeDatasetListener);
+  }
+  activeDataset = null;
+  activeDatasetListener = null;
+  for (const t of tracked) {
+    t.editor = void 0;
+    t.element.innerHTML = t.originalContent;
+  }
 }
-function switchLocale(locale) {
+async function resolveFile(dataset) {
+  const result = await dataset.items();
+  if (Array.isArray(result)) return result[0] ?? null;
+  return result ?? null;
+}
+async function switchLocale(locale) {
+  if (!api) return;
   currentLocale = locale;
-  const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
-  elements.forEach((el) => {
-    const resolvedKey = resolveRoseyKey(el);
-    if (!resolvedKey) return;
-    const snap = snapshots.get(resolvedKey);
-    if (!snap) {
-      warn(`No snapshot for resolved key "${resolvedKey}"`);
-      return;
-    }
-    const clone = cloneFromHTML(snap.outerHTML);
-    if (locale) {
-      clone.setAttribute(
-        "data-prop",
-        `@data[locales_${locale}].${resolvedKey}.value`
-      );
-    }
-    el.parentNode?.replaceChild(clone, el);
-  });
-  log(`Switched to ${locale ?? "Original"}`);
   updateButtonStates();
+  teardownEditors();
+  if (!locale) {
+    log("Switched to Original");
+    return;
+  }
+  const dataset = api.dataset(`locales_${locale}`);
+  const file = await resolveFile(dataset);
+  if (!file) {
+    warn(`No file found in dataset "locales_${locale}"`);
+    return;
+  }
+  for (const t of tracked) {
+    try {
+      const data = await file.data.get({ slug: t.roseyKey });
+      const value = data?.value ?? data?.original ?? t.originalContent;
+      t.element.textContent = value;
+      t.editor = await api.createTextEditableRegion(
+        t.element,
+        (newValue) => {
+          file.data.set({ slug: `${t.roseyKey}.value`, value: newValue });
+        },
+        { elementType: t.element.dataset.type ?? "block" }
+      );
+    } catch (err) {
+      warn(`Failed to set up editor for "${t.roseyKey}":`, err);
+    }
+  }
+  activeDataset = dataset;
+  activeDatasetListener = async () => {
+    const freshFile = await resolveFile(dataset);
+    if (!freshFile) return;
+    for (const t of tracked) {
+      if (!t.editor) continue;
+      try {
+        const data = await freshFile.data.get({ slug: t.roseyKey });
+        const value = data?.value ?? data?.original ?? t.originalContent;
+        t.editor.setContent(value);
+      } catch {
+      }
+    }
+  };
+  dataset.addEventListener("change", activeDatasetListener);
+  log(`Switched to ${locale}`);
 }
 function updateButtonStates() {
   const buttons = document.querySelectorAll(
     "#rcc-locale-switcher button[data-locale]"
   );
-  buttons.forEach((btn) => {
+  for (const btn of buttons) {
     const btnLocale = btn.dataset.locale ?? null;
     const isActive = btnLocale === (currentLocale ?? "");
     btn.style.background = isActive ? "#3b82f6" : "#334155";
     btn.style.fontWeight = isActive ? "600" : "400";
-  });
+  }
 }
 function injectSwitcher(locales) {
   const panel = document.createElement("div");
@@ -144,32 +170,38 @@ function injectSwitcher(locales) {
   originalBtn.setAttribute("style", btnBase);
   originalBtn.addEventListener("click", () => switchLocale(null));
   row.appendChild(originalBtn);
-  locales.forEach((locale) => {
+  for (const locale of locales) {
     const btn = document.createElement("button");
     btn.textContent = locale.toUpperCase();
     btn.dataset.locale = locale;
     btn.setAttribute("style", btnBase);
     btn.addEventListener("click", () => switchLocale(locale));
     row.appendChild(btn);
-  });
+  }
   panel.appendChild(row);
   document.body.appendChild(panel);
   updateButtonStates();
 }
 function init() {
+  const ccWindow = window;
+  if (!ccWindow.CloudCannonAPI) {
+    warn("CloudCannonAPI not available");
+    return;
+  }
+  api = ccWindow.CloudCannonAPI.useVersion("v1", true);
   const main = document.querySelector("main[data-locales]");
   if (!main) return;
   const localesAttr = main.getAttribute("data-locales");
   if (!localesAttr) return;
   const locales = localesAttr.split(",").map((s) => s.trim()).filter(Boolean);
   if (locales.length === 0) return;
-  snapshotElements();
-  if (snapshots.size === 0) {
+  trackElements();
+  if (tracked.length === 0) {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
   injectSwitcher(locales);
-  log(`Ready \u2014 ${locales.length} locales, ${snapshots.size} elements`);
+  log(`Ready \u2014 ${locales.length} locales, ${tracked.length} elements`);
 }
 if (window.inEditorMode) {
   init();

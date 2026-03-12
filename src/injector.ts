@@ -2,11 +2,8 @@
  * Locale injector for CloudCannon Visual Editor.
  *
  * Finds all [data-rosey] elements, injects a floating locale switcher,
- * and uses clone+replace to swap data-prop between the original value
- * and @data[locales_{locale}].{roseyKey}.value paths.
- *
- * setAttribute alone does NOT trigger CC re-binding — only removing
- * the element and inserting a fresh clone works.
+ * and uses the CloudCannon live editing JS API to create inline editors
+ * and read/write locale data directly — no DOM clone-and-replace needed.
  *
  * Add data-rcc-ignore to any [data-rosey] element to opt it out of
  * visual editing.
@@ -14,29 +11,40 @@
 
 import { log, warn } from "./logger";
 
-interface ElementSnapshot {
-	outerHTML: string;
-	parentSelector: string;
-	index: number;
+interface TrackedElement {
+	element: HTMLElement;
+	roseyKey: string;
+	originalContent: string;
+	editor?: { setContent: (content?: string | null) => void };
 }
 
-type Snapshots = Map<string, ElementSnapshot>;
+interface CCFile {
+	data: {
+		get(opts?: { slug?: string }): Promise<any>;
+		set(opts: { slug: string; value: any }): Promise<any>;
+	};
+}
 
-const snapshots: Snapshots = new Map();
+interface CCDataset {
+	items(): Promise<CCFile | CCFile[]>;
+	addEventListener(event: string, listener: () => void): void;
+	removeEventListener(event: string, listener: () => void): void;
+}
+
+interface CCApi {
+	dataset(key: string): CCDataset;
+	createTextEditableRegion(
+		element: HTMLElement,
+		onChange: (content?: string | null) => void,
+		options?: { elementType?: string; inputConfig?: Record<string, unknown> },
+	): Promise<{ setContent: (content?: string | null) => void }>;
+}
+
+const tracked: TrackedElement[] = [];
 let currentLocale: string | null = null;
-
-function buildParentSelector(el: Element): string {
-	const parent = el.parentElement;
-	if (!parent) return "body";
-	if (parent.id) return `#${parent.id}`;
-	if (parent.tagName === "BODY") return "body";
-
-	const tag = parent.tagName.toLowerCase();
-	const siblings = Array.from(parent.parentElement?.children ?? []);
-	const idx = siblings.indexOf(parent);
-	const parentParent = buildParentSelector(parent);
-	return `${parentParent} > ${tag}:nth-child(${idx + 1})`;
-}
+let api: CCApi | null = null;
+let activeDataset: CCDataset | null = null;
+let activeDatasetListener: (() => void) | null = null;
 
 function resolveRoseyKey(el: Element): string | null {
 	const localKey = el.getAttribute("data-rosey");
@@ -60,73 +68,111 @@ function resolveRoseyKey(el: Element): string | null {
 	return [...nsParts, localKey].join(":");
 }
 
-function snapshotElements(): void {
-	snapshots.clear();
-	const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
-	elements.forEach((el) => {
-		const resolvedKey = resolveRoseyKey(el);
-		if (!resolvedKey) return;
-
-		const parent = el.parentElement;
-		if (!parent) return;
-		const children = Array.from(parent.children);
-		const index = children.indexOf(el);
-
-		snapshots.set(resolvedKey, {
-			outerHTML: el.outerHTML,
-			parentSelector: buildParentSelector(el),
-			index,
+function trackElements(): void {
+	tracked.length = 0;
+	const elements = document.querySelectorAll<HTMLElement>(
+		"[data-rosey]:not([data-rcc-ignore])",
+	);
+	for (const el of elements) {
+		const roseyKey = resolveRoseyKey(el);
+		if (!roseyKey) continue;
+		tracked.push({
+			element: el,
+			roseyKey,
+			originalContent: el.innerHTML,
 		});
-	});
-	log(`Snapshotted ${snapshots.size} translatable elements`);
+	}
+	log(`Tracked ${tracked.length} translatable elements`);
 }
 
-function cloneFromHTML(html: string): Element {
-	const template = document.createElement("template");
-	template.innerHTML = html.trim();
-	return template.content.firstElementChild!;
+function teardownEditors(): void {
+	if (activeDataset && activeDatasetListener) {
+		activeDataset.removeEventListener("change", activeDatasetListener);
+	}
+	activeDataset = null;
+	activeDatasetListener = null;
+
+	for (const t of tracked) {
+		t.editor = undefined;
+		t.element.innerHTML = t.originalContent;
+	}
 }
 
-function switchLocale(locale: string | null): void {
+async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
+	const result = await dataset.items();
+	if (Array.isArray(result)) return result[0] ?? null;
+	return result ?? null;
+}
+
+async function switchLocale(locale: string | null): Promise<void> {
+	if (!api) return;
 	currentLocale = locale;
-
-	const elements = document.querySelectorAll("[data-rosey]:not([data-rcc-ignore])");
-	elements.forEach((el) => {
-		const resolvedKey = resolveRoseyKey(el);
-		if (!resolvedKey) return;
-
-		const snap = snapshots.get(resolvedKey);
-		if (!snap) {
-			warn(`No snapshot for resolved key "${resolvedKey}"`);
-			return;
-		}
-
-		const clone = cloneFromHTML(snap.outerHTML);
-
-		if (locale) {
-			clone.setAttribute(
-				"data-prop",
-				`@data[locales_${locale}].${resolvedKey}.value`,
-			);
-		}
-
-		el.parentNode?.replaceChild(clone, el);
-	});
-
-	log(`Switched to ${locale ?? "Original"}`);
 	updateButtonStates();
+
+	teardownEditors();
+
+	if (!locale) {
+		log("Switched to Original");
+		return;
+	}
+
+	const dataset = api.dataset(`locales_${locale}`);
+	const file = await resolveFile(dataset);
+
+	if (!file) {
+		warn(`No file found in dataset "locales_${locale}"`);
+		return;
+	}
+
+	for (const t of tracked) {
+		try {
+			const data = await file.data.get({ slug: t.roseyKey });
+			const value = data?.value ?? data?.original ?? t.originalContent;
+			t.element.textContent = value;
+
+			t.editor = await api.createTextEditableRegion(
+				t.element,
+				(newValue) => {
+					file.data.set({ slug: `${t.roseyKey}.value`, value: newValue });
+				},
+				{ elementType: t.element.dataset.type ?? "block" },
+			);
+		} catch (err) {
+			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
+		}
+	}
+
+	activeDataset = dataset;
+	activeDatasetListener = async () => {
+		const freshFile = await resolveFile(dataset);
+		if (!freshFile) return;
+
+		for (const t of tracked) {
+			if (!t.editor) continue;
+			try {
+				const data = await freshFile.data.get({ slug: t.roseyKey });
+				const value = data?.value ?? data?.original ?? t.originalContent;
+				t.editor.setContent(value);
+			} catch {
+				/* key may not exist in this locale yet */
+			}
+		}
+	};
+	dataset.addEventListener("change", activeDatasetListener);
+
+	log(`Switched to ${locale}`);
 }
 
 function updateButtonStates(): void {
 	const buttons = document.querySelectorAll<HTMLButtonElement>(
 		"#rcc-locale-switcher button[data-locale]",
 	);
-	buttons.forEach((btn) => {
+	for (const btn of buttons) {
 		const btnLocale = btn.dataset.locale ?? null;
 		const isActive = btnLocale === (currentLocale ?? "");
 		btn.style.background = isActive ? "#3b82f6" : "#334155";
 		btn.style.fontWeight = isActive ? "600" : "400";
-	});
+	}
 }
 
 function injectSwitcher(locales: string[]): void {
@@ -173,14 +219,14 @@ function injectSwitcher(locales: string[]): void {
 	originalBtn.addEventListener("click", () => switchLocale(null));
 	row.appendChild(originalBtn);
 
-	locales.forEach((locale) => {
+	for (const locale of locales) {
 		const btn = document.createElement("button");
 		btn.textContent = locale.toUpperCase();
 		btn.dataset.locale = locale;
 		btn.setAttribute("style", btnBase);
 		btn.addEventListener("click", () => switchLocale(locale));
 		row.appendChild(btn);
-	});
+	}
 
 	panel.appendChild(row);
 	document.body.appendChild(panel);
@@ -189,6 +235,13 @@ function injectSwitcher(locales: string[]): void {
 }
 
 function init(): void {
+	const ccWindow = window as any;
+	if (!ccWindow.CloudCannonAPI) {
+		warn("CloudCannonAPI not available");
+		return;
+	}
+	api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
+
 	const main = document.querySelector("main[data-locales]");
 	if (!main) return;
 
@@ -200,15 +253,15 @@ function init(): void {
 		.filter(Boolean);
 	if (locales.length === 0) return;
 
-	snapshotElements();
+	trackElements();
 
-	if (snapshots.size === 0) {
+	if (tracked.length === 0) {
 		warn("No translatable elements found (missing data-rosey attributes)");
 		return;
 	}
 
 	injectSwitcher(locales);
-	log(`Ready — ${locales.length} locales, ${snapshots.size} elements`);
+	log(`Ready — ${locales.length} locales, ${tracked.length} elements`);
 }
 
 if ((window as any).inEditorMode) {

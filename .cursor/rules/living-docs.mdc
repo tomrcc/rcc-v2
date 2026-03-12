@@ -1,0 +1,28 @@
+---
+description: Keep project docs and cursor context files updated as implementation progresses.
+alwaysApply: true
+---
+
+# Living Documentation
+
+After every substantive implementation step (new feature, architecture change, bug fix, discovered constraint), update the relevant project docs **in the same response** — do not wait to be asked.
+
+## What to Update
+
+- **`.cursor/rules/*.mdc`** — Add or revise rules when you discover new conventions, constraints, or API gotchas that future prompts should know about.
+- **`.cursor/docs/*.md`** — Add or revise deep-reference docs when you learn new internals (e.g. CloudCannon API behaviour, edge cases, data structures).
+- **`README.md`** — Keep the user-facing docs in sync with reality. Update the "How It Works" section, data attributes table, and any code examples when the implementation changes.
+- **`.cursor/rules/rcc-v2-mission.mdc`** — Update the mission/status summary when the high-level approach shifts (e.g. from clone-and-replace to live API).
+
+## When to Update
+
+- You just changed how a feature works (update README + mission rule)
+- You discovered an API quirk or constraint (add to a docs file or rule)
+- You added/removed a data attribute, config option, or CLI flag (update README)
+- You refactored file structure (update codebase map rule)
+
+## How to Update
+
+- Keep updates concise — match the style of the existing file.
+- Prefer editing existing sections over adding new ones.
+- Do not bloat docs with implementation minutiae; focus on things that help a future reader (human or AI) understand the system quickly.

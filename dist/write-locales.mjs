@@ -1,6 +1,11 @@
 // src/write-locales.ts
 import fs from "fs";
 import path from "path";
+function sortKeys(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
+  );
+}
 async function writeLocales(options = {}) {
   const roseyDir = options.roseyDir ?? "rosey";
   let locales = options.locales;
@@ -43,7 +48,7 @@ async function writeLocales(options = {}) {
     }
     await fs.promises.writeFile(
       localePath,
-      JSON.stringify(existing, null, 2)
+      JSON.stringify(sortKeys(existing), null, 2)
     );
     console.log(`RCC: Wrote ${Object.keys(existing).length} keys to ${localePath}`);
   }

@@ -17,7 +17,7 @@ alwaysApply: true
 
 | File | Role |
 |------|------|
-| `src/injector.ts` | Core logic: snapshot, clone-and-replace, locale switcher UI, Rosey key resolution |
+| `src/injector.ts` | Core logic: element tracking, CloudCannon API integration, locale switcher UI, Rosey key resolution |
 | `src/write-locales.ts` | Node API for generating/updating locale JSON from Rosey `base.json` |
 | `src/cli/` | CLI wrappers for `write-locales` |
 

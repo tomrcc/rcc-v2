@@ -2,7 +2,7 @@
 
 Client-side locale switching for [Rosey](https://rosey.app/) translations in [CloudCannon's](https://cloudcannon.com/) Visual Editor.
 
-The script auto-detects all `data-rosey` tagged elements on the page, injects a floating locale switcher, and uses clone+replace to enable in-place visual editing of translations — no server-side conditionals or component refactoring required.
+The script auto-detects all `data-rosey` tagged elements on the page, injects a floating locale switcher, and uses CloudCannon's live editing JavaScript API to create inline editors and read/write locale data directly — no server-side conditionals or component refactoring required.
 
 ## Install
 
@@ -54,7 +54,7 @@ Import the package in your layout. The script auto-initializes when the CloudCan
 </script>
 ```
 
-When the page loads in the Visual Editor, a floating locale switcher appears. Clicking a locale swaps each translatable element's `data-prop` to point at the corresponding locale data file.
+When the page loads in the Visual Editor, a floating locale switcher appears. Clicking a locale fetches the translation data and creates inline editors on each translatable element, connected directly to the locale data file via the CloudCannon JS API.
 
 ## Key Namespacing
 
@@ -162,12 +162,14 @@ This script:
 
 ## How It Works
 
-1. On init, the script snapshots all `[data-rosey]` elements (storing their `outerHTML` and position)
+1. On init, the script acquires the CloudCannon JS API handle and tracks all `[data-rosey]` elements (storing live DOM references and original content)
 2. A floating locale switcher UI is injected
-3. When a locale is selected, each snapshotted element is cloned and its `data-prop` is rewritten to `@data[locales_{locale}].{resolvedKey}.value`
-4. When "Original" is selected, elements are restored from their snapshots
-
-CloudCannon does **not** re-bind editable regions when attributes are mutated on existing elements. Only removing a node and inserting a new one triggers re-binding — this is why the script uses `replaceChild` rather than `setAttribute`.
+3. When a locale is selected:
+   - Any existing editors are torn down and original content is restored
+   - The locale dataset and file are fetched via `api.dataset("locales_{locale}").items()`
+   - For each tracked element: the translated value is loaded via `file.data.get()`, the element's text is updated, and an inline editor is created via `api.createTextEditableRegion()` — edits are pushed back with `file.data.set()`
+   - A `change` listener on the dataset keeps editors in sync with external changes
+4. When "Original" is selected, editors are torn down and elements are restored to their original content
 
 ## Logging
 

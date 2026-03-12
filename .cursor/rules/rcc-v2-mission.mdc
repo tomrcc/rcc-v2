@@ -1,35 +1,43 @@
 ---
-description: rcc-v2 project mission, current state, and proposed direction
+description: rcc-v2 project mission, current state, and architectural approach
 alwaysApply: true
 ---
 
 # rcc-v2 Mission
 
-rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual editing of [Rosey](https://rosey.app/) translation files inside CloudCannon's Visual Editor. It bridges Rosey's `data-rosey` translation keys and CloudCannon's `data-prop` editing system, letting editors switch between locales and edit translations directly on the page.
+rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual editing of [Rosey](https://rosey.app/) translation files inside CloudCannon's Visual Editor. It bridges Rosey's `data-rosey` translation keys and CloudCannon's live editing JS API, letting editors switch between locales and edit translations directly on the page.
 
-## How It Works Today
+## How It Works (MVP — live API approach)
 
 1. Loads only inside the Visual Editor (gated on `window.inEditorMode` / `cloudcannon:load` event)
-2. Snapshots every `[data-rosey]` element (stores `outerHTML`, parent selector, sibling index)
-3. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
-4. On locale switch: clones each element from snapshot, rewrites `data-prop` to `@data[locales_{locale}].{resolvedKey}.value`, replaces the live DOM node via `parentNode.replaceChild` — CloudCannon detects the new node, hydrates an editable region, resolves the `@data[...]` path, fetches the data file, binds listeners, mounts the editor
-5. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
+2. Acquires the CloudCannon JS API handle via `CloudCannonAPI.useVersion("v1", true)`
+3. Tracks every `[data-rosey]` element — stores a live DOM reference, resolved Rosey key, and original `innerHTML`
+4. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
+5. On locale switch:
+   - Tears down any existing editors and restores original content
+   - Gets the locale dataset + file via `api.dataset("locales_{locale}").items()`
+   - For each tracked element: fetches value via `file.data.get()`, sets element text, creates an inline editor via `api.createTextEditableRegion()` whose `onChange` pushes edits back with `file.data.set()`
+   - Listens for external `change` events on the dataset to keep editors in sync
+6. On "Original" switch: tears down editors, restores original innerHTML
+7. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
 
-## The Problem
+## Key API Surface
 
-The clone-and-replace approach triggers CloudCannon's **full editable region hydration cycle** on every locale switch: scan DOM, parse `data-prop`, resolve path, fetch data file, bind API listeners, mount editor. This causes a visible error/loading flash.
-
-## Proposed Direction
-
-Instead of injecting new editable regions, **integrate directly with CloudCannon's live editing JavaScript API** — attach event listeners to existing elements that read/write locale data through the API, bypassing hydration entirely.
-
-Key API surface (`window.CloudCannonAPI.useVersion("v1", true)` after `cloudcannon:load`):
+`window.CloudCannonAPI.useVersion("v1", true)` after `cloudcannon:load`:
 
 | API | Purpose |
 |-----|---------|
-| `CloudCannon.dataset("locales_fr")` | Get a dataset object for a locale file |
-| `dataset.addEventListener("change", ...)` | Listen for external data changes |
+| `api.dataset("locales_fr")` | Get a dataset object for a locale file |
+| `dataset.items()` | Get the file handle(s) within a dataset |
+| `file.data.get({ slug })` | Read a value from the locale file |
 | `file.data.set({ slug, value })` | Push edits back to the data file |
-| `CloudCannon.createTextEditableRegion(element, onChange, options)` | Create an inline editor on an existing element |
+| `dataset.addEventListener("change", ...)` | Listen for external data changes |
+| `api.createTextEditableRegion(el, onChange, opts)` | Create an inline ProseMirror editor on an existing element |
+
+## Open Questions (MVP)
+
+- **Editor cleanup**: `createTextEditableRegion` returns `{ setContent }` but no explicit `destroy()`. Currently we reset `innerHTML` to tear down — needs real-world validation.
+- **Rich content**: MVP uses `textContent` for values. Elements with HTML (bold, links) may need `innerHTML` + richer `inputConfig`.
+- **Slug format**: Rosey keys with colons (`index:hero:title`) are top-level JSON keys; slug `index:hero:title.value` should resolve correctly since `.` is the path separator. Needs testing.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.

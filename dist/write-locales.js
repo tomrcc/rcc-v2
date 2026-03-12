@@ -35,6 +35,11 @@ __export(write_locales_exports, {
 module.exports = __toCommonJS(write_locales_exports);
 var import_node_fs = __toESM(require("fs"));
 var import_node_path = __toESM(require("path"));
+function sortKeys(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
+  );
+}
 async function writeLocales(options = {}) {
   const roseyDir = options.roseyDir ?? "rosey";
   let locales = options.locales;
@@ -77,7 +82,7 @@ async function writeLocales(options = {}) {
     }
     await import_node_fs.default.promises.writeFile(
       localePath,
-      JSON.stringify(existing, null, 2)
+      JSON.stringify(sortKeys(existing), null, 2)
     );
     console.log(`RCC: Wrote ${Object.keys(existing).length} keys to ${localePath}`);
   }
