@@ -184,7 +184,8 @@ async function switchLocale(locale: string | null): Promise<void> {
 				},
 				{ elementType },
 			);
-			log(`[${t.roseyKey}] Editor created`);
+			t.editor.setContent(value);
+			log(`[${t.roseyKey}] Editor created, setContent called`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
