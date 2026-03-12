@@ -1,0 +1,35 @@
+---
+description: rcc-v2 project mission, current state, and proposed direction
+alwaysApply: true
+---
+
+# rcc-v2 Mission
+
+rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual editing of [Rosey](https://rosey.app/) translation files inside CloudCannon's Visual Editor. It bridges Rosey's `data-rosey` translation keys and CloudCannon's `data-prop` editing system, letting editors switch between locales and edit translations directly on the page.
+
+## How It Works Today
+
+1. Loads only inside the Visual Editor (gated on `window.inEditorMode` / `cloudcannon:load` event)
+2. Snapshots every `[data-rosey]` element (stores `outerHTML`, parent selector, sibling index)
+3. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
+4. On locale switch: clones each element from snapshot, rewrites `data-prop` to `@data[locales_{locale}].{resolvedKey}.value`, replaces the live DOM node via `parentNode.replaceChild` — CloudCannon detects the new node, hydrates an editable region, resolves the `@data[...]` path, fetches the data file, binds listeners, mounts the editor
+5. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
+
+## The Problem
+
+The clone-and-replace approach triggers CloudCannon's **full editable region hydration cycle** on every locale switch: scan DOM, parse `data-prop`, resolve path, fetch data file, bind API listeners, mount editor. This causes a visible error/loading flash.
+
+## Proposed Direction
+
+Instead of injecting new editable regions, **integrate directly with CloudCannon's live editing JavaScript API** — attach event listeners to existing elements that read/write locale data through the API, bypassing hydration entirely.
+
+Key API surface (`window.CloudCannonAPI.useVersion("v1", true)` after `cloudcannon:load`):
+
+| API | Purpose |
+|-----|---------|
+| `CloudCannon.dataset("locales_fr")` | Get a dataset object for a locale file |
+| `dataset.addEventListener("change", ...)` | Listen for external data changes |
+| `file.data.set({ slug, value })` | Push edits back to the data file |
+| `CloudCannon.createTextEditableRegion(element, onChange, options)` | Create an inline editor on an existing element |
+
+For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.

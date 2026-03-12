@@ -1,0 +1,47 @@
+---
+description: rcc-v2 workspace layout — repos, key files, and their purposes
+alwaysApply: true
+---
+
+# rcc-v2 Codebase Map
+
+## Repos
+
+| Repo | Path | Purpose |
+|------|------|---------|
+| **rcc-v2** | `/Users/tomrichardson/Dev/work/rcc/rcc-v2/` | The plugin itself |
+| **testing-rcc-v2** | `/Users/tomrichardson/Dev/work/rcc/testing-rcc-v2/` | Test Astro site for integration testing |
+| **editable-regions** | `/Users/tomrichardson/Dev/work/ed-regions-related/editable-regions/` | CloudCannon's editable regions source (reference only) |
+
+## Key Files — rcc-v2
+
+| File | Role |
+|------|------|
+| `src/injector.ts` | Core logic: snapshot, clone-and-replace, locale switcher UI, Rosey key resolution |
+| `src/write-locales.ts` | Node API for generating/updating locale JSON from Rosey `base.json` |
+| `src/cli/` | CLI wrappers for `write-locales` |
+
+## Key Files — testing-rcc-v2
+
+| File | Role |
+|------|------|
+| `src/layouts/Layout.astro` | Loads rcc-v2 in editor mode, declares `data-locales` on `<main>` |
+| `cloudcannon.config.yml` | `data_config` entries that expose locale files to CloudCannon |
+| `rosey/locales/*.json` | Translation files being edited |
+| `src/scripts/register-components.ts` | Registers Astro/React components for visual editing |
+
+## Translation File Config
+
+Locale files are exposed to CloudCannon via `data_config` in `cloudcannon.config.yml`:
+
+```yaml
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_de:
+    path: rosey/locales/de.json
+```
+
+## Build-Time CLI
+
+`rosey-cloudcannon-connector write-locales` reads Rosey's `base.json` and creates/updates locale JSON files, adding new keys while preserving existing translations.
