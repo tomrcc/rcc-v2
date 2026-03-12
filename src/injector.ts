@@ -264,7 +264,7 @@ function init(): void {
 	log(`Ready — ${locales.length} locales, ${tracked.length} elements`);
 }
 
-if ((window as any).inEditorMode) {
+if ((window as any).inEditorMode && (window as any).CloudCannonAPI) {
 	init();
 } else {
 	document.addEventListener("cloudcannon:load", init);

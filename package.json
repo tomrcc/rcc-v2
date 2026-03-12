@@ -1,5 +1,5 @@
 {
-  "name": "rcc-v2",
+  "name": "rosey-cloudcannon-connector",
   "version": "0.0.1",
   "description": "Client-side locale switching for Rosey translations in CloudCannon's Visual Editor",
   "main": "./dist/index.js",

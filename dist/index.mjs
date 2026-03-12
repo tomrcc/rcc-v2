@@ -201,7 +201,7 @@ function init() {
   injectSwitcher(locales);
   log(`Ready \u2014 ${locales.length} locales, ${tracked.length} elements`);
 }
-if (window.inEditorMode) {
+if (window.inEditorMode && window.CloudCannonAPI) {
   init();
 } else {
   document.addEventListener("cloudcannon:load", init);
