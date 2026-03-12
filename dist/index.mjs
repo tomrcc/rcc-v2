@@ -21,6 +21,7 @@ var currentLocale = null;
 var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
+var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
   if (!localKey) return null;
@@ -63,7 +64,7 @@ function teardownEditors() {
   activeDataset = null;
   activeDatasetListener = null;
   for (const t of tracked) {
-    log(`[${t.roseyKey}] Teardown \u2014 restoring originalContent:`, JSON.stringify(t.originalContent));
+    log(`[${t.roseyKey}] Teardown \u2014 restoring originalContent`);
     t.editor = void 0;
     t.element.innerHTML = t.originalContent;
   }
@@ -75,6 +76,9 @@ async function resolveFile(dataset) {
 }
 async function switchLocale(locale) {
   if (!api) return;
+  switchGeneration++;
+  const myGeneration = switchGeneration;
+  log(`switchLocale("${locale}") \u2014 generation ${myGeneration}`);
   currentLocale = locale;
   updateButtonStates();
   teardownEditors();
@@ -88,7 +92,12 @@ async function switchLocale(locale) {
     warn(`No file found in dataset "locales_${locale}"`);
     return;
   }
+  let setupComplete = false;
   for (const t of tracked) {
+    if (myGeneration !== switchGeneration) {
+      warn(`Generation changed during setup (${myGeneration} \u2192 ${switchGeneration}), aborting "${locale}" switch`);
+      return;
+    }
     try {
       const data = await file.data.get({ slug: t.roseyKey });
       log(`[${t.roseyKey}] data.get() returned:`, JSON.stringify(data));
@@ -100,12 +109,15 @@ async function switchLocale(locale) {
       log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
       const elementType = t.element.dataset.type ?? "block";
       log(`[${t.roseyKey}] Creating editor with elementType="${elementType}"`);
-      let inSetup = true;
       t.editor = await api.createTextEditableRegion(
         t.element,
         (newValue) => {
-          if (inSetup) {
-            log(`[${t.roseyKey}] onChange SKIPPED (setup phase), value:`, JSON.stringify(newValue));
+          if (myGeneration !== switchGeneration) {
+            log(`[${t.roseyKey}] onChange BLOCKED (stale generation ${myGeneration}, current ${switchGeneration})`);
+            return;
+          }
+          if (!setupComplete) {
+            log(`[${t.roseyKey}] onChange BLOCKED (setup incomplete), value:`, JSON.stringify(newValue));
             return;
           }
           log(`[${t.roseyKey}] onChange -> file.data.set slug="${t.roseyKey}.value", value:`, JSON.stringify(newValue));
@@ -113,15 +125,21 @@ async function switchLocale(locale) {
         },
         { elementType }
       );
-      await Promise.resolve();
-      inSetup = false;
-      log(`[${t.roseyKey}] Editor created, setup phase ended`);
+      log(`[${t.roseyKey}] Editor created`);
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
   }
+  if (myGeneration !== switchGeneration) {
+    warn(`Generation changed after setup (${myGeneration} \u2192 ${switchGeneration}), not activating "${locale}"`);
+    return;
+  }
+  await Promise.resolve();
+  setupComplete = true;
+  log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
   activeDataset = dataset;
   activeDatasetListener = async () => {
+    if (myGeneration !== switchGeneration) return;
     log(`Dataset change event fired for locale "${locale}"`);
     const freshFile = await resolveFile(dataset);
     if (!freshFile) return;

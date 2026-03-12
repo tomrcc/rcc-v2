@@ -36,12 +36,12 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 
 ## Known Constraints
 
-- **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Translated values may be plain text or HTML. Always use `innerHTML` (never `textContent`) to set values on tracked elements, and guard `onChange` during editor setup to prevent ProseMirror normalisation from writing back unwanted changes.
-- **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content (e.g. wraps plain text in `<p>` for block mode) and fires `onChange` immediately. The `inSetup` guard skips this initial write. Removing it will cause data corruption.
+- **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Translated values may be plain text or HTML. Always use `innerHTML` (never `textContent`) to set values on tracked elements.
+- **ProseMirror editors cannot be destroyed**: `createTextEditableRegion` returns `{ setContent }` but no `destroy()`. Old ProseMirror instances stay alive after teardown and fire `onChange` when the DOM changes underneath them (e.g. during the next locale switch). A `switchGeneration` counter makes stale closures no-ops — every `onChange` checks `myGeneration === switchGeneration` before writing.
+- **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content (e.g. wraps plain text in `<p>` for block mode) and fires `onChange` immediately. A `setupComplete` flag (set after all editors are created) blocks these writes. Both the generation check and setup guard are critical — removing either causes data corruption.
 
 ## Open Questions (MVP)
 
-- **Editor cleanup**: `createTextEditableRegion` returns `{ setContent }` but no explicit `destroy()`. Currently we reset `innerHTML` to tear down — needs real-world validation.
 - **Slug format**: Rosey keys with colons (`index:hero:title`) are top-level JSON keys; slug `index:hero:title.value` should resolve correctly since `.` is the path separator. Needs testing.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.

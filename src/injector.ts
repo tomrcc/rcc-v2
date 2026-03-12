@@ -46,6 +46,16 @@ let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
 
+/**
+ * Incremented every time switchLocale is called. Each onChange closure
+ * captures the generation it was created in; if it doesn't match the
+ * current value, the editor is stale (from a previous locale) and the
+ * write is silently dropped. This is necessary because
+ * createTextEditableRegion has no destroy() — old ProseMirror instances
+ * stay alive and fire onChange when the DOM changes underneath them.
+ */
+let switchGeneration = 0;
+
 function resolveRoseyKey(el: Element): string | null {
 	const localKey = el.getAttribute("data-rosey");
 	if (!localKey) return null;
@@ -94,7 +104,7 @@ function teardownEditors(): void {
 	activeDatasetListener = null;
 
 	for (const t of tracked) {
-		log(`[${t.roseyKey}] Teardown — restoring originalContent:`, JSON.stringify(t.originalContent));
+		log(`[${t.roseyKey}] Teardown — restoring originalContent`);
 		t.editor = undefined;
 		t.element.innerHTML = t.originalContent;
 	}
@@ -108,6 +118,11 @@ async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
 
 async function switchLocale(locale: string | null): Promise<void> {
 	if (!api) return;
+
+	switchGeneration++;
+	const myGeneration = switchGeneration;
+	log(`switchLocale("${locale}") — generation ${myGeneration}`);
+
 	currentLocale = locale;
 	updateButtonStates();
 
@@ -126,7 +141,14 @@ async function switchLocale(locale: string | null): Promise<void> {
 		return;
 	}
 
+	let setupComplete = false;
+
 	for (const t of tracked) {
+		if (myGeneration !== switchGeneration) {
+			warn(`Generation changed during setup (${myGeneration} → ${switchGeneration}), aborting "${locale}" switch`);
+			return;
+		}
+
 		try {
 			const data = await file.data.get({ slug: t.roseyKey });
 			log(`[${t.roseyKey}] data.get() returned:`, JSON.stringify(data));
@@ -146,12 +168,15 @@ async function switchLocale(locale: string | null): Promise<void> {
 			const elementType = t.element.dataset.type ?? "block";
 			log(`[${t.roseyKey}] Creating editor with elementType="${elementType}"`);
 
-			let inSetup = true;
 			t.editor = await api.createTextEditableRegion(
 				t.element,
 				(newValue) => {
-					if (inSetup) {
-						log(`[${t.roseyKey}] onChange SKIPPED (setup phase), value:`, JSON.stringify(newValue));
+					if (myGeneration !== switchGeneration) {
+						log(`[${t.roseyKey}] onChange BLOCKED (stale generation ${myGeneration}, current ${switchGeneration})`);
+						return;
+					}
+					if (!setupComplete) {
+						log(`[${t.roseyKey}] onChange BLOCKED (setup incomplete), value:`, JSON.stringify(newValue));
 						return;
 					}
 					log(`[${t.roseyKey}] onChange -> file.data.set slug="${t.roseyKey}.value", value:`, JSON.stringify(newValue));
@@ -159,16 +184,24 @@ async function switchLocale(locale: string | null): Promise<void> {
 				},
 				{ elementType },
 			);
-			await Promise.resolve();
-			inSetup = false;
-			log(`[${t.roseyKey}] Editor created, setup phase ended`);
+			log(`[${t.roseyKey}] Editor created`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
 	}
 
+	if (myGeneration !== switchGeneration) {
+		warn(`Generation changed after setup (${myGeneration} → ${switchGeneration}), not activating "${locale}"`);
+		return;
+	}
+
+	await Promise.resolve();
+	setupComplete = true;
+	log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
+
 	activeDataset = dataset;
 	activeDatasetListener = async () => {
+		if (myGeneration !== switchGeneration) return;
 		log(`Dataset change event fired for locale "${locale}"`);
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
