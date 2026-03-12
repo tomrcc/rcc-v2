@@ -86,6 +86,7 @@ function trackElements(): void {
 }
 
 function teardownEditors(): void {
+	log(`Tearing down ${tracked.length} editors`);
 	if (activeDataset && activeDatasetListener) {
 		activeDataset.removeEventListener("change", activeDatasetListener);
 	}
@@ -93,6 +94,7 @@ function teardownEditors(): void {
 	activeDatasetListener = null;
 
 	for (const t of tracked) {
+		log(`[${t.roseyKey}] Teardown — restoring originalContent:`, JSON.stringify(t.originalContent));
 		t.editor = undefined;
 		t.element.innerHTML = t.originalContent;
 	}
@@ -127,16 +129,39 @@ async function switchLocale(locale: string | null): Promise<void> {
 	for (const t of tracked) {
 		try {
 			const data = await file.data.get({ slug: t.roseyKey });
-			const value = data?.value ?? data?.original ?? t.originalContent;
-			t.element.textContent = value;
+			log(`[${t.roseyKey}] data.get() returned:`, JSON.stringify(data));
 
+			const value = data?.value ?? data?.original ?? t.originalContent;
+			const source = data?.value != null
+				? "data.value"
+				: data?.original != null
+					? "data.original"
+					: "originalContent";
+			log(`[${t.roseyKey}] Resolved value (via ${source}):`, JSON.stringify(value));
+
+			log(`[${t.roseyKey}] Pre-set DOM: <${t.element.tagName.toLowerCase()}> innerHTML=`, JSON.stringify(t.element.innerHTML));
+			t.element.innerHTML = value;
+			log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
+
+			const elementType = t.element.dataset.type ?? "block";
+			log(`[${t.roseyKey}] Creating editor with elementType="${elementType}"`);
+
+			let inSetup = true;
 			t.editor = await api.createTextEditableRegion(
 				t.element,
 				(newValue) => {
+					if (inSetup) {
+						log(`[${t.roseyKey}] onChange SKIPPED (setup phase), value:`, JSON.stringify(newValue));
+						return;
+					}
+					log(`[${t.roseyKey}] onChange -> file.data.set slug="${t.roseyKey}.value", value:`, JSON.stringify(newValue));
 					file.data.set({ slug: `${t.roseyKey}.value`, value: newValue });
 				},
-				{ elementType: t.element.dataset.type ?? "block" },
+				{ elementType },
 			);
+			await Promise.resolve();
+			inSetup = false;
+			log(`[${t.roseyKey}] Editor created, setup phase ended`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
@@ -144,6 +169,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 	activeDataset = dataset;
 	activeDatasetListener = async () => {
+		log(`Dataset change event fired for locale "${locale}"`);
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
 
@@ -152,6 +178,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 			try {
 				const data = await freshFile.data.get({ slug: t.roseyKey });
 				const value = data?.value ?? data?.original ?? t.originalContent;
+				log(`[${t.roseyKey}] Change listener setContent:`, JSON.stringify(value));
 				t.editor.setContent(value);
 			} catch {
 				/* key may not exist in this locale yet */

@@ -16,7 +16,7 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 5. On locale switch:
    - Tears down any existing editors and restores original content
    - Gets the locale dataset + file via `api.dataset("locales_{locale}").items()`
-   - For each tracked element: fetches value via `file.data.get()`, sets element text, creates an inline editor via `api.createTextEditableRegion()` whose `onChange` pushes edits back with `file.data.set()`
+   - For each tracked element: fetches value via `file.data.get()`, sets `innerHTML` (not `textContent` — values may contain HTML like `<p>` tags from Markdown rendering), creates an inline editor via `api.createTextEditableRegion()` with an `onChange` guard that skips the initial ProseMirror normalisation fire, then pushes real user edits back with `file.data.set()`
    - Listens for external `change` events on the dataset to keep editors in sync
 6. On "Original" switch: tears down editors, restores original innerHTML
 7. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
@@ -34,10 +34,14 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 | `dataset.addEventListener("change", ...)` | Listen for external data changes |
 | `api.createTextEditableRegion(el, onChange, opts)` | Create an inline ProseMirror editor on an existing element |
 
+## Known Constraints
+
+- **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Translated values may be plain text or HTML. Always use `innerHTML` (never `textContent`) to set values on tracked elements, and guard `onChange` during editor setup to prevent ProseMirror normalisation from writing back unwanted changes.
+- **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content (e.g. wraps plain text in `<p>` for block mode) and fires `onChange` immediately. The `inSetup` guard skips this initial write. Removing it will cause data corruption.
+
 ## Open Questions (MVP)
 
 - **Editor cleanup**: `createTextEditableRegion` returns `{ setContent }` but no explicit `destroy()`. Currently we reset `innerHTML` to tear down — needs real-world validation.
-- **Rich content**: MVP uses `textContent` for values. Elements with HTML (bold, links) may need `innerHTML` + richer `inputConfig`.
 - **Slug format**: Rosey keys with colons (`index:hero:title`) are top-level JSON keys; slug `index:hero:title.value` should resolve correctly since `.` is the path separator. Needs testing.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.
