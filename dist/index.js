@@ -158,6 +158,7 @@ async function switchLocale(locale) {
       log(`[${t.roseyKey}] Pre-set DOM: <${t.element.tagName.toLowerCase()}> innerHTML=`, JSON.stringify(t.element.innerHTML));
       t.element.innerHTML = value;
       log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
+      warn(`[${t.roseyKey}] isConnected=${t.element.isConnected}, parentElement=${t.element.parentElement?.tagName ?? "null"}`);
       log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
       const spyKey = t.roseyKey;
       const spyEl = t.element;
@@ -188,6 +189,16 @@ async function switchLocale(locale) {
   await Promise.resolve();
   setupComplete = true;
   log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
+  setTimeout(() => {
+    if (myGeneration !== switchGeneration) return;
+    for (const t of tracked) {
+      if (!t.element.isConnected) {
+        warn(`[${t.roseyKey}] DETACHED after 2s \u2014 isConnected=false`);
+      }
+    }
+    const connectedCount = tracked.filter((t) => t.element.isConnected).length;
+    warn(`Delayed check: ${connectedCount}/${tracked.length} elements still connected`);
+  }, 2e3);
   activeDataset = dataset;
   activeDatasetListener = async () => {
     if (myGeneration !== switchGeneration) return;
