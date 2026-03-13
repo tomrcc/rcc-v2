@@ -46,6 +46,7 @@ let currentLocale: string | null = null;
 let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
+const activeMutationSpies: MutationObserver[] = [];
 
 /**
  * Incremented every time switchLocale is called. Each onChange closure
@@ -134,6 +135,10 @@ function dehydrateCCEditors(): void {
 
 function teardownEditors(): void {
 	log(`Tearing down ${tracked.length} editors`);
+
+	for (const spy of activeMutationSpies) spy.disconnect();
+	activeMutationSpies.length = 0;
+
 	if (activeDataset && activeDatasetListener) {
 		activeDataset.removeEventListener("change", activeDatasetListener);
 	}
@@ -227,6 +232,25 @@ async function switchLocale(locale: string | null): Promise<void> {
 			t.element.innerHTML = value;
 			log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
 			log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
+
+			// DIAGNOSTIC: mutation spy — catch anything that overwrites our innerHTML
+			const spyKey = t.roseyKey;
+			const spyEl = t.element;
+			const spy = new MutationObserver((muts) => {
+				for (const m of muts) {
+					warn(
+						`[${spyKey}] MUTATION DETECTED type=${m.type} innerHTML now=`,
+						JSON.stringify(spyEl.innerHTML),
+					);
+					console.trace(`[${spyKey}] Mutation source`);
+				}
+			});
+			spy.observe(t.element, {
+				childList: true,
+				subtree: true,
+				characterData: true,
+			});
+			activeMutationSpies.push(spy);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
@@ -337,6 +361,37 @@ function injectSwitcher(locales: string[]): void {
 }
 
 function init(): void {
+	// DIAGNOSTIC: canary — is the live DOM visible in the Visual Editor?
+	const canary = document.createElement("div");
+	canary.textContent = "RCC CANARY — IF YOU SEE THIS, DOM IS LIVE";
+	Object.assign(canary.style, {
+		position: "fixed",
+		top: "0",
+		left: "0",
+		right: "0",
+		background: "red",
+		color: "white",
+		fontSize: "24px",
+		zIndex: "9999999",
+		padding: "20px",
+		textAlign: "center",
+	});
+	document.body.appendChild(canary);
+
+	// DIAGNOSTIC: iframe context
+	log("IFRAME CONTEXT — window.location.href:", window.location.href);
+	log("IFRAME CONTEXT — window === window.top:", String(window === window.top));
+	log(
+		"IFRAME CONTEXT — window.parent === window.top:",
+		String(window.parent === window.top),
+	);
+	const h1 = document.querySelector("h1");
+	if (h1)
+		log(
+			"IFRAME CONTEXT — h1 rect:",
+			JSON.stringify(h1.getBoundingClientRect()),
+		);
+
 	const ccWindow = window as any;
 	if (!ccWindow.CloudCannonAPI) {
 		warn("CloudCannonAPI not available");
