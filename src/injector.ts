@@ -46,6 +46,7 @@ let currentLocale: string | null = null;
 let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
+const dehydratedWrappers: { original: HTMLElement; replacement: HTMLElement }[] = [];
 
 /**
  * Incremented every time switchLocale is called. Each onChange closure
@@ -142,6 +143,48 @@ function dehydrateCCEditors(): void {
 	}
 }
 
+/**
+ * Replace editable Custom Element wrappers (<editable-array-item>,
+ * <editable-component>) with plain <div>s. This fires
+ * disconnectedCallback → editable.disconnect(), removing all API
+ * listeners and stopping _update() → updateTree() from re-rendering
+ * the subtree while we're editing.
+ *
+ * Walks bottom-up from each tracked element to find the outermost
+ * qualifying wrapper. Only wrappers that actually contain tracked
+ * [data-rosey] elements are neutralized — the Nav and other
+ * unrelated components are left untouched.
+ */
+function neutralizeEditableWrappers(): void {
+	const neutralized = new Set<HTMLElement>();
+
+	for (const t of tracked) {
+		let current = t.element.parentElement;
+		let outermost: HTMLElement | null = null;
+
+		while (current) {
+			const tag = current.tagName;
+			if (tag === "EDITABLE-ARRAY-ITEM" || tag === "EDITABLE-COMPONENT") {
+				outermost = current;
+			}
+			current = current.parentElement;
+		}
+
+		if (outermost && !neutralized.has(outermost)) {
+			neutralized.add(outermost);
+			const div = document.createElement("div");
+			for (const attr of Array.from(outermost.attributes)) {
+				div.setAttribute(attr.name, attr.value);
+			}
+			div.setAttribute("data-cloudcannon-ignore", "");
+			while (outermost.firstChild) div.appendChild(outermost.firstChild);
+			outermost.replaceWith(div);
+			dehydratedWrappers.push({ original: outermost, replacement: div });
+			log(`Phase 0: Replaced <${outermost.tagName.toLowerCase()}> with <div>`);
+		}
+	}
+}
+
 function teardownEditors(): void {
 	log(`Tearing down ${tracked.length} editors`);
 
@@ -181,6 +224,12 @@ function teardownEditors(): void {
 		}
 	}
 
+	for (const { original, replacement } of dehydratedWrappers) {
+		while (replacement.firstChild) original.appendChild(replacement.firstChild);
+		replacement.replaceWith(original);
+		log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
+	}
+	dehydratedWrappers.length = 0;
 }
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
@@ -207,6 +256,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 	}
 
 	dehydrateCCEditors();
+	neutralizeEditableWrappers();
 
 	const dataset = api.dataset(`locales_${locale}`);
 	const file = await resolveFile(dataset);

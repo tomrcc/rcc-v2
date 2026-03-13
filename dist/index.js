@@ -23,6 +23,7 @@ var currentLocale = null;
 var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
+var dehydratedWrappers = [];
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -91,6 +92,32 @@ function dehydrateCCEditors() {
     }
   }
 }
+function neutralizeEditableWrappers() {
+  const neutralized = /* @__PURE__ */ new Set();
+  for (const t of tracked) {
+    let current = t.element.parentElement;
+    let outermost = null;
+    while (current) {
+      const tag = current.tagName;
+      if (tag === "EDITABLE-ARRAY-ITEM" || tag === "EDITABLE-COMPONENT") {
+        outermost = current;
+      }
+      current = current.parentElement;
+    }
+    if (outermost && !neutralized.has(outermost)) {
+      neutralized.add(outermost);
+      const div = document.createElement("div");
+      for (const attr of Array.from(outermost.attributes)) {
+        div.setAttribute(attr.name, attr.value);
+      }
+      div.setAttribute("data-cloudcannon-ignore", "");
+      while (outermost.firstChild) div.appendChild(outermost.firstChild);
+      outermost.replaceWith(div);
+      dehydratedWrappers.push({ original: outermost, replacement: div });
+      log(`Phase 0: Replaced <${outermost.tagName.toLowerCase()}> with <div>`);
+    }
+  }
+}
 function teardownEditors() {
   log(`Tearing down ${tracked.length} editors`);
   if (activeDataset && activeDatasetListener) {
@@ -124,6 +151,12 @@ function teardownEditors() {
       }
     }
   }
+  for (const { original, replacement } of dehydratedWrappers) {
+    while (replacement.firstChild) original.appendChild(replacement.firstChild);
+    replacement.replaceWith(original);
+    log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
+  }
+  dehydratedWrappers.length = 0;
 }
 async function resolveFile(dataset) {
   const result = await dataset.items();
@@ -143,6 +176,7 @@ async function switchLocale(locale) {
     return;
   }
   dehydrateCCEditors();
+  neutralizeEditableWrappers();
   const dataset = api.dataset(`locales_${locale}`);
   const file = await resolveFile(dataset);
   if (!file) {
