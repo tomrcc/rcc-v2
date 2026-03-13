@@ -24,6 +24,7 @@ var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
 var dehydratedWrappers = [];
+var disconnectedMainEditable = null;
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -73,6 +74,7 @@ function dehydrateCCEditors() {
     if (t.element.tagName.startsWith("EDITABLE-")) {
       const span = document.createElement("span");
       for (const attr of Array.from(t.element.attributes)) {
+        if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
         span.setAttribute(attr.name, attr.value);
       }
       span.setAttribute("data-cloudcannon-ignore", "");
@@ -157,6 +159,11 @@ function teardownEditors() {
     log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
   }
   dehydratedWrappers.length = 0;
+  if (disconnectedMainEditable) {
+    disconnectedMainEditable.connect();
+    log("Reconnected <main> EditableArray");
+    disconnectedMainEditable = null;
+  }
 }
 async function resolveFile(dataset) {
   const result = await dataset.items();
@@ -174,6 +181,13 @@ async function switchLocale(locale) {
   if (!locale) {
     log("Switched to Original");
     return;
+  }
+  const main = document.querySelector("main[data-locales]");
+  const mainEditable = main?.editable;
+  if (mainEditable) {
+    await mainEditable.disconnect();
+    disconnectedMainEditable = mainEditable;
+    log("Disconnected <main> EditableArray");
   }
   dehydrateCCEditors();
   neutralizeEditableWrappers();
@@ -196,6 +210,12 @@ async function switchLocale(locale) {
       if (!t.element.isConnected) {
         const freshEl = findElementByRoseyKey(t.roseyKey);
         if (freshEl) {
+          const freshEditable = freshEl.editable;
+          if (freshEditable) await freshEditable.disconnect();
+          freshEl.removeAttribute("data-prop");
+          for (const attr of Array.from(freshEl.attributes)) {
+            if (attr.name.startsWith("data-prop-")) freshEl.removeAttribute(attr.name);
+          }
           t.element = freshEl;
           t.element.innerHTML = value;
           log(`[${t.roseyKey}] Re-queried detached element`);
