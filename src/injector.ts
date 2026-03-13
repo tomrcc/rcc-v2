@@ -47,6 +47,7 @@ let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
 const dehydratedWrappers: { original: HTMLElement; replacement: HTMLElement }[] = [];
+let disconnectedMainEditable: any = null;
 
 /**
  * Incremented every time switchLocale is called. Each onChange closure
@@ -123,6 +124,7 @@ function dehydrateCCEditors(): void {
 		if (t.element.tagName.startsWith("EDITABLE-")) {
 			const span = document.createElement("span");
 			for (const attr of Array.from(t.element.attributes)) {
+				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
 				span.setAttribute(attr.name, attr.value);
 			}
 			span.setAttribute("data-cloudcannon-ignore", "");
@@ -230,6 +232,12 @@ function teardownEditors(): void {
 		log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
 	}
 	dehydratedWrappers.length = 0;
+
+	if (disconnectedMainEditable) {
+		disconnectedMainEditable.connect();
+		log("Reconnected <main> EditableArray");
+		disconnectedMainEditable = null;
+	}
 }
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
@@ -253,6 +261,14 @@ async function switchLocale(locale: string | null): Promise<void> {
 	if (!locale) {
 		log("Switched to Original");
 		return;
+	}
+
+	const main = document.querySelector("main[data-locales]");
+	const mainEditable = (main as any)?.editable;
+	if (mainEditable) {
+		await mainEditable.disconnect();
+		disconnectedMainEditable = mainEditable;
+		log("Disconnected <main> EditableArray");
 	}
 
 	dehydrateCCEditors();
@@ -283,6 +299,12 @@ async function switchLocale(locale: string | null): Promise<void> {
 			if (!t.element.isConnected) {
 				const freshEl = findElementByRoseyKey(t.roseyKey);
 				if (freshEl) {
+					const freshEditable = (freshEl as any).editable;
+					if (freshEditable) await freshEditable.disconnect();
+					freshEl.removeAttribute("data-prop");
+					for (const attr of Array.from(freshEl.attributes)) {
+						if (attr.name.startsWith("data-prop-")) freshEl.removeAttribute(attr.name);
+					}
 					t.element = freshEl;
 					t.element.innerHTML = value;
 					log(`[${t.roseyKey}] Re-queried detached element`);
