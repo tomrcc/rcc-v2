@@ -182,12 +182,13 @@ async function switchLocale(locale) {
     log("Switched to Original");
     return;
   }
-  const main = document.querySelector("main[data-locales]");
-  const mainEditable = main?.editable;
+  const localeContainer = document.querySelector("main[data-locales]");
+  const editableArrayEl = localeContainer?.querySelector("[data-editable='array']") ?? (localeContainer instanceof HTMLElement && localeContainer.hasAttribute("data-editable") ? localeContainer : null);
+  const mainEditable = editableArrayEl?.editable;
   if (mainEditable) {
     await mainEditable.disconnect();
     disconnectedMainEditable = mainEditable;
-    log("Disconnected <main> EditableArray");
+    log("Disconnected EditableArray on", editableArrayEl?.tagName);
   }
   dehydrateCCEditors();
   neutralizeEditableWrappers();

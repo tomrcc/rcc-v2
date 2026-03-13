@@ -263,12 +263,17 @@ async function switchLocale(locale: string | null): Promise<void> {
 		return;
 	}
 
-	const main = document.querySelector("main[data-locales]");
-	const mainEditable = (main as any)?.editable;
+	const localeContainer = document.querySelector("main[data-locales]");
+	const editableArrayEl =
+		localeContainer?.querySelector<HTMLElement>("[data-editable='array']") ??
+		(localeContainer instanceof HTMLElement && localeContainer.hasAttribute("data-editable")
+			? localeContainer
+			: null);
+	const mainEditable = (editableArrayEl as any)?.editable;
 	if (mainEditable) {
 		await mainEditable.disconnect();
 		disconnectedMainEditable = mainEditable;
-		log("Disconnected <main> EditableArray");
+		log("Disconnected EditableArray on", editableArrayEl?.tagName);
 	}
 
 	dehydrateCCEditors();
