@@ -46,7 +46,7 @@ let currentLocale: string | null = null;
 let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
-const activeMutationSpies: MutationObserver[] = [];
+const dehydratedComponents: { original: HTMLElement; replacement: HTMLElement }[] = [];
 
 /**
  * Incremented every time switchLocale is called. Each onChange closure
@@ -109,6 +109,22 @@ function trackElements(): void {
  * disconnect and then skips re-hydration.
  */
 function dehydrateCCEditors(): void {
+	// Phase 0: Replace <editable-component> wrappers with plain <div>s
+	// to prevent CC's component re-rendering from detaching our tracked elements.
+	// Must happen before modifying children (Phase 1).
+	const editableComponents = document.querySelectorAll<HTMLElement>("editable-component");
+	for (const ec of editableComponents) {
+		const div = document.createElement("div");
+		for (const attr of Array.from(ec.attributes)) {
+			div.setAttribute(attr.name, attr.value);
+		}
+		while (ec.firstChild) div.appendChild(ec.firstChild);
+		ec.replaceWith(div);
+		dehydratedComponents.push({ original: ec, replacement: div });
+		log(`Replaced <editable-component> with <div> (data-component="${ec.dataset.component}")`);
+	}
+
+	// Phase 1: Disconnect individual CC editors on tracked elements
 	for (const t of tracked) {
 		if (t.element.tagName.startsWith("EDITABLE-")) {
 			const span = document.createElement("span");
@@ -136,15 +152,13 @@ function dehydrateCCEditors(): void {
 function teardownEditors(): void {
 	log(`Tearing down ${tracked.length} editors`);
 
-	for (const spy of activeMutationSpies) spy.disconnect();
-	activeMutationSpies.length = 0;
-
 	if (activeDataset && activeDatasetListener) {
 		activeDataset.removeEventListener("change", activeDatasetListener);
 	}
 	activeDataset = null;
 	activeDatasetListener = null;
 
+	// Phase 1: Restore individual tracked elements
 	for (const t of tracked) {
 		log(`[${t.roseyKey}] Teardown — restoring originalContent`);
 		t.editor = undefined;
@@ -173,6 +187,14 @@ function teardownEditors(): void {
 			}
 		}
 	}
+
+	// Phase 0 restore: Put <editable-component> custom elements back
+	// so CC's editing system re-activates via connectedCallback
+	for (const { original, replacement } of dehydratedComponents) {
+		while (replacement.firstChild) original.appendChild(replacement.firstChild);
+		replacement.replaceWith(original);
+	}
+	dehydratedComponents.length = 0;
 }
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
@@ -218,41 +240,21 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 		try {
 			const data = await file.data.get({ slug: t.roseyKey });
-			log(`[${t.roseyKey}] data.get() returned:`, JSON.stringify(data));
-
 			const value = data?.value ?? data?.original ?? t.originalContent;
-			const source = data?.value != null
-				? "data.value"
-				: data?.original != null
-					? "data.original"
-					: "originalContent";
-			log(`[${t.roseyKey}] Resolved value (via ${source}):`, JSON.stringify(value));
 
-			log(`[${t.roseyKey}] Pre-set DOM: <${t.element.tagName.toLowerCase()}> innerHTML=`, JSON.stringify(t.element.innerHTML));
 			t.element.innerHTML = value;
-			log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
-			warn(`[${t.roseyKey}] isConnected=${t.element.isConnected}, parentElement=${t.element.parentElement?.tagName ?? 'null'}`);
-			log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
 
-			// DIAGNOSTIC: mutation spy — catch anything that overwrites our innerHTML
-			const spyKey = t.roseyKey;
-			const spyEl = t.element;
-			const spy = new MutationObserver((muts) => {
-				for (const m of muts) {
-					warn(
-						`[${spyKey}] MUTATION DETECTED type=${m.type} innerHTML now=`,
-						JSON.stringify(spyEl.innerHTML),
-					);
-					console.trace(`[${spyKey}] Mutation source`);
-				}
-			});
-			spy.observe(t.element, {
-				childList: true,
-				subtree: true,
-				characterData: true,
-			});
-			activeMutationSpies.push(spy);
-			warn(`[${spyKey}] Mutation spy attached`);
+			const editor = await api.createTextEditableRegion(
+				t.element,
+				(content) => {
+					if (myGeneration !== switchGeneration) return;
+					if (!setupComplete) return;
+					if (content == null) return;
+					file.data.set({ slug: t.roseyKey, value: content });
+				},
+			);
+			t.editor = editor;
+			log(`[${t.roseyKey}] Editor created`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
@@ -266,17 +268,6 @@ async function switchLocale(locale: string | null): Promise<void> {
 	await Promise.resolve();
 	setupComplete = true;
 	log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
-
-	setTimeout(() => {
-		if (myGeneration !== switchGeneration) return;
-		for (const t of tracked) {
-			if (!t.element.isConnected) {
-				warn(`[${t.roseyKey}] DETACHED after 2s — isConnected=false`);
-			}
-		}
-		const connectedCount = tracked.filter(t => t.element.isConnected).length;
-		warn(`Delayed check: ${connectedCount}/${tracked.length} elements still connected`);
-	}, 2000);
 
 	activeDataset = dataset;
 	activeDatasetListener = async () => {
@@ -374,39 +365,6 @@ function injectSwitcher(locales: string[]): void {
 }
 
 function init(): void {
-	warn("=== RCC DIAGNOSTIC BUILD 2025-03-13 ===");
-
-	// DIAGNOSTIC: canary — is the live DOM visible in the Visual Editor?
-	// Positioned above the locale switcher (bottom-right) to avoid CC's top toolbar
-	const canary = document.createElement("div");
-	canary.textContent = "RCC CANARY — IF YOU SEE THIS, DOM IS LIVE";
-	Object.assign(canary.style, {
-		position: "fixed",
-		bottom: "80px",
-		right: "20px",
-		background: "red",
-		color: "white",
-		fontSize: "18px",
-		zIndex: "9999999",
-		padding: "12px 16px",
-		borderRadius: "8px",
-	});
-	document.body.appendChild(canary);
-
-	// DIAGNOSTIC: iframe context (using warn() to bypass verbose gating)
-	warn("IFRAME CONTEXT — href:", window.location.href);
-	warn("IFRAME CONTEXT — window===top:", String(window === window.top));
-	warn(
-		"IFRAME CONTEXT — parent===top:",
-		String(window.parent === window.top),
-	);
-	const h1 = document.querySelector("h1");
-	if (h1)
-		warn(
-			"IFRAME CONTEXT — h1 rect:",
-			JSON.stringify(h1.getBoundingClientRect()),
-		);
-
 	const ccWindow = window as any;
 	if (!ccWindow.CloudCannonAPI) {
 		warn("CloudCannonAPI not available");

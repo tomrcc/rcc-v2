@@ -23,7 +23,7 @@ var currentLocale = null;
 var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
-var activeMutationSpies = [];
+var dehydratedComponents = [];
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -60,6 +60,17 @@ function trackElements() {
   log(`Tracked ${tracked.length} translatable elements`);
 }
 function dehydrateCCEditors() {
+  const editableComponents = document.querySelectorAll("editable-component");
+  for (const ec of editableComponents) {
+    const div = document.createElement("div");
+    for (const attr of Array.from(ec.attributes)) {
+      div.setAttribute(attr.name, attr.value);
+    }
+    while (ec.firstChild) div.appendChild(ec.firstChild);
+    ec.replaceWith(div);
+    dehydratedComponents.push({ original: ec, replacement: div });
+    log(`Replaced <editable-component> with <div> (data-component="${ec.dataset.component}")`);
+  }
   for (const t of tracked) {
     if (t.element.tagName.startsWith("EDITABLE-")) {
       const span = document.createElement("span");
@@ -85,8 +96,6 @@ function dehydrateCCEditors() {
 }
 function teardownEditors() {
   log(`Tearing down ${tracked.length} editors`);
-  for (const spy of activeMutationSpies) spy.disconnect();
-  activeMutationSpies.length = 0;
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
@@ -118,6 +127,11 @@ function teardownEditors() {
       }
     }
   }
+  for (const { original, replacement } of dehydratedComponents) {
+    while (replacement.firstChild) original.appendChild(replacement.firstChild);
+    replacement.replaceWith(original);
+  }
+  dehydratedComponents.length = 0;
 }
 async function resolveFile(dataset) {
   const result = await dataset.items();
@@ -151,33 +165,19 @@ async function switchLocale(locale) {
     }
     try {
       const data = await file.data.get({ slug: t.roseyKey });
-      log(`[${t.roseyKey}] data.get() returned:`, JSON.stringify(data));
       const value = data?.value ?? data?.original ?? t.originalContent;
-      const source = data?.value != null ? "data.value" : data?.original != null ? "data.original" : "originalContent";
-      log(`[${t.roseyKey}] Resolved value (via ${source}):`, JSON.stringify(value));
-      log(`[${t.roseyKey}] Pre-set DOM: <${t.element.tagName.toLowerCase()}> innerHTML=`, JSON.stringify(t.element.innerHTML));
       t.element.innerHTML = value;
-      log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
-      warn(`[${t.roseyKey}] isConnected=${t.element.isConnected}, parentElement=${t.element.parentElement?.tagName ?? "null"}`);
-      log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
-      const spyKey = t.roseyKey;
-      const spyEl = t.element;
-      const spy = new MutationObserver((muts) => {
-        for (const m of muts) {
-          warn(
-            `[${spyKey}] MUTATION DETECTED type=${m.type} innerHTML now=`,
-            JSON.stringify(spyEl.innerHTML)
-          );
-          console.trace(`[${spyKey}] Mutation source`);
+      const editor = await api.createTextEditableRegion(
+        t.element,
+        (content) => {
+          if (myGeneration !== switchGeneration) return;
+          if (!setupComplete) return;
+          if (content == null) return;
+          file.data.set({ slug: t.roseyKey, value: content });
         }
-      });
-      spy.observe(t.element, {
-        childList: true,
-        subtree: true,
-        characterData: true
-      });
-      activeMutationSpies.push(spy);
-      warn(`[${spyKey}] Mutation spy attached`);
+      );
+      t.editor = editor;
+      log(`[${t.roseyKey}] Editor created`);
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
@@ -189,16 +189,6 @@ async function switchLocale(locale) {
   await Promise.resolve();
   setupComplete = true;
   log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
-  setTimeout(() => {
-    if (myGeneration !== switchGeneration) return;
-    for (const t of tracked) {
-      if (!t.element.isConnected) {
-        warn(`[${t.roseyKey}] DETACHED after 2s \u2014 isConnected=false`);
-      }
-    }
-    const connectedCount = tracked.filter((t) => t.element.isConnected).length;
-    warn(`Delayed check: ${connectedCount}/${tracked.length} elements still connected`);
-  }, 2e3);
   activeDataset = dataset;
   activeDatasetListener = async () => {
     if (myGeneration !== switchGeneration) return;
@@ -281,33 +271,6 @@ function injectSwitcher(locales) {
   updateButtonStates();
 }
 function init() {
-  warn("=== RCC DIAGNOSTIC BUILD 2025-03-13 ===");
-  const canary = document.createElement("div");
-  canary.textContent = "RCC CANARY \u2014 IF YOU SEE THIS, DOM IS LIVE";
-  Object.assign(canary.style, {
-    position: "fixed",
-    bottom: "80px",
-    right: "20px",
-    background: "red",
-    color: "white",
-    fontSize: "18px",
-    zIndex: "9999999",
-    padding: "12px 16px",
-    borderRadius: "8px"
-  });
-  document.body.appendChild(canary);
-  warn("IFRAME CONTEXT \u2014 href:", window.location.href);
-  warn("IFRAME CONTEXT \u2014 window===top:", String(window === window.top));
-  warn(
-    "IFRAME CONTEXT \u2014 parent===top:",
-    String(window.parent === window.top)
-  );
-  const h1 = document.querySelector("h1");
-  if (h1)
-    warn(
-      "IFRAME CONTEXT \u2014 h1 rect:",
-      JSON.stringify(h1.getBoundingClientRect())
-    );
   const ccWindow = window;
   if (!ccWindow.CloudCannonAPI) {
     warn("CloudCannonAPI not available");
