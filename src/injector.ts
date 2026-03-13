@@ -251,6 +251,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 				characterData: true,
 			});
 			activeMutationSpies.push(spy);
+			warn(`[${spyKey}] Mutation spy attached`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
@@ -361,33 +362,35 @@ function injectSwitcher(locales: string[]): void {
 }
 
 function init(): void {
+	warn("=== RCC DIAGNOSTIC BUILD 2025-03-13 ===");
+
 	// DIAGNOSTIC: canary — is the live DOM visible in the Visual Editor?
+	// Positioned above the locale switcher (bottom-right) to avoid CC's top toolbar
 	const canary = document.createElement("div");
 	canary.textContent = "RCC CANARY — IF YOU SEE THIS, DOM IS LIVE";
 	Object.assign(canary.style, {
 		position: "fixed",
-		top: "0",
-		left: "0",
-		right: "0",
+		bottom: "80px",
+		right: "20px",
 		background: "red",
 		color: "white",
-		fontSize: "24px",
+		fontSize: "18px",
 		zIndex: "9999999",
-		padding: "20px",
-		textAlign: "center",
+		padding: "12px 16px",
+		borderRadius: "8px",
 	});
 	document.body.appendChild(canary);
 
-	// DIAGNOSTIC: iframe context
-	log("IFRAME CONTEXT — window.location.href:", window.location.href);
-	log("IFRAME CONTEXT — window === window.top:", String(window === window.top));
-	log(
-		"IFRAME CONTEXT — window.parent === window.top:",
+	// DIAGNOSTIC: iframe context (using warn() to bypass verbose gating)
+	warn("IFRAME CONTEXT — href:", window.location.href);
+	warn("IFRAME CONTEXT — window===top:", String(window === window.top));
+	warn(
+		"IFRAME CONTEXT — parent===top:",
 		String(window.parent === window.top),
 	);
 	const h1 = document.querySelector("h1");
 	if (h1)
-		log(
+		warn(
 			"IFRAME CONTEXT — h1 rect:",
 			JSON.stringify(h1.getBoundingClientRect()),
 		);
