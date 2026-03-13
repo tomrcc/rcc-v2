@@ -155,27 +155,7 @@ async function switchLocale(locale) {
       log(`[${t.roseyKey}] Pre-set DOM: <${t.element.tagName.toLowerCase()}> innerHTML=`, JSON.stringify(t.element.innerHTML));
       t.element.innerHTML = value;
       log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
-      const elementType = t.element.dataset.type ?? "block";
-      log(`[${t.roseyKey}] Creating editor with elementType="${elementType}"`);
-      t.editor = await api.createTextEditableRegion(
-        t.element,
-        (newValue) => {
-          if (myGeneration !== switchGeneration) {
-            log(`[${t.roseyKey}] onChange BLOCKED (stale generation ${myGeneration}, current ${switchGeneration})`);
-            return;
-          }
-          if (!setupComplete) {
-            log(`[${t.roseyKey}] onChange BLOCKED (setup incomplete), value:`, JSON.stringify(newValue));
-            return;
-          }
-          log(`[${t.roseyKey}] onChange -> file.data.set slug="${t.roseyKey}.value", value:`, JSON.stringify(newValue));
-          file.data.set({ slug: `${t.roseyKey}.value`, value: newValue });
-        },
-        { elementType }
-      );
-      t.editor.setContent(value);
-      log(`[${t.roseyKey}] Editor created, setContent called`);
-      log(`[${t.roseyKey}] Post-setContent DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
+      log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
