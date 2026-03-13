@@ -13,6 +13,7 @@ import { log, warn } from "./logger";
 
 interface TrackedElement {
 	element: HTMLElement;
+	originalElement?: HTMLElement;
 	roseyKey: string;
 	originalContent: string;
 	editor?: { setContent: (content?: string | null) => void };
@@ -95,6 +96,42 @@ function trackElements(): void {
 	log(`Tracked ${tracked.length} translatable elements`);
 }
 
+/**
+ * Disconnect CC's editable-regions editors so rcc-v2 can be the sole
+ * editor on each element during locale switching.
+ *
+ * For <editable-text> custom elements: replace with a plain <span> so
+ * the custom element's connectedCallback can't re-mount a CC editor.
+ *
+ * For regular [data-editable] elements: DOM-cycle (remove → mark
+ * data-cloudcannon-ignore → re-insert) so CC's MutationObserver fires
+ * disconnect and then skips re-hydration.
+ */
+function dehydrateCCEditors(): void {
+	for (const t of tracked) {
+		if (t.element.tagName.startsWith("EDITABLE-")) {
+			const span = document.createElement("span");
+			for (const attr of Array.from(t.element.attributes)) {
+				span.setAttribute(attr.name, attr.value);
+			}
+			span.setAttribute("data-cloudcannon-ignore", "");
+			span.innerHTML = t.element.innerHTML;
+			t.element.replaceWith(span);
+			t.originalElement = t.element;
+			t.element = span;
+			log(`[${t.roseyKey}] Replaced <${t.originalElement.tagName.toLowerCase()}> with <span>`);
+		} else if (t.element.hasAttribute("data-editable")) {
+			const parent = t.element.parentNode;
+			const next = t.element.nextSibling;
+			t.element.remove();
+			t.element.setAttribute("data-cloudcannon-ignore", "");
+			if (next) parent?.insertBefore(t.element, next);
+			else parent?.appendChild(t.element);
+			log(`[${t.roseyKey}] Dehydrated CC editor, added data-cloudcannon-ignore`);
+		}
+	}
+}
+
 function teardownEditors(): void {
 	log(`Tearing down ${tracked.length} editors`);
 	if (activeDataset && activeDatasetListener) {
@@ -106,7 +143,30 @@ function teardownEditors(): void {
 	for (const t of tracked) {
 		log(`[${t.roseyKey}] Teardown — restoring originalContent`);
 		t.editor = undefined;
-		t.element.innerHTML = t.originalContent;
+
+		if (t.originalElement) {
+			t.originalElement.innerHTML = t.originalContent;
+			const editable = (t.originalElement as any).editable;
+			if (editable) editable.editor = undefined;
+			t.element.replaceWith(t.originalElement);
+			t.element = t.originalElement;
+			t.originalElement = undefined;
+		} else {
+			t.element.innerHTML = t.originalContent;
+		}
+
+		if (t.element.hasAttribute("data-cloudcannon-ignore")) {
+			t.element.removeAttribute("data-cloudcannon-ignore");
+			const editable = (t.element as any).editable;
+			if (editable) editable.editor = undefined;
+			const parent = t.element.parentNode;
+			const next = t.element.nextSibling;
+			if (parent) {
+				t.element.remove();
+				if (next) parent.insertBefore(t.element, next);
+				else parent.appendChild(t.element);
+			}
+		}
 	}
 }
 
@@ -132,6 +192,8 @@ async function switchLocale(locale: string | null): Promise<void> {
 		log("Switched to Original");
 		return;
 	}
+
+	dehydrateCCEditors();
 
 	const dataset = api.dataset(`locales_${locale}`);
 	const file = await resolveFile(dataset);

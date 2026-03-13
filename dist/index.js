@@ -58,6 +58,30 @@ function trackElements() {
   }
   log(`Tracked ${tracked.length} translatable elements`);
 }
+function dehydrateCCEditors() {
+  for (const t of tracked) {
+    if (t.element.tagName.startsWith("EDITABLE-")) {
+      const span = document.createElement("span");
+      for (const attr of Array.from(t.element.attributes)) {
+        span.setAttribute(attr.name, attr.value);
+      }
+      span.setAttribute("data-cloudcannon-ignore", "");
+      span.innerHTML = t.element.innerHTML;
+      t.element.replaceWith(span);
+      t.originalElement = t.element;
+      t.element = span;
+      log(`[${t.roseyKey}] Replaced <${t.originalElement.tagName.toLowerCase()}> with <span>`);
+    } else if (t.element.hasAttribute("data-editable")) {
+      const parent = t.element.parentNode;
+      const next = t.element.nextSibling;
+      t.element.remove();
+      t.element.setAttribute("data-cloudcannon-ignore", "");
+      if (next) parent?.insertBefore(t.element, next);
+      else parent?.appendChild(t.element);
+      log(`[${t.roseyKey}] Dehydrated CC editor, added data-cloudcannon-ignore`);
+    }
+  }
+}
 function teardownEditors() {
   log(`Tearing down ${tracked.length} editors`);
   if (activeDataset && activeDatasetListener) {
@@ -68,7 +92,28 @@ function teardownEditors() {
   for (const t of tracked) {
     log(`[${t.roseyKey}] Teardown \u2014 restoring originalContent`);
     t.editor = void 0;
-    t.element.innerHTML = t.originalContent;
+    if (t.originalElement) {
+      t.originalElement.innerHTML = t.originalContent;
+      const editable = t.originalElement.editable;
+      if (editable) editable.editor = void 0;
+      t.element.replaceWith(t.originalElement);
+      t.element = t.originalElement;
+      t.originalElement = void 0;
+    } else {
+      t.element.innerHTML = t.originalContent;
+    }
+    if (t.element.hasAttribute("data-cloudcannon-ignore")) {
+      t.element.removeAttribute("data-cloudcannon-ignore");
+      const editable = t.element.editable;
+      if (editable) editable.editor = void 0;
+      const parent = t.element.parentNode;
+      const next = t.element.nextSibling;
+      if (parent) {
+        t.element.remove();
+        if (next) parent.insertBefore(t.element, next);
+        else parent.appendChild(t.element);
+      }
+    }
   }
 }
 async function resolveFile(dataset) {
@@ -88,6 +133,7 @@ async function switchLocale(locale) {
     log("Switched to Original");
     return;
   }
+  dehydrateCCEditors();
   const dataset = api.dataset(`locales_${locale}`);
   const file = await resolveFile(dataset);
   if (!file) {
