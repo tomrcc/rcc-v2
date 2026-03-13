@@ -21,7 +21,6 @@ var currentLocale = null;
 var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
-var dehydratedComponents = [];
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -41,6 +40,15 @@ function resolveRoseyKey(el) {
   nsParts.reverse();
   return [...nsParts, localKey].join(":");
 }
+function findElementByRoseyKey(key) {
+  const candidates = document.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
+  );
+  for (const el of candidates) {
+    if (resolveRoseyKey(el) === key) return el;
+  }
+  return null;
+}
 function trackElements() {
   tracked.length = 0;
   const elements = document.querySelectorAll(
@@ -58,17 +66,6 @@ function trackElements() {
   log(`Tracked ${tracked.length} translatable elements`);
 }
 function dehydrateCCEditors() {
-  const editableComponents = document.querySelectorAll("editable-component");
-  for (const ec of editableComponents) {
-    const div = document.createElement("div");
-    for (const attr of Array.from(ec.attributes)) {
-      div.setAttribute(attr.name, attr.value);
-    }
-    while (ec.firstChild) div.appendChild(ec.firstChild);
-    ec.replaceWith(div);
-    dehydratedComponents.push({ original: ec, replacement: div });
-    log(`Replaced <editable-component> with <div> (data-component="${ec.dataset.component}")`);
-  }
   for (const t of tracked) {
     if (t.element.tagName.startsWith("EDITABLE-")) {
       const span = document.createElement("span");
@@ -125,11 +122,6 @@ function teardownEditors() {
       }
     }
   }
-  for (const { original, replacement } of dehydratedComponents) {
-    while (replacement.firstChild) original.appendChild(replacement.firstChild);
-    replacement.replaceWith(original);
-  }
-  dehydratedComponents.length = 0;
 }
 async function resolveFile(dataset) {
   const result = await dataset.items();
@@ -165,6 +157,16 @@ async function switchLocale(locale) {
       const data = await file.data.get({ slug: t.roseyKey });
       const value = data?.value ?? data?.original ?? t.originalContent;
       t.element.innerHTML = value;
+      if (!t.element.isConnected) {
+        const freshEl = findElementByRoseyKey(t.roseyKey);
+        if (freshEl) {
+          t.element = freshEl;
+          t.element.innerHTML = value;
+          log(`[${t.roseyKey}] Re-queried detached element`);
+        } else {
+          warn(`[${t.roseyKey}] Element detached and no live replacement found`);
+        }
+      }
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {

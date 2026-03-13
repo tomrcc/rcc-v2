@@ -46,7 +46,6 @@ let currentLocale: string | null = null;
 let api: CCApi | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
-const dehydratedComponents: { original: HTMLElement; replacement: HTMLElement }[] = [];
 
 /**
  * Incremented every time switchLocale is called. Each onChange closure
@@ -80,6 +79,16 @@ function resolveRoseyKey(el: Element): string | null {
 	return [...nsParts, localKey].join(":");
 }
 
+function findElementByRoseyKey(key: string): HTMLElement | null {
+	const candidates = document.querySelectorAll<HTMLElement>(
+		"[data-rosey]:not([data-rcc-ignore])",
+	);
+	for (const el of candidates) {
+		if (resolveRoseyKey(el) === key) return el;
+	}
+	return null;
+}
+
 function trackElements(): void {
 	tracked.length = 0;
 	const elements = document.querySelectorAll<HTMLElement>(
@@ -109,22 +118,6 @@ function trackElements(): void {
  * disconnect and then skips re-hydration.
  */
 function dehydrateCCEditors(): void {
-	// Phase 0: Replace <editable-component> wrappers with plain <div>s
-	// to prevent CC's component re-rendering from detaching our tracked elements.
-	// Must happen before modifying children (Phase 1).
-	const editableComponents = document.querySelectorAll<HTMLElement>("editable-component");
-	for (const ec of editableComponents) {
-		const div = document.createElement("div");
-		for (const attr of Array.from(ec.attributes)) {
-			div.setAttribute(attr.name, attr.value);
-		}
-		while (ec.firstChild) div.appendChild(ec.firstChild);
-		ec.replaceWith(div);
-		dehydratedComponents.push({ original: ec, replacement: div });
-		log(`Replaced <editable-component> with <div> (data-component="${ec.dataset.component}")`);
-	}
-
-	// Phase 1: Disconnect individual CC editors on tracked elements
 	for (const t of tracked) {
 		if (t.element.tagName.startsWith("EDITABLE-")) {
 			const span = document.createElement("span");
@@ -188,13 +181,6 @@ function teardownEditors(): void {
 		}
 	}
 
-	// Phase 0 restore: Put <editable-component> custom elements back
-	// so CC's editing system re-activates via connectedCallback
-	for (const { original, replacement } of dehydratedComponents) {
-		while (replacement.firstChild) original.appendChild(replacement.firstChild);
-		replacement.replaceWith(original);
-	}
-	dehydratedComponents.length = 0;
 }
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
@@ -243,6 +229,17 @@ async function switchLocale(locale: string | null): Promise<void> {
 			const value = data?.value ?? data?.original ?? t.originalContent;
 
 			t.element.innerHTML = value;
+
+			if (!t.element.isConnected) {
+				const freshEl = findElementByRoseyKey(t.roseyKey);
+				if (freshEl) {
+					t.element = freshEl;
+					t.element.innerHTML = value;
+					log(`[${t.roseyKey}] Re-queried detached element`);
+				} else {
+					warn(`[${t.roseyKey}] Element detached and no live replacement found`);
+				}
+			}
 
 			const editor = await api.createTextEditableRegion(
 				t.element,
