@@ -129,6 +129,7 @@ async function switchLocale(locale) {
       );
       t.editor.setContent(value);
       log(`[${t.roseyKey}] Editor created, setContent called`);
+      log(`[${t.roseyKey}] Post-setContent DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
