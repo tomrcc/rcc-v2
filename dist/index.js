@@ -23,6 +23,7 @@ var currentLocale = null;
 var api = null;
 var activeDataset = null;
 var activeDatasetListener = null;
+var activeMutationSpies = [];
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -84,6 +85,8 @@ function dehydrateCCEditors() {
 }
 function teardownEditors() {
   log(`Tearing down ${tracked.length} editors`);
+  for (const spy of activeMutationSpies) spy.disconnect();
+  activeMutationSpies.length = 0;
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
@@ -156,6 +159,24 @@ async function switchLocale(locale) {
       t.element.innerHTML = value;
       log(`[${t.roseyKey}] Post-set DOM innerHTML=`, JSON.stringify(t.element.innerHTML));
       log(`[${t.roseyKey}] DIAGNOSTIC: innerHTML-only mode, skipping createTextEditableRegion`);
+      const spyKey = t.roseyKey;
+      const spyEl = t.element;
+      const spy = new MutationObserver((muts) => {
+        for (const m of muts) {
+          warn(
+            `[${spyKey}] MUTATION DETECTED type=${m.type} innerHTML now=`,
+            JSON.stringify(spyEl.innerHTML)
+          );
+          console.trace(`[${spyKey}] Mutation source`);
+        }
+      });
+      spy.observe(t.element, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+      activeMutationSpies.push(spy);
+      warn(`[${spyKey}] Mutation spy attached`);
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
@@ -249,6 +270,33 @@ function injectSwitcher(locales) {
   updateButtonStates();
 }
 function init() {
+  warn("=== RCC DIAGNOSTIC BUILD 2025-03-13 ===");
+  const canary = document.createElement("div");
+  canary.textContent = "RCC CANARY \u2014 IF YOU SEE THIS, DOM IS LIVE";
+  Object.assign(canary.style, {
+    position: "fixed",
+    bottom: "80px",
+    right: "20px",
+    background: "red",
+    color: "white",
+    fontSize: "18px",
+    zIndex: "9999999",
+    padding: "12px 16px",
+    borderRadius: "8px"
+  });
+  document.body.appendChild(canary);
+  warn("IFRAME CONTEXT \u2014 href:", window.location.href);
+  warn("IFRAME CONTEXT \u2014 window===top:", String(window === window.top));
+  warn(
+    "IFRAME CONTEXT \u2014 parent===top:",
+    String(window.parent === window.top)
+  );
+  const h1 = document.querySelector("h1");
+  if (h1)
+    warn(
+      "IFRAME CONTEXT \u2014 h1 rect:",
+      JSON.stringify(h1.getBoundingClientRect())
+    );
   const ccWindow = window;
   if (!ccWindow.CloudCannonAPI) {
     warn("CloudCannonAPI not available");
