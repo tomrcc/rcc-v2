@@ -24,6 +24,7 @@ interface TrackedElement {
 	element: HTMLElement;
 	roseyKey: string;
 	originalContent: string;
+	focused: boolean;
 	editor?: { setContent: (content?: string | null) => void };
 }
 
@@ -171,7 +172,7 @@ function trackElements(scope: Element): void {
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
-		tracked.push({ element: el, roseyKey, originalContent: el.innerHTML });
+		tracked.push({ element: el, roseyKey, originalContent: el.innerHTML, focused: false });
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
 }
@@ -272,11 +273,22 @@ async function switchLocale(locale: string | null): Promise<void> {
 					if (myGeneration !== switchGeneration) return;
 					if (!setupComplete) return;
 					if (content == null) return;
+					log(`[${t.roseyKey}] onChange → set(".value", ${JSON.stringify(content).slice(0, 80)})`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
 				},
 			);
 			t.editor = editor;
 			editor.setContent(value);
+
+			t.element.addEventListener("focus", () => {
+				t.focused = true;
+				log(`[${t.roseyKey}] Focused`);
+			});
+			t.element.addEventListener("blur", () => {
+				t.focused = false;
+				log(`[${t.roseyKey}] Blurred`);
+			});
+
 			log(`[${t.roseyKey}] Editor created`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
@@ -294,14 +306,20 @@ async function switchLocale(locale: string | null): Promise<void> {
 	activeDataset = dataset;
 	activeDatasetListener = async () => {
 		if (myGeneration !== switchGeneration) return;
+		log("Dataset change event received");
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
 
 		for (const t of tracked) {
 			if (!t.editor) continue;
+			if (t.focused) {
+				log(`[${t.roseyKey}] Skipping setContent (focused)`);
+				continue;
+			}
 			try {
 				const data = await freshFile.data.get({ slug: t.roseyKey });
 				const value = data?.value ?? data?.original ?? t.originalContent;
+				log(`[${t.roseyKey}] setContent from change event`);
 				t.editor.setContent(value);
 			} catch {
 				/* key may not exist in this locale yet */
