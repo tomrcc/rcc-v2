@@ -54,7 +54,7 @@ Import the package in your layout. The script auto-initializes when the CloudCan
 </script>
 ```
 
-When the page loads in the Visual Editor, a floating locale switcher appears. Clicking a locale fetches the translation data and creates inline editors on each translatable element, connected directly to the locale data file via the CloudCannon JS API.
+When the page loads in the Visual Editor, a draggable locale switcher button appears (a circular translate icon in the bottom-right corner). Clicking it opens a popover with the available locales. Selecting a locale fetches the translation data and creates inline editors on each translatable element, connected directly to the locale data file via the CloudCannon JS API. The button can be dragged to any position on the page; its position is persisted across reloads.
 
 ## Key Namespacing
 
@@ -163,7 +163,7 @@ This script:
 ## How It Works
 
 1. On init, the script acquires the CloudCannon JS API handle and tracks all `[data-rosey]` elements (storing live DOM references and original content)
-2. A floating locale switcher UI is injected
+2. A draggable locale FAB (floating action button) with a popover menu is injected
 3. When a locale is selected:
    - Any existing editors are torn down and original content is restored
    - The locale dataset and file are fetched via `api.dataset("locales_{locale}").items()`

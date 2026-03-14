@@ -223,65 +223,264 @@ async function switchLocale(locale) {
   dataset.addEventListener("change", activeDatasetListener);
   log(`Switched to ${locale}`);
 }
+var FAB_SIZE = 48;
+var FAB_STORAGE_KEY = "rcc-fab-position";
+var CC_BLUE = "#034ad8";
+var TRANSLATE_ICON = [
+  '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"',
+  ` fill="none" stroke="${CC_BLUE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
+  '<path d="M4 5h8"/><path d="M8 5V3"/>',
+  '<path d="M4.5 5c1 4 4 8 7.5 10"/><path d="M12 5c-1 3-3 6-7.5 10"/>',
+  '<path d="M14.5 19l2.5-6 2.5 6"/><path d="M15.5 17h3"/>',
+  "</svg>"
+].join("");
 function updateButtonStates() {
   const buttons = document.querySelectorAll(
-    "#rcc-locale-switcher button[data-locale]"
+    "#rcc-locale-popover button[data-locale]"
   );
   for (const btn of buttons) {
-    const btnLocale = btn.dataset.locale ?? null;
-    const isActive = btnLocale === (currentLocale ?? "");
-    btn.style.background = isActive ? "#3b82f6" : "#334155";
-    btn.style.fontWeight = isActive ? "600" : "400";
+    const isActive = (btn.dataset.locale ?? null) === (currentLocale ?? "");
+    Object.assign(btn.style, {
+      background: isActive ? CC_BLUE : "#f1f5f9",
+      color: isActive ? "#ffffff" : "#1e293b",
+      fontWeight: isActive ? "600" : "400"
+    });
+  }
+  const badge = document.getElementById("rcc-fab-badge");
+  if (badge) {
+    if (currentLocale) {
+      badge.textContent = currentLocale.toUpperCase();
+      badge.style.display = "flex";
+    } else {
+      badge.style.display = "none";
+    }
   }
 }
 function injectSwitcher(locales) {
-  const panel = document.createElement("div");
-  panel.id = "rcc-locale-switcher";
-  Object.assign(panel.style, {
+  const fab = document.createElement("div");
+  fab.id = "rcc-locale-switcher";
+  const savedPos = (() => {
+    try {
+      const raw = localStorage.getItem(FAB_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+  Object.assign(fab.style, {
     position: "fixed",
-    bottom: "20px",
-    right: "20px",
     zIndex: "999999",
-    background: "#1e293b",
-    color: "#f1f5f9",
-    padding: "12px 16px",
-    borderRadius: "12px",
+    width: `${FAB_SIZE}px`,
+    height: `${FAB_SIZE}px`,
+    borderRadius: "50%",
+    background: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)",
+    cursor: "grab",
+    userSelect: "none",
+    touchAction: "none",
+    transition: "box-shadow 0.2s",
+    fontFamily: "system-ui, sans-serif"
+  });
+  if (savedPos) {
+    fab.style.top = `${savedPos.top}px`;
+    fab.style.left = `${savedPos.left}px`;
+  } else {
+    fab.style.bottom = "20px";
+    fab.style.right = "20px";
+  }
+  fab.innerHTML = TRANSLATE_ICON;
+  const badge = document.createElement("div");
+  badge.id = "rcc-fab-badge";
+  Object.assign(badge.style, {
+    position: "absolute",
+    top: "-4px",
+    right: "-4px",
+    background: CC_BLUE,
+    color: "#ffffff",
+    fontSize: "9px",
+    fontWeight: "700",
+    lineHeight: "1",
+    padding: "3px 5px",
+    borderRadius: "8px",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "16px",
+    textAlign: "center",
+    pointerEvents: "none"
+  });
+  fab.appendChild(badge);
+  const popover = document.createElement("div");
+  popover.id = "rcc-locale-popover";
+  Object.assign(popover.style, {
+    position: "fixed",
+    zIndex: "999998",
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "8px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+    display: "none",
+    flexDirection: "column",
+    gap: "4px",
     fontFamily: "system-ui, sans-serif",
     fontSize: "13px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-    boxShadow: "0 4px 24px rgba(0,0,0,0.3)"
+    minWidth: "120px"
   });
-  const label = document.createElement("div");
-  label.textContent = "Locale";
-  Object.assign(label.style, {
+  const header = document.createElement("div");
+  Object.assign(header.style, {
     fontWeight: "600",
-    fontSize: "12px",
-    color: "#94a3b8",
+    fontSize: "11px",
+    color: "#6b7280",
     textTransform: "uppercase",
-    letterSpacing: "0.05em"
+    letterSpacing: "0.05em",
+    padding: "4px 8px 2px"
   });
-  panel.appendChild(label);
-  const row = document.createElement("div");
-  Object.assign(row.style, { display: "flex", gap: "6px", flexWrap: "wrap" });
-  const btnBase = "padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;color:white;transition:background 0.15s;";
-  const originalBtn = document.createElement("button");
-  originalBtn.textContent = "Original";
-  originalBtn.dataset.locale = "";
-  originalBtn.setAttribute("style", btnBase);
-  originalBtn.addEventListener("click", () => switchLocale(null));
-  row.appendChild(originalBtn);
-  for (const locale of locales) {
+  header.textContent = "Locale";
+  popover.appendChild(header);
+  function makeLocaleButton(label, locale) {
     const btn = document.createElement("button");
-    btn.textContent = locale.toUpperCase();
-    btn.dataset.locale = locale;
-    btn.setAttribute("style", btnBase);
-    btn.addEventListener("click", () => switchLocale(locale));
-    row.appendChild(btn);
+    btn.textContent = label;
+    btn.dataset.locale = locale ?? "";
+    Object.assign(btn.style, {
+      display: "block",
+      width: "100%",
+      padding: "8px 12px",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "13px",
+      textAlign: "left",
+      transition: "background 0.15s, color 0.15s",
+      background: "#f1f5f9",
+      color: "#1e293b",
+      fontWeight: "400"
+    });
+    btn.addEventListener("mouseenter", () => {
+      if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+        btn.style.background = "#e2e8f0";
+      }
+    });
+    btn.addEventListener("mouseleave", () => {
+      if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+        btn.style.background = "#f1f5f9";
+      }
+    });
+    btn.addEventListener("click", () => {
+      switchLocale(locale);
+      closePopover();
+    });
+    return btn;
   }
-  panel.appendChild(row);
-  document.body.appendChild(panel);
+  popover.appendChild(makeLocaleButton("Original", null));
+  for (const locale of locales) {
+    popover.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+  }
+  let isDragging = false;
+  let hasDragged = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let fabStartX = 0;
+  let fabStartY = 0;
+  function clampToViewport(x, y) {
+    return {
+      x: Math.max(0, Math.min(x, window.innerWidth - FAB_SIZE)),
+      y: Math.max(0, Math.min(y, window.innerHeight - FAB_SIZE))
+    };
+  }
+  function saveFabPosition() {
+    const r = fab.getBoundingClientRect();
+    localStorage.setItem(FAB_STORAGE_KEY, JSON.stringify({ top: r.top, left: r.left }));
+  }
+  fab.addEventListener("pointerdown", (e) => {
+    isDragging = true;
+    hasDragged = false;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    const r = fab.getBoundingClientRect();
+    fabStartX = r.left;
+    fabStartY = r.top;
+    fab.setPointerCapture(e.pointerId);
+    fab.style.cursor = "grabbing";
+    fab.style.boxShadow = "0 4px 20px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.12)";
+  });
+  fab.addEventListener("pointermove", (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    if (!hasDragged && Math.sqrt(dx * dx + dy * dy) < 5) return;
+    hasDragged = true;
+    const { x, y } = clampToViewport(fabStartX + dx, fabStartY + dy);
+    fab.style.bottom = "auto";
+    fab.style.right = "auto";
+    fab.style.top = `${y}px`;
+    fab.style.left = `${x}px`;
+    if (popoverOpen) positionPopover();
+  });
+  fab.addEventListener("pointerup", () => {
+    if (!isDragging) return;
+    isDragging = false;
+    fab.style.cursor = "grab";
+    fab.style.boxShadow = "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)";
+    if (hasDragged) {
+      saveFabPosition();
+    } else {
+      togglePopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    const r = fab.getBoundingClientRect();
+    const { x, y } = clampToViewport(r.left, r.top);
+    if (x !== r.left || y !== r.top) {
+      fab.style.bottom = "auto";
+      fab.style.right = "auto";
+      fab.style.top = `${y}px`;
+      fab.style.left = `${x}px`;
+      saveFabPosition();
+    }
+    if (popoverOpen) positionPopover();
+  });
+  let popoverOpen = false;
+  function positionPopover() {
+    popover.style.visibility = "hidden";
+    popover.style.display = "flex";
+    const fabRect = fab.getBoundingClientRect();
+    const popRect = popover.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    let top = fabRect.top - gap - popRect.height > 0 ? fabRect.top - gap - popRect.height : fabRect.bottom + gap;
+    let left = fabRect.right - popRect.width > 0 ? fabRect.right - popRect.width : fabRect.left;
+    top = Math.max(4, Math.min(top, vh - popRect.height - 4));
+    left = Math.max(4, Math.min(left, vw - popRect.width - 4));
+    popover.style.top = `${top}px`;
+    popover.style.left = `${left}px`;
+    popover.style.visibility = "visible";
+  }
+  function openPopover() {
+    positionPopover();
+    popoverOpen = true;
+  }
+  function closePopover() {
+    popover.style.display = "none";
+    popoverOpen = false;
+  }
+  function togglePopover() {
+    if (popoverOpen) closePopover();
+    else openPopover();
+  }
+  document.addEventListener("pointerdown", (e) => {
+    if (!popoverOpen) return;
+    if (fab.contains(e.target) || popover.contains(e.target)) return;
+    closePopover();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (popoverOpen && e.key === "Escape") closePopover();
+  });
+  document.body.appendChild(fab);
+  document.body.appendChild(popover);
   updateButtonStates();
 }
 function init() {

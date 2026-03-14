@@ -11,7 +11,7 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 
 1. Loads only inside the Visual Editor (gated on `window.inEditorMode` / `cloudcannon:load` event)
 2. Acquires the CloudCannon JS API handle via `CloudCannonAPI.useVersion("v1", true)`
-3. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
+3. Injects a collapsible, draggable locale switcher FAB (floating action button) with a popover menu listing each locale declared in `<main data-locales="fr,de">`
 4. On locale switch:
    - Tears down any existing translation view (swaps the original container back in)
    - Clones the locale container (`<main data-locales>`) and strips all CC editing infrastructure from the clone (custom elements, `data-editable`, `data-prop` attributes)
