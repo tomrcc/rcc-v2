@@ -165,21 +165,37 @@ function recountStale() {
   staleCount = tracked.filter((t) => t.stale).length;
   updateStaleBadge();
 }
+function positionIndicator(indicator, element) {
+  const rect = element.getBoundingClientRect();
+  indicator.style.top = `${rect.top - 6}px`;
+  indicator.style.left = `${rect.right - 6}px`;
+}
+function repositionAllIndicators() {
+  for (const t of tracked) {
+    if (t.staleIndicator) positionIndicator(t.staleIndicator, t.element);
+  }
+}
+var staleRepositionBound = false;
+function ensureRepositionListeners() {
+  if (staleRepositionBound) return;
+  staleRepositionBound = true;
+  window.addEventListener("scroll", repositionAllIndicators, true);
+  window.addEventListener("resize", repositionAllIndicators);
+}
+function removeRepositionListeners() {
+  if (!staleRepositionBound) return;
+  staleRepositionBound = false;
+  window.removeEventListener("scroll", repositionAllIndicators, true);
+  window.removeEventListener("resize", repositionAllIndicators);
+}
 function attachStaleIndicator(t, file) {
   t.element.style.outline = `2px dashed ${STALE_AMBER}`;
   t.element.style.outlineOffset = "2px";
   t.element.style.backgroundColor = STALE_AMBER_BG;
-  const wrapper = document.createElement("div");
-  wrapper.className = "rcc-stale-wrapper";
-  Object.assign(wrapper.style, { position: "relative" });
-  t.element.replaceWith(wrapper);
-  wrapper.appendChild(t.element);
   const indicator = document.createElement("div");
   indicator.className = "rcc-stale-indicator";
   Object.assign(indicator.style, {
-    position: "absolute",
-    top: "-10px",
-    right: "-10px",
+    position: "fixed",
     width: "20px",
     height: "20px",
     borderRadius: "50%",
@@ -189,11 +205,12 @@ function attachStaleIndicator(t, file) {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    zIndex: "10",
+    zIndex: "999990",
     boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
     fontFamily: "system-ui, sans-serif"
   });
   indicator.innerHTML = WARNING_ICON;
+  positionIndicator(indicator, t.element);
   const tooltip = document.createElement("div");
   tooltip.className = "rcc-stale-tooltip";
   Object.assign(tooltip.style, {
@@ -212,7 +229,7 @@ function attachStaleIndicator(t, file) {
     minWidth: "240px",
     maxWidth: "360px",
     display: "none",
-    zIndex: "11",
+    zIndex: "999991",
     whiteSpace: "normal"
   });
   const heading = document.createElement("div");
@@ -277,25 +294,19 @@ function attachStaleIndicator(t, file) {
     const isVisible = tooltip.style.display === "block";
     closeAllStaleTooltips();
     if (!isVisible) {
-      const data = getStaleDisplayData(t);
-      oldText.innerHTML = data.oldOriginal;
-      newText.innerHTML = data.newOriginal;
+      const stripHtml = (html) => {
+        const div = document.createElement("div");
+        div.innerHTML = html;
+        return div.textContent ?? html;
+      };
+      oldText.textContent = stripHtml(t.localeOriginal ?? "");
+      newText.textContent = stripHtml(t.baseOriginal ?? "");
       tooltip.style.display = "block";
     }
   });
-  wrapper.appendChild(indicator);
-  t.staleIndicator = wrapper;
-}
-function getStaleDisplayData(t) {
-  const stripHtml = (html) => {
-    const div = document.createElement("div");
-    div.innerHTML = html;
-    return div.textContent ?? html;
-  };
-  return {
-    oldOriginal: stripHtml(t.localeOriginal ?? ""),
-    newOriginal: stripHtml(t.baseOriginal ?? "")
-  };
+  document.body.appendChild(indicator);
+  t.staleIndicator = indicator;
+  ensureRepositionListeners();
 }
 function closeAllStaleTooltips() {
   for (const el of document.querySelectorAll(".rcc-stale-tooltip")) {
@@ -308,7 +319,7 @@ function removeStaleIndicator(t) {
   t.element.style.outlineOffset = "";
   t.element.style.backgroundColor = "";
   if (t.staleIndicator) {
-    t.staleIndicator.replaceWith(t.element);
+    t.staleIndicator.remove();
     t.staleIndicator = void 0;
   }
   recountStale();
@@ -325,10 +336,17 @@ function teardownEditors() {
   }
   activeDataset = null;
   activeDatasetListener = null;
-  for (const t of tracked) t.editor = void 0;
+  for (const t of tracked) {
+    t.editor = void 0;
+    if (t.staleIndicator) {
+      t.staleIndicator.remove();
+      t.staleIndicator = void 0;
+    }
+  }
   tracked.length = 0;
   staleCount = 0;
   updateStaleBadge();
+  removeRepositionListeners();
   if (translationContainer && originalContainer) {
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");

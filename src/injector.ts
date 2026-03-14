@@ -274,6 +274,39 @@ function recountStale(): void {
 	updateStaleBadge();
 }
 
+/**
+ * Position a fixed-position indicator at the top-right corner of its
+ * target element. Called once on attach and again on scroll/resize.
+ */
+function positionIndicator(indicator: HTMLElement, element: HTMLElement): void {
+	const rect = element.getBoundingClientRect();
+	indicator.style.top = `${rect.top - 6}px`;
+	indicator.style.left = `${rect.right - 6}px`;
+}
+
+/** Single scroll/resize handler that repositions all active indicators. */
+function repositionAllIndicators(): void {
+	for (const t of tracked) {
+		if (t.staleIndicator) positionIndicator(t.staleIndicator, t.element);
+	}
+}
+
+let staleRepositionBound = false;
+
+function ensureRepositionListeners(): void {
+	if (staleRepositionBound) return;
+	staleRepositionBound = true;
+	window.addEventListener("scroll", repositionAllIndicators, true);
+	window.addEventListener("resize", repositionAllIndicators);
+}
+
+function removeRepositionListeners(): void {
+	if (!staleRepositionBound) return;
+	staleRepositionBound = false;
+	window.removeEventListener("scroll", repositionAllIndicators, true);
+	window.removeEventListener("resize", repositionAllIndicators);
+}
+
 function attachStaleIndicator(
 	t: TrackedElement,
 	file: CCFile,
@@ -282,21 +315,12 @@ function attachStaleIndicator(
 	t.element.style.outlineOffset = "2px";
 	t.element.style.backgroundColor = STALE_AMBER_BG;
 
-	// Wrap the element so the indicator lives outside ProseMirror's control.
-	// ProseMirror takes over t.element's inner DOM, so children appended
-	// directly would be destroyed. The wrapper is invisible to layout.
-	const wrapper = document.createElement("div");
-	wrapper.className = "rcc-stale-wrapper";
-	Object.assign(wrapper.style, { position: "relative" });
-	t.element.replaceWith(wrapper);
-	wrapper.appendChild(t.element);
-
+	// Fixed-position overlay on document.body — zero layout impact, outside
+	// ProseMirror's control. Repositioned via scroll/resize listeners.
 	const indicator = document.createElement("div");
 	indicator.className = "rcc-stale-indicator";
 	Object.assign(indicator.style, {
-		position: "absolute",
-		top: "-10px",
-		right: "-10px",
+		position: "fixed",
 		width: "20px",
 		height: "20px",
 		borderRadius: "50%",
@@ -306,11 +330,12 @@ function attachStaleIndicator(
 		alignItems: "center",
 		justifyContent: "center",
 		cursor: "pointer",
-		zIndex: "10",
+		zIndex: "999990",
 		boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
 		fontFamily: "system-ui, sans-serif",
 	});
 	indicator.innerHTML = WARNING_ICON;
+	positionIndicator(indicator, t.element);
 
 	const tooltip = document.createElement("div");
 	tooltip.className = "rcc-stale-tooltip";
@@ -330,7 +355,7 @@ function attachStaleIndicator(
 		minWidth: "240px",
 		maxWidth: "360px",
 		display: "none",
-		zIndex: "11",
+		zIndex: "999991",
 		whiteSpace: "normal",
 	});
 
@@ -399,27 +424,20 @@ function attachStaleIndicator(
 		const isVisible = tooltip.style.display === "block";
 		closeAllStaleTooltips();
 		if (!isVisible) {
-			const data = getStaleDisplayData(t);
-			oldText.innerHTML = data.oldOriginal;
-			newText.innerHTML = data.newOriginal;
+			const stripHtml = (html: string) => {
+				const div = document.createElement("div");
+				div.innerHTML = html;
+				return div.textContent ?? html;
+			};
+			oldText.textContent = stripHtml(t.localeOriginal ?? "");
+			newText.textContent = stripHtml(t.baseOriginal ?? "");
 			tooltip.style.display = "block";
 		}
 	});
 
-	wrapper.appendChild(indicator);
-	t.staleIndicator = wrapper;
-}
-
-function getStaleDisplayData(t: TrackedElement): { oldOriginal: string; newOriginal: string } {
-	const stripHtml = (html: string) => {
-		const div = document.createElement("div");
-		div.innerHTML = html;
-		return div.textContent ?? html;
-	};
-	return {
-		oldOriginal: stripHtml(t.localeOriginal ?? ""),
-		newOriginal: stripHtml(t.baseOriginal ?? ""),
-	};
+	document.body.appendChild(indicator);
+	t.staleIndicator = indicator;
+	ensureRepositionListeners();
 }
 
 function closeAllStaleTooltips(): void {
@@ -434,8 +452,7 @@ function removeStaleIndicator(t: TrackedElement): void {
 	t.element.style.outlineOffset = "";
 	t.element.style.backgroundColor = "";
 	if (t.staleIndicator) {
-		// Unwrap: move element out of wrapper, then remove the wrapper shell
-		t.staleIndicator.replaceWith(t.element);
+		t.staleIndicator.remove();
 		t.staleIndicator = undefined;
 	}
 	recountStale();
@@ -459,11 +476,18 @@ function teardownEditors(): void {
 	activeDataset = null;
 	activeDatasetListener = null;
 
-	for (const t of tracked) t.editor = undefined;
+	for (const t of tracked) {
+		t.editor = undefined;
+		if (t.staleIndicator) {
+			t.staleIndicator.remove();
+			t.staleIndicator = undefined;
+		}
+	}
 	tracked.length = 0;
 
 	staleCount = 0;
 	updateStaleBadge();
+	removeRepositionListeners();
 
 	if (translationContainer && originalContainer) {
 		translationContainer.replaceWith(originalContainer);
