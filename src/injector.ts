@@ -109,6 +109,9 @@ const CC_CUSTOM_ELEMENTS = [
 	"EDITABLE-ARRAY-ITEM",
 ];
 
+const BLOCK_LEVEL_SELECTOR =
+	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
+
 /**
  * Strip all CC editing infrastructure from a detached DOM tree.
  * Because the tree is not in the document, there is no MutationObserver,
@@ -142,9 +145,7 @@ function replaceCustomElements(root: HTMLElement): void {
 				const dataType = el.getAttribute("data-type");
 				const isBlockType = dataType === "block" || dataType === "text";
 				const hasBlockChildren =
-					el.querySelector(
-						"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul",
-					) !== null;
+					el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
 				replacementTag =
 					isBlockType || hasBlockChildren ? "div" : "span";
 			}
@@ -269,7 +270,10 @@ async function switchLocale(locale: string | null): Promise<void> {
 			t.element.innerHTML = value;
 
 			const dataType = t.element.dataset.type;
-			const isRichText = dataType === "block" || dataType === "text";
+			const isRichText =
+				dataType === "block" ||
+				dataType === "text" ||
+				t.element.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
 
 			const editor = await api!.createTextEditableRegion(
 				t.element,

@@ -49,6 +49,7 @@ var CC_CUSTOM_ELEMENTS = [
   "EDITABLE-COMPONENT",
   "EDITABLE-ARRAY-ITEM"
 ];
+var BLOCK_LEVEL_SELECTOR = "address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 function cleanClone(root) {
   stripCCAttributes(root);
   root.querySelectorAll("*").forEach((el) => {
@@ -73,9 +74,7 @@ function replaceCustomElements(root) {
       if (tag === "EDITABLE-TEXT") {
         const dataType = el.getAttribute("data-type");
         const isBlockType = dataType === "block" || dataType === "text";
-        const hasBlockChildren = el.querySelector(
-          "address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul"
-        ) !== null;
+        const hasBlockChildren = el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
         replacementTag = isBlockType || hasBlockChildren ? "div" : "span";
       }
       const replacement = document.createElement(replacementTag);
@@ -163,7 +162,7 @@ async function switchLocale(locale) {
       const value = data?.value ?? data?.original ?? t.originalContent;
       t.element.innerHTML = value;
       const dataType = t.element.dataset.type;
-      const isRichText = dataType === "block" || dataType === "text";
+      const isRichText = dataType === "block" || dataType === "text" || t.element.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {
