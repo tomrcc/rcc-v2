@@ -272,10 +272,11 @@ async function switchLocale(locale: string | null): Promise<void> {
 					if (myGeneration !== switchGeneration) return;
 					if (!setupComplete) return;
 					if (content == null) return;
-					file.data.set({ slug: t.roseyKey, value: content });
+					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
 				},
 			);
 			t.editor = editor;
+			editor.setContent(value);
 			log(`[${t.roseyKey}] Editor created`);
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);

@@ -50,10 +50,8 @@ The clone is processed while detached from the DOM, so there are no MutationObse
 - **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Always use `innerHTML` (never `textContent`) to set values on tracked elements.
 - **ProseMirror editors cannot be destroyed**: `createTextEditableRegion` returns `{ setContent }` but no `destroy()`. Old ProseMirror instances stay alive after teardown and fire `onChange` when the DOM changes underneath them. A `switchGeneration` counter makes stale closures no-ops.
 - **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content and fires `onChange` immediately. A `setupComplete` flag blocks these writes until all editors are created.
+- **`createTextEditableRegion` does not use existing innerHTML**: The editor starts empty; you must call `editor.setContent(value)` after creation to populate it (matching CC's own `EditableText.mountEditor()` pattern).
+- **Slug path separator**: CloudCannon's data API uses `.` as a path separator. Colons in Rosey keys are literal characters. To target the `value` field inside a `{ original, value }` locale entry, use slug `roseyKey.value`.
 - **`<editable-text>` replacement tag**: When stripping CC custom elements from the clone, `<editable-text>` is replaced with `<span>` (inline) by default, but upgrades to `<div>` if `data-type="block"|"text"` is set or the element contains block-level children. This prevents invalid HTML nesting.
-
-## Open Questions (MVP)
-
-- **Slug format**: Rosey keys with colons (`index:hero:title`) are top-level JSON keys; slug `index:hero:title.value` should resolve correctly since `.` is the path separator. Needs testing.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.
