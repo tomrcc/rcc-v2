@@ -71,6 +71,13 @@ let activeDatasetListener: (() => void) | null = null;
  */
 let switchGeneration = 0;
 
+/**
+ * Input configs captured from CC's editable infrastructure at init time.
+ * Keyed by resolved Rosey key. Used to pass the exact same inputConfig
+ * to createTextEditableRegion that CC uses for the original editors.
+ */
+const originalInputConfigs = new Map<string, Record<string, unknown>>();
+
 // ---------------------------------------------------------------------------
 // Rosey key resolution
 // ---------------------------------------------------------------------------
@@ -179,6 +186,50 @@ function trackElements(scope: Element): void {
 }
 
 // ---------------------------------------------------------------------------
+// Input config prescan
+// ---------------------------------------------------------------------------
+
+const CONFIG_TIMEOUT_MS = 200;
+
+async function fetchInputConfig(el: HTMLElement): Promise<Record<string, unknown> | null> {
+	const prop = el.dataset.prop;
+	const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
+	if (!prop || !isEditable) return null;
+
+	const configPromise = new Promise<any>((resolve) => {
+		el.dispatchEvent(
+			new CustomEvent("cloudcannon-api", {
+				bubbles: true,
+				detail: { action: "get-input-config", source: prop, callback: resolve },
+			}),
+		);
+	});
+	const timeout = new Promise<null>((resolve) =>
+		setTimeout(() => resolve(null), CONFIG_TIMEOUT_MS),
+	);
+
+	return Promise.race([configPromise, timeout]);
+}
+
+async function prescanOriginals(container: HTMLElement): Promise<void> {
+	const elements = container.querySelectorAll<HTMLElement>(
+		"[data-rosey]:not([data-rcc-ignore])",
+	);
+
+	for (const el of elements) {
+		const roseyKey = resolveRoseyKey(el);
+		if (!roseyKey) continue;
+
+		const config = await fetchInputConfig(el);
+		if (config != null) {
+			originalInputConfigs.set(roseyKey, config);
+		}
+	}
+
+	log(`Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`);
+}
+
+// ---------------------------------------------------------------------------
 // Teardown / restore
 // ---------------------------------------------------------------------------
 
@@ -269,11 +320,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 			t.element.innerHTML = value;
 
-			const dataType = t.element.dataset.type;
-			const isRichText =
-				dataType === "block" ||
-				dataType === "text" ||
-				t.element.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
+			const inputConfig = originalInputConfigs.get(t.roseyKey);
 
 			const editor = await api!.createTextEditableRegion(
 				t.element,
@@ -285,8 +332,8 @@ async function switchLocale(locale: string | null): Promise<void> {
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
 				},
 				{
-					elementType: dataType,
-					...(isRichText && { inputConfig: { type: "markdown" } }),
+					elementType: t.element.dataset.type,
+					...(inputConfig != null && { inputConfig }),
 				},
 			);
 			t.editor = editor;
@@ -690,83 +737,7 @@ async function init(): Promise<void> {
 		return;
 	}
 
-	// ---- TEMPORARY DIAGNOSTIC: investigate getInputConfig responses ----
-	const CONFIG_TIMEOUT = 500;
-	const diagElements = main.querySelectorAll<HTMLElement>(
-		"[data-rosey]:not([data-rcc-ignore])",
-	);
-	const diagResults: Array<{
-		roseyKey: string;
-		dataProp: string | undefined;
-		dataType: string | undefined;
-		tagName: string;
-		dataEditable: string | undefined;
-		hasBlockChildren: boolean;
-		inputConfig: unknown;
-		timedOut: boolean;
-	}> = [];
-
-	for (const el of diagElements) {
-		const roseyKey = resolveRoseyKey(el);
-		if (!roseyKey) continue;
-		const prop = el.dataset.prop;
-		const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
-
-		let inputConfig: unknown = "(skipped)";
-		let timedOut = false;
-
-		if (prop && isEditable) {
-			try {
-				const configPromise = new Promise<any>((resolve) => {
-					el.dispatchEvent(
-						new CustomEvent("cloudcannon-api", {
-							bubbles: true,
-							detail: { action: "get-input-config", source: prop, callback: resolve },
-						}),
-					);
-				});
-				const timeoutPromise = new Promise<null>((resolve) =>
-					setTimeout(() => resolve(null), CONFIG_TIMEOUT),
-				);
-				const result = await Promise.race([configPromise, timeoutPromise]);
-				if (result === null) {
-					inputConfig = "(timeout)";
-					timedOut = true;
-				} else {
-					inputConfig = result;
-				}
-			} catch (err) {
-				inputConfig = `(error: ${err})`;
-			}
-		}
-
-		diagResults.push({
-			roseyKey,
-			dataProp: prop,
-			dataType: el.dataset.type,
-			tagName: el.tagName,
-			dataEditable: el.dataset.editable,
-			hasBlockChildren: el.querySelector(BLOCK_LEVEL_SELECTOR) !== null,
-			inputConfig,
-			timedOut,
-		});
-	}
-
-	console.group("[rcc-v2 DIAG] getInputConfig results");
-	console.table(
-		diagResults.map((r) => ({
-			roseyKey: r.roseyKey,
-			prop: r.dataProp ?? "-",
-			tag: r.tagName,
-			editable: r.dataEditable ?? "-",
-			"data-type": r.dataType ?? "-",
-			blockChildren: r.hasBlockChildren,
-			timedOut: r.timedOut,
-			configJSON: typeof r.inputConfig === "string" ? r.inputConfig : JSON.stringify(r.inputConfig),
-		})),
-	);
-	console.groupEnd();
-	// ---- END TEMPORARY DIAGNOSTIC ----
+	await prescanOriginals(main);
 
 	injectSwitcher(locales);
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
