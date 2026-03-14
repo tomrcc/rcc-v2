@@ -7,19 +7,20 @@ alwaysApply: true
 
 rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual editing of [Rosey](https://rosey.app/) translation files inside CloudCannon's Visual Editor. It bridges Rosey's `data-rosey` translation keys and CloudCannon's live editing JS API, letting editors switch between locales and edit translations directly on the page.
 
-## How It Works (MVP — live API approach)
+## How It Works (MVP — DOM swap approach)
 
 1. Loads only inside the Visual Editor (gated on `window.inEditorMode` / `cloudcannon:load` event)
 2. Acquires the CloudCannon JS API handle via `CloudCannonAPI.useVersion("v1", true)`
-3. Tracks every `[data-rosey]` element — stores a live DOM reference, resolved Rosey key, and original `innerHTML`
-4. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
-5. On locale switch:
-   - Tears down any existing editors and restores original content
-   - Gets the locale dataset + file via `api.dataset("locales_{locale}").items()`
-   - For each tracked element: fetches value via `file.data.get()`, sets `innerHTML` (not `textContent` — values may contain HTML like `<p>` tags from Markdown rendering), creates an inline editor via `api.createTextEditableRegion()` with an `onChange` guard that skips the initial ProseMirror normalisation fire, then pushes real user edits back with `file.data.set()`
+3. Injects a floating locale switcher UI with buttons for each locale declared in `<main data-locales="fr,de">`
+4. On locale switch:
+   - Tears down any existing translation view (swaps the original container back in)
+   - Clones the locale container (`<main data-locales>`) and strips all CC editing infrastructure from the clone (custom elements, `data-editable`, `data-prop` attributes)
+   - Swaps the original out of the DOM and the clean clone in — CC's MutationObserver auto-dehydrates all editables on the removed original, and creates nothing on the inert clone
+   - Tracks `[data-rosey]` elements in the clone, resolves their Rosey keys
+   - For each: fetches the translation value via `file.data.get()`, sets `innerHTML`, creates an inline editor via `api.createTextEditableRegion()` with stale-closure guards, pushes user edits back with `file.data.set()`
    - Listens for external `change` events on the dataset to keep editors in sync
-6. On "Original" switch: tears down editors, restores original innerHTML
-7. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
+5. On "Original" switch: swaps the original container back in — CC's MutationObserver auto-reconnects all editables, restoring normal editing
+6. Rosey keys are built by walking up DOM collecting `data-rosey-ns` segments, stopping at `data-rosey-root`, joined with `:`
 
 ## Key API Surface
 
@@ -34,11 +35,22 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 | `dataset.addEventListener("change", ...)` | Listen for external data changes |
 | `api.createTextEditableRegion(el, onChange, opts)` | Create an inline ProseMirror editor on an existing element |
 
+## DOM Swap Mechanism
+
+When the user picks a locale, the entire `<main data-locales>` container is replaced with a clean clone. The clone has no CC custom elements, no `data-editable`, no `data-prop` — it is completely inert from CC's perspective. CC's document-level MutationObserver handles all cleanup automatically:
+
+- **Swap out**: `original.replaceWith(clone)` removes the original. CC calls `dehydrateDataEditableRegions()` on the removed subtree, disconnecting all editables and listeners.
+- **Clone is inert**: No `data-editable` or custom elements means CC creates nothing on it. Zero listeners, zero interference with our `createTextEditableRegion` calls.
+- **Swap back**: `clone.replaceWith(original)` re-inserts the original. CC calls `hydrateDataEditableRegions()`, reconnecting existing editables. Normal editing fully restored.
+
+The clone is processed while detached from the DOM, so there are no MutationObserver callbacks, no `connectedCallback` firings, and no race conditions during cleanup.
+
 ## Known Constraints
 
-- **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Translated values may be plain text or HTML. Always use `innerHTML` (never `textContent`) to set values on tracked elements.
-- **ProseMirror editors cannot be destroyed**: `createTextEditableRegion` returns `{ setContent }` but no `destroy()`. Old ProseMirror instances stay alive after teardown and fire `onChange` when the DOM changes underneath them (e.g. during the next locale switch). A `switchGeneration` counter makes stale closures no-ops — every `onChange` checks `myGeneration === switchGeneration` before writing.
-- **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content (e.g. wraps plain text in `<p>` for block mode) and fires `onChange` immediately. A `setupComplete` flag (set after all editors are created) blocks these writes. Both the generation check and setup guard are critical — removing either causes data corruption.
+- **HTML in locale values**: Rosey originals often contain HTML (e.g. `<p>...</p>` from Markdown). Always use `innerHTML` (never `textContent`) to set values on tracked elements.
+- **ProseMirror editors cannot be destroyed**: `createTextEditableRegion` returns `{ setContent }` but no `destroy()`. Old ProseMirror instances stay alive after teardown and fire `onChange` when the DOM changes underneath them. A `switchGeneration` counter makes stale closures no-ops.
+- **ProseMirror onChange fires on init**: `createTextEditableRegion` normalises content and fires `onChange` immediately. A `setupComplete` flag blocks these writes until all editors are created.
+- **`<editable-text>` replacement tag**: When stripping CC custom elements from the clone, `<editable-text>` is replaced with `<span>` (inline) by default, but upgrades to `<div>` if `data-type="block"|"text"` is set or the element contains block-level children. This prevents invalid HTML nesting.
 
 ## Open Questions (MVP)
 

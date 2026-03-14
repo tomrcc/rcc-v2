@@ -3,17 +3,25 @@
  *
  * Finds all [data-rosey] elements, injects a floating locale switcher,
  * and uses the CloudCannon live editing JS API to create inline editors
- * and read/write locale data directly — no DOM clone-and-replace needed.
+ * that read/write locale data directly.
  *
- * Add data-rcc-ignore to any [data-rosey] element to opt it out of
- * visual editing.
+ * When a locale is selected the entire locale container is swapped out
+ * of the DOM and replaced with a clean clone stripped of all CC editing
+ * infrastructure. CC's MutationObserver auto-dehydrates the original
+ * and ignores the inert clone. On teardown the original is swapped back
+ * in and CC auto-restores all editing.
+ *
+ * Add data-rcc-ignore to any [data-rosey] element to opt it out.
  */
 
 import { log, warn } from "./logger";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 interface TrackedElement {
 	element: HTMLElement;
-	originalElement?: HTMLElement;
 	roseyKey: string;
 	originalContent: string;
 	editor?: { setContent: (content?: string | null) => void };
@@ -41,23 +49,30 @@ interface CCApi {
 	): Promise<{ setContent: (content?: string | null) => void }>;
 }
 
+// ---------------------------------------------------------------------------
+// Module state
+// ---------------------------------------------------------------------------
+
 const tracked: TrackedElement[] = [];
 let currentLocale: string | null = null;
 let api: CCApi | null = null;
+
+let originalContainer: HTMLElement | null = null;
+let translationContainer: HTMLElement | null = null;
+
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
-const dehydratedWrappers: { original: HTMLElement; replacement: HTMLElement }[] = [];
-let disconnectedMainEditable: any = null;
 
 /**
- * Incremented every time switchLocale is called. Each onChange closure
- * captures the generation it was created in; if it doesn't match the
- * current value, the editor is stale (from a previous locale) and the
- * write is silently dropped. This is necessary because
- * createTextEditableRegion has no destroy() — old ProseMirror instances
- * stay alive and fire onChange when the DOM changes underneath them.
+ * Guards against stale ProseMirror onChange fires. createTextEditableRegion
+ * has no destroy() so old editors stay alive and fire when the DOM changes.
+ * Each onChange closure captures its generation; mismatches are no-ops.
  */
 let switchGeneration = 0;
+
+// ---------------------------------------------------------------------------
+// Rosey key resolution
+// ---------------------------------------------------------------------------
 
 function resolveRoseyKey(el: Element): string | null {
 	const localKey = el.getAttribute("data-rosey");
@@ -81,164 +96,111 @@ function resolveRoseyKey(el: Element): string | null {
 	return [...nsParts, localKey].join(":");
 }
 
-function findElementByRoseyKey(key: string): HTMLElement | null {
-	const candidates = document.querySelectorAll<HTMLElement>(
-		"[data-rosey]:not([data-rcc-ignore])",
-	);
-	for (const el of candidates) {
-		if (resolveRoseyKey(el) === key) return el;
-	}
-	return null;
+// ---------------------------------------------------------------------------
+// DOM clone cleaning
+// ---------------------------------------------------------------------------
+
+const CC_CUSTOM_ELEMENTS = [
+	"EDITABLE-TEXT",
+	"EDITABLE-SOURCE",
+	"EDITABLE-IMAGE",
+	"EDITABLE-COMPONENT",
+	"EDITABLE-ARRAY-ITEM",
+];
+
+/**
+ * Strip all CC editing infrastructure from a detached DOM tree.
+ * Because the tree is not in the document, there is no MutationObserver,
+ * no connectedCallback, and no race conditions.
+ */
+function cleanClone(root: HTMLElement): void {
+	stripCCAttributes(root);
+	root.querySelectorAll("*").forEach((el) => {
+		if (el instanceof HTMLElement) stripCCAttributes(el);
+	});
+
+	replaceCustomElements(root);
 }
 
-function trackElements(): void {
+function stripCCAttributes(el: HTMLElement): void {
+	el.removeAttribute("data-editable");
+	el.removeAttribute("data-prop");
+	for (const attr of Array.from(el.attributes)) {
+		if (attr.name.startsWith("data-prop-")) {
+			el.removeAttribute(attr.name);
+		}
+	}
+}
+
+function replaceCustomElements(root: HTMLElement): void {
+	for (const tag of CC_CUSTOM_ELEMENTS) {
+		const els = root.querySelectorAll(tag);
+		for (const el of els) {
+			let replacementTag = "div";
+			if (tag === "EDITABLE-TEXT") {
+				const dataType = el.getAttribute("data-type");
+				const isBlockType = dataType === "block" || dataType === "text";
+				const hasBlockChildren =
+					el.querySelector(
+						"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul",
+					) !== null;
+				replacementTag =
+					isBlockType || hasBlockChildren ? "div" : "span";
+			}
+			const replacement = document.createElement(replacementTag);
+			for (const attr of Array.from(el.attributes)) {
+				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
+				if (attr.name === "data-editable") continue;
+				replacement.setAttribute(attr.name, attr.value);
+			}
+			replacement.innerHTML = el.innerHTML;
+			el.replaceWith(replacement);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Element tracking
+// ---------------------------------------------------------------------------
+
+function trackElements(scope: Element): void {
 	tracked.length = 0;
-	const elements = document.querySelectorAll<HTMLElement>(
+	const elements = scope.querySelectorAll<HTMLElement>(
 		"[data-rosey]:not([data-rcc-ignore])",
 	);
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
-		tracked.push({
-			element: el,
-			roseyKey,
-			originalContent: el.innerHTML,
-		});
+		tracked.push({ element: el, roseyKey, originalContent: el.innerHTML });
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
 }
 
-/**
- * Disconnect CC's editable-regions editors so rcc-v2 can be the sole
- * editor on each element during locale switching.
- *
- * For <editable-text> custom elements: replace with a plain <span> so
- * the custom element's connectedCallback can't re-mount a CC editor.
- *
- * For regular [data-editable] elements: DOM-cycle (remove → mark
- * data-cloudcannon-ignore → re-insert) so CC's MutationObserver fires
- * disconnect and then skips re-hydration.
- */
-function dehydrateCCEditors(): void {
-	for (const t of tracked) {
-		if (t.element.tagName.startsWith("EDITABLE-")) {
-			const span = document.createElement("span");
-			for (const attr of Array.from(t.element.attributes)) {
-				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
-				span.setAttribute(attr.name, attr.value);
-			}
-			span.setAttribute("data-cloudcannon-ignore", "");
-			span.innerHTML = t.element.innerHTML;
-			t.element.replaceWith(span);
-			t.originalElement = t.element;
-			t.element = span;
-			log(`[${t.roseyKey}] Replaced <${t.originalElement.tagName.toLowerCase()}> with <span>`);
-		} else if (t.element.hasAttribute("data-editable")) {
-			const parent = t.element.parentNode;
-			const next = t.element.nextSibling;
-			t.element.remove();
-			t.element.setAttribute("data-cloudcannon-ignore", "");
-			if (next) parent?.insertBefore(t.element, next);
-			else parent?.appendChild(t.element);
-			log(`[${t.roseyKey}] Dehydrated CC editor, added data-cloudcannon-ignore`);
-		}
-	}
-}
-
-/**
- * Replace editable Custom Element wrappers (<editable-array-item>,
- * <editable-component>) with plain <div>s. This fires
- * disconnectedCallback → editable.disconnect(), removing all API
- * listeners and stopping _update() → updateTree() from re-rendering
- * the subtree while we're editing.
- *
- * Walks bottom-up from each tracked element to find the outermost
- * qualifying wrapper. Only wrappers that actually contain tracked
- * [data-rosey] elements are neutralized — the Nav and other
- * unrelated components are left untouched.
- */
-function neutralizeEditableWrappers(): void {
-	const neutralized = new Set<HTMLElement>();
-
-	for (const t of tracked) {
-		let current = t.element.parentElement;
-		let outermost: HTMLElement | null = null;
-
-		while (current) {
-			const tag = current.tagName;
-			if (tag === "EDITABLE-ARRAY-ITEM" || tag === "EDITABLE-COMPONENT") {
-				outermost = current;
-			}
-			current = current.parentElement;
-		}
-
-		if (outermost && !neutralized.has(outermost)) {
-			neutralized.add(outermost);
-			const div = document.createElement("div");
-			for (const attr of Array.from(outermost.attributes)) {
-				div.setAttribute(attr.name, attr.value);
-			}
-			div.setAttribute("data-cloudcannon-ignore", "");
-			while (outermost.firstChild) div.appendChild(outermost.firstChild);
-			outermost.replaceWith(div);
-			dehydratedWrappers.push({ original: outermost, replacement: div });
-			log(`Phase 0: Replaced <${outermost.tagName.toLowerCase()}> with <div>`);
-		}
-	}
-}
+// ---------------------------------------------------------------------------
+// Teardown / restore
+// ---------------------------------------------------------------------------
 
 function teardownEditors(): void {
-	log(`Tearing down ${tracked.length} editors`);
-
 	if (activeDataset && activeDatasetListener) {
 		activeDataset.removeEventListener("change", activeDatasetListener);
 	}
 	activeDataset = null;
 	activeDatasetListener = null;
 
-	// Phase 1: Restore individual tracked elements
-	for (const t of tracked) {
-		log(`[${t.roseyKey}] Teardown — restoring originalContent`);
-		t.editor = undefined;
+	for (const t of tracked) t.editor = undefined;
+	tracked.length = 0;
 
-		if (t.originalElement) {
-			t.originalElement.innerHTML = t.originalContent;
-			const editable = (t.originalElement as any).editable;
-			if (editable) editable.editor = undefined;
-			t.element.replaceWith(t.originalElement);
-			t.element = t.originalElement;
-			t.originalElement = undefined;
-		} else {
-			t.element.innerHTML = t.originalContent;
-		}
-
-		if (t.element.hasAttribute("data-cloudcannon-ignore")) {
-			t.element.removeAttribute("data-cloudcannon-ignore");
-			const editable = (t.element as any).editable;
-			if (editable) editable.editor = undefined;
-			const parent = t.element.parentNode;
-			const next = t.element.nextSibling;
-			if (parent) {
-				t.element.remove();
-				if (next) parent.insertBefore(t.element, next);
-				else parent.appendChild(t.element);
-			}
-		}
+	if (translationContainer && originalContainer) {
+		translationContainer.replaceWith(originalContainer);
+		log("Restored original container");
 	}
-
-	for (const { original, replacement } of dehydratedWrappers) {
-		while (replacement.firstChild) original.appendChild(replacement.firstChild);
-		replacement.replaceWith(original);
-		log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
-	}
-	dehydratedWrappers.length = 0;
-
-	if (disconnectedMainEditable) {
-		disconnectedMainEditable.connect();
-		log("Reconnected <main> EditableArray");
-		disconnectedMainEditable = null;
-	}
+	translationContainer = null;
+	originalContainer = null;
 }
+
+// ---------------------------------------------------------------------------
+// Locale switching
+// ---------------------------------------------------------------------------
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
 	const result = await dataset.items();
@@ -263,21 +225,24 @@ async function switchLocale(locale: string | null): Promise<void> {
 		return;
 	}
 
-	const localeContainer = document.querySelector("main[data-locales]");
-	const editableArrayEl =
-		localeContainer?.querySelector<HTMLElement>("[data-editable='array']") ??
-		(localeContainer instanceof HTMLElement && localeContainer.hasAttribute("data-editable")
-			? localeContainer
-			: null);
-	const mainEditable = (editableArrayEl as any)?.editable;
-	if (mainEditable) {
-		await mainEditable.disconnect();
-		disconnectedMainEditable = mainEditable;
-		log("Disconnected EditableArray on", editableArrayEl?.tagName);
+	// --- Swap the locale container with a clean clone -----------------------
+
+	const container = document.querySelector<HTMLElement>("main[data-locales]");
+	if (!container) {
+		warn("No locale container found");
+		return;
 	}
 
-	dehydrateCCEditors();
-	neutralizeEditableWrappers();
+	originalContainer = container;
+	const clone = container.cloneNode(true) as HTMLElement;
+	cleanClone(clone);
+	container.replaceWith(clone);
+	translationContainer = clone;
+	log("Swapped in clean translation container");
+
+	// --- Track elements in the clone and set up editors ---------------------
+
+	trackElements(clone);
 
 	const dataset = api.dataset(`locales_${locale}`);
 	const file = await resolveFile(dataset);
@@ -291,7 +256,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 	for (const t of tracked) {
 		if (myGeneration !== switchGeneration) {
-			warn(`Generation changed during setup (${myGeneration} → ${switchGeneration}), aborting "${locale}" switch`);
+			log(`Generation changed, aborting "${locale}" setup`);
 			return;
 		}
 
@@ -301,24 +266,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 			t.element.innerHTML = value;
 
-			if (!t.element.isConnected) {
-				const freshEl = findElementByRoseyKey(t.roseyKey);
-				if (freshEl) {
-					const freshEditable = (freshEl as any).editable;
-					if (freshEditable) await freshEditable.disconnect();
-					freshEl.removeAttribute("data-prop");
-					for (const attr of Array.from(freshEl.attributes)) {
-						if (attr.name.startsWith("data-prop-")) freshEl.removeAttribute(attr.name);
-					}
-					t.element = freshEl;
-					t.element.innerHTML = value;
-					log(`[${t.roseyKey}] Re-queried detached element`);
-				} else {
-					warn(`[${t.roseyKey}] Element detached and no live replacement found`);
-				}
-			}
-
-			const editor = await api.createTextEditableRegion(
+			const editor = await api!.createTextEditableRegion(
 				t.element,
 				(content) => {
 					if (myGeneration !== switchGeneration) return;
@@ -334,19 +282,17 @@ async function switchLocale(locale: string | null): Promise<void> {
 		}
 	}
 
-	if (myGeneration !== switchGeneration) {
-		warn(`Generation changed after setup (${myGeneration} → ${switchGeneration}), not activating "${locale}"`);
-		return;
-	}
+	if (myGeneration !== switchGeneration) return;
 
 	await Promise.resolve();
 	setupComplete = true;
-	log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
+	log(`Setup complete for "${locale}" (generation ${myGeneration})`);
+
+	// --- Listen for external data changes -----------------------------------
 
 	activeDataset = dataset;
 	activeDatasetListener = async () => {
 		if (myGeneration !== switchGeneration) return;
-		log(`Dataset change event fired for locale "${locale}"`);
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
 
@@ -355,7 +301,6 @@ async function switchLocale(locale: string | null): Promise<void> {
 			try {
 				const data = await freshFile.data.get({ slug: t.roseyKey });
 				const value = data?.value ?? data?.original ?? t.originalContent;
-				log(`[${t.roseyKey}] Change listener setContent:`, JSON.stringify(value));
 				t.editor.setContent(value);
 			} catch {
 				/* key may not exist in this locale yet */
@@ -366,6 +311,10 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 	log(`Switched to ${locale}`);
 }
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
 
 function updateButtonStates(): void {
 	const buttons = document.querySelectorAll<HTMLButtonElement>(
@@ -438,6 +387,10 @@ function injectSwitcher(locales: string[]): void {
 	updateButtonStates();
 }
 
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
 function init(): void {
 	const ccWindow = window as any;
 	if (!ccWindow.CloudCannonAPI) {
@@ -446,7 +399,7 @@ function init(): void {
 	}
 	api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	const main = document.querySelector("main[data-locales]");
+	const main = document.querySelector<HTMLElement>("main[data-locales]");
 	if (!main) return;
 
 	const localesAttr = main.getAttribute("data-locales");
@@ -457,15 +410,17 @@ function init(): void {
 		.filter(Boolean);
 	if (locales.length === 0) return;
 
-	trackElements();
+	const elementCount = main.querySelectorAll<HTMLElement>(
+		"[data-rosey]:not([data-rcc-ignore])",
+	).length;
 
-	if (tracked.length === 0) {
+	if (elementCount === 0) {
 		warn("No translatable elements found (missing data-rosey attributes)");
 		return;
 	}
 
 	injectSwitcher(locales);
-	log(`Ready — ${locales.length} locales, ${tracked.length} elements`);
+	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
 }
 
 if ((window as any).inEditorMode && (window as any).CloudCannonAPI) {

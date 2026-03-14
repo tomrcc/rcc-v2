@@ -21,10 +21,10 @@ function warn(...args) {
 var tracked = [];
 var currentLocale = null;
 var api = null;
+var originalContainer = null;
+var translationContainer = null;
 var activeDataset = null;
 var activeDatasetListener = null;
-var dehydratedWrappers = [];
-var disconnectedMainEditable = null;
 var switchGeneration = 0;
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -44,126 +44,79 @@ function resolveRoseyKey(el) {
   nsParts.reverse();
   return [...nsParts, localKey].join(":");
 }
-function findElementByRoseyKey(key) {
-  const candidates = document.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
-  );
-  for (const el of candidates) {
-    if (resolveRoseyKey(el) === key) return el;
-  }
-  return null;
+var CC_CUSTOM_ELEMENTS = [
+  "EDITABLE-TEXT",
+  "EDITABLE-SOURCE",
+  "EDITABLE-IMAGE",
+  "EDITABLE-COMPONENT",
+  "EDITABLE-ARRAY-ITEM"
+];
+function cleanClone(root) {
+  stripCCAttributes(root);
+  root.querySelectorAll("*").forEach((el) => {
+    if (el instanceof HTMLElement) stripCCAttributes(el);
+  });
+  replaceCustomElements(root);
 }
-function trackElements() {
+function stripCCAttributes(el) {
+  el.removeAttribute("data-editable");
+  el.removeAttribute("data-prop");
+  for (const attr of Array.from(el.attributes)) {
+    if (attr.name.startsWith("data-prop-")) {
+      el.removeAttribute(attr.name);
+    }
+  }
+}
+function replaceCustomElements(root) {
+  for (const tag of CC_CUSTOM_ELEMENTS) {
+    const els = root.querySelectorAll(tag);
+    for (const el of els) {
+      let replacementTag = "div";
+      if (tag === "EDITABLE-TEXT") {
+        const dataType = el.getAttribute("data-type");
+        const isBlockType = dataType === "block" || dataType === "text";
+        const hasBlockChildren = el.querySelector(
+          "address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul"
+        ) !== null;
+        replacementTag = isBlockType || hasBlockChildren ? "div" : "span";
+      }
+      const replacement = document.createElement(replacementTag);
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
+        if (attr.name === "data-editable") continue;
+        replacement.setAttribute(attr.name, attr.value);
+      }
+      replacement.innerHTML = el.innerHTML;
+      el.replaceWith(replacement);
+    }
+  }
+}
+function trackElements(scope) {
   tracked.length = 0;
-  const elements = document.querySelectorAll(
+  const elements = scope.querySelectorAll(
     "[data-rosey]:not([data-rcc-ignore])"
   );
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
-    tracked.push({
-      element: el,
-      roseyKey,
-      originalContent: el.innerHTML
-    });
+    tracked.push({ element: el, roseyKey, originalContent: el.innerHTML });
   }
   log(`Tracked ${tracked.length} translatable elements`);
 }
-function dehydrateCCEditors() {
-  for (const t of tracked) {
-    if (t.element.tagName.startsWith("EDITABLE-")) {
-      const span = document.createElement("span");
-      for (const attr of Array.from(t.element.attributes)) {
-        if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
-        span.setAttribute(attr.name, attr.value);
-      }
-      span.setAttribute("data-cloudcannon-ignore", "");
-      span.innerHTML = t.element.innerHTML;
-      t.element.replaceWith(span);
-      t.originalElement = t.element;
-      t.element = span;
-      log(`[${t.roseyKey}] Replaced <${t.originalElement.tagName.toLowerCase()}> with <span>`);
-    } else if (t.element.hasAttribute("data-editable")) {
-      const parent = t.element.parentNode;
-      const next = t.element.nextSibling;
-      t.element.remove();
-      t.element.setAttribute("data-cloudcannon-ignore", "");
-      if (next) parent?.insertBefore(t.element, next);
-      else parent?.appendChild(t.element);
-      log(`[${t.roseyKey}] Dehydrated CC editor, added data-cloudcannon-ignore`);
-    }
-  }
-}
-function neutralizeEditableWrappers() {
-  const neutralized = /* @__PURE__ */ new Set();
-  for (const t of tracked) {
-    let current = t.element.parentElement;
-    let outermost = null;
-    while (current) {
-      const tag = current.tagName;
-      if (tag === "EDITABLE-ARRAY-ITEM" || tag === "EDITABLE-COMPONENT") {
-        outermost = current;
-      }
-      current = current.parentElement;
-    }
-    if (outermost && !neutralized.has(outermost)) {
-      neutralized.add(outermost);
-      const div = document.createElement("div");
-      for (const attr of Array.from(outermost.attributes)) {
-        div.setAttribute(attr.name, attr.value);
-      }
-      div.setAttribute("data-cloudcannon-ignore", "");
-      while (outermost.firstChild) div.appendChild(outermost.firstChild);
-      outermost.replaceWith(div);
-      dehydratedWrappers.push({ original: outermost, replacement: div });
-      log(`Phase 0: Replaced <${outermost.tagName.toLowerCase()}> with <div>`);
-    }
-  }
-}
 function teardownEditors() {
-  log(`Tearing down ${tracked.length} editors`);
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
   activeDataset = null;
   activeDatasetListener = null;
-  for (const t of tracked) {
-    log(`[${t.roseyKey}] Teardown \u2014 restoring originalContent`);
-    t.editor = void 0;
-    if (t.originalElement) {
-      t.originalElement.innerHTML = t.originalContent;
-      const editable = t.originalElement.editable;
-      if (editable) editable.editor = void 0;
-      t.element.replaceWith(t.originalElement);
-      t.element = t.originalElement;
-      t.originalElement = void 0;
-    } else {
-      t.element.innerHTML = t.originalContent;
-    }
-    if (t.element.hasAttribute("data-cloudcannon-ignore")) {
-      t.element.removeAttribute("data-cloudcannon-ignore");
-      const editable = t.element.editable;
-      if (editable) editable.editor = void 0;
-      const parent = t.element.parentNode;
-      const next = t.element.nextSibling;
-      if (parent) {
-        t.element.remove();
-        if (next) parent.insertBefore(t.element, next);
-        else parent.appendChild(t.element);
-      }
-    }
+  for (const t of tracked) t.editor = void 0;
+  tracked.length = 0;
+  if (translationContainer && originalContainer) {
+    translationContainer.replaceWith(originalContainer);
+    log("Restored original container");
   }
-  for (const { original, replacement } of dehydratedWrappers) {
-    while (replacement.firstChild) original.appendChild(replacement.firstChild);
-    replacement.replaceWith(original);
-    log(`Phase 0 restore: <${original.tagName.toLowerCase()}> re-inserted`);
-  }
-  dehydratedWrappers.length = 0;
-  if (disconnectedMainEditable) {
-    disconnectedMainEditable.connect();
-    log("Reconnected <main> EditableArray");
-    disconnectedMainEditable = null;
-  }
+  translationContainer = null;
+  originalContainer = null;
 }
 async function resolveFile(dataset) {
   const result = await dataset.items();
@@ -182,16 +135,18 @@ async function switchLocale(locale) {
     log("Switched to Original");
     return;
   }
-  const localeContainer = document.querySelector("main[data-locales]");
-  const editableArrayEl = localeContainer?.querySelector("[data-editable='array']") ?? (localeContainer instanceof HTMLElement && localeContainer.hasAttribute("data-editable") ? localeContainer : null);
-  const mainEditable = editableArrayEl?.editable;
-  if (mainEditable) {
-    await mainEditable.disconnect();
-    disconnectedMainEditable = mainEditable;
-    log("Disconnected EditableArray on", editableArrayEl?.tagName);
+  const container = document.querySelector("main[data-locales]");
+  if (!container) {
+    warn("No locale container found");
+    return;
   }
-  dehydrateCCEditors();
-  neutralizeEditableWrappers();
+  originalContainer = container;
+  const clone = container.cloneNode(true);
+  cleanClone(clone);
+  container.replaceWith(clone);
+  translationContainer = clone;
+  log("Swapped in clean translation container");
+  trackElements(clone);
   const dataset = api.dataset(`locales_${locale}`);
   const file = await resolveFile(dataset);
   if (!file) {
@@ -201,29 +156,13 @@ async function switchLocale(locale) {
   let setupComplete = false;
   for (const t of tracked) {
     if (myGeneration !== switchGeneration) {
-      warn(`Generation changed during setup (${myGeneration} \u2192 ${switchGeneration}), aborting "${locale}" switch`);
+      log(`Generation changed, aborting "${locale}" setup`);
       return;
     }
     try {
       const data = await file.data.get({ slug: t.roseyKey });
       const value = data?.value ?? data?.original ?? t.originalContent;
       t.element.innerHTML = value;
-      if (!t.element.isConnected) {
-        const freshEl = findElementByRoseyKey(t.roseyKey);
-        if (freshEl) {
-          const freshEditable = freshEl.editable;
-          if (freshEditable) await freshEditable.disconnect();
-          freshEl.removeAttribute("data-prop");
-          for (const attr of Array.from(freshEl.attributes)) {
-            if (attr.name.startsWith("data-prop-")) freshEl.removeAttribute(attr.name);
-          }
-          t.element = freshEl;
-          t.element.innerHTML = value;
-          log(`[${t.roseyKey}] Re-queried detached element`);
-        } else {
-          warn(`[${t.roseyKey}] Element detached and no live replacement found`);
-        }
-      }
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {
@@ -239,17 +178,13 @@ async function switchLocale(locale) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
   }
-  if (myGeneration !== switchGeneration) {
-    warn(`Generation changed after setup (${myGeneration} \u2192 ${switchGeneration}), not activating "${locale}"`);
-    return;
-  }
+  if (myGeneration !== switchGeneration) return;
   await Promise.resolve();
   setupComplete = true;
-  log(`All editors created, setup complete for "${locale}" (generation ${myGeneration})`);
+  log(`Setup complete for "${locale}" (generation ${myGeneration})`);
   activeDataset = dataset;
   activeDatasetListener = async () => {
     if (myGeneration !== switchGeneration) return;
-    log(`Dataset change event fired for locale "${locale}"`);
     const freshFile = await resolveFile(dataset);
     if (!freshFile) return;
     for (const t of tracked) {
@@ -257,7 +192,6 @@ async function switchLocale(locale) {
       try {
         const data = await freshFile.data.get({ slug: t.roseyKey });
         const value = data?.value ?? data?.original ?? t.originalContent;
-        log(`[${t.roseyKey}] Change listener setContent:`, JSON.stringify(value));
         t.editor.setContent(value);
       } catch {
       }
@@ -340,13 +274,15 @@ function init() {
   if (!localesAttr) return;
   const locales = localesAttr.split(",").map((s) => s.trim()).filter(Boolean);
   if (locales.length === 0) return;
-  trackElements();
-  if (tracked.length === 0) {
+  const elementCount = main.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
+  ).length;
+  if (elementCount === 0) {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
   injectSwitcher(locales);
-  log(`Ready \u2014 ${locales.length} locales, ${tracked.length} elements`);
+  log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }
 if (window.inEditorMode && window.CloudCannonAPI) {
   init();
