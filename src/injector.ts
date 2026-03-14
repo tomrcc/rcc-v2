@@ -268,6 +268,9 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 			t.element.innerHTML = value;
 
+			const dataType = t.element.dataset.type;
+			const isRichText = dataType === "block" || dataType === "text";
+
 			const editor = await api!.createTextEditableRegion(
 				t.element,
 				(content) => {
@@ -276,6 +279,10 @@ async function switchLocale(locale: string | null): Promise<void> {
 					if (content == null) return;
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+				},
+				{
+					elementType: dataType,
+					...(isRichText && { inputConfig: { type: "markdown" } }),
 				},
 			);
 			t.editor = editor;

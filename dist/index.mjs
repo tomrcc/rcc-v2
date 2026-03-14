@@ -162,6 +162,8 @@ async function switchLocale(locale) {
       const data = await file.data.get({ slug: t.roseyKey });
       const value = data?.value ?? data?.original ?? t.originalContent;
       t.element.innerHTML = value;
+      const dataType = t.element.dataset.type;
+      const isRichText = dataType === "block" || dataType === "text";
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {
@@ -170,6 +172,10 @@ async function switchLocale(locale) {
           if (content == null) return;
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+        },
+        {
+          elementType: dataType,
+          ...isRichText && { inputConfig: { type: "markdown" } }
         }
       );
       t.editor = editor;
