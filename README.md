@@ -130,6 +130,43 @@ data_config:
 
 The key format `locales_{code}` must match the locale codes in your `data-locales` attribute.
 
+## Stale Translation Detection
+
+When a source text changes after a translation was last reviewed, the connector highlights out-of-date translations in the Visual Editor.
+
+### How it works
+
+Each locale entry stores three fields:
+
+```json
+{
+  "hero:title": {
+    "original": "Welcome to Sendit",
+    "value": "Bienvenue chez Sendit",
+    "_base_original": "Welcome to Sendit — Email Made Easy"
+  }
+}
+```
+
+- `original` — the source text at the time the translation was last acknowledged
+- `value` — the translation
+- `_base_original` — the current source text from `base.json`, updated by `write-locales` on every run
+
+When `original` and `_base_original` differ, the translation is flagged as stale in the Visual Editor:
+
+- An **amber dashed border** appears around the element
+- A **warning badge** in the corner shows a tooltip with the old and new source text
+- An **amber count badge** on the locale FAB shows how many translations are out of date
+
+### Resolving stale translations
+
+There are two ways to clear the stale indicator:
+
+1. **Edit the translation** — the `original` field is automatically updated to match `_base_original` when you make any edit
+2. **Click "Mark as reviewed"** in the stale tooltip — updates `original` without changing the translation, for cases where the existing translation is still correct
+
+After either action, the indicator is removed and the mismatch won't appear again until the source text changes once more.
+
 ### Postbuild script
 
 Add a `.cloudcannon/postbuild` script to generate locale files and build the translated site after each CloudCannon build:

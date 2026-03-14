@@ -45,6 +45,20 @@ When the user picks a locale, the entire `<main data-locales>` container is repl
 
 The clone is processed while detached from the DOM, so there are no MutationObserver callbacks, no `connectedCallback` firings, and no race conditions during cleanup.
 
+## Stale Translation Detection
+
+Locale entries store three fields: `original` (the source text when the translation was last acknowledged), `value` (the translation), and `_base_original` (the current source text from `base.json`, updated by `write-locales` on every run). When `original !== _base_original`, the translation is flagged as stale.
+
+In the Visual Editor:
+- Stale elements get an amber dashed border and a warning badge showing old vs new source text
+- The FAB shows an amber count badge with the number of stale translations
+- Staleness is resolved by either editing the translation (auto-resolves) or clicking "Mark as reviewed" in the tooltip
+- Both paths update the locale's `original` via `file.data.set({ slug: "key.original", value: baseOriginal })`
+
+At build time:
+- `write-locales` always sets `_base_original` to the current `base.json` original for every entry (new and existing)
+- `write-locales` never modifies `original` or `value` on existing entries — only the editor does
+
 ## Known Constraints
 
 - **Locale values must be HTML**: Rosey originals are always HTML (the SSG has already converted Markdown to HTML at build time). Locale `.value` fields must also be HTML because Rosey substitutes them directly into the built HTML output. To ensure this, rcc-v2 overrides `inputConfig.type` to `"html"` for all editors, even when the original field is configured as `type: markdown`. This forces ProseMirror to serialize `onChange` output as HTML rather than raw Markdown — avoiding the need to bundle a Markdown parser and eliminating parser-mismatch risk with the user's SSG.

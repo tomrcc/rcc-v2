@@ -21,6 +21,7 @@ interface BaseJson {
 interface LocaleEntry {
 	original: string;
 	value: string;
+	_base_original?: string;
 }
 
 function sortKeys(
@@ -90,8 +91,11 @@ export async function writeLocales(
 				existing[key] = {
 					original: entry.original,
 					value: entry.original,
+					_base_original: entry.original,
 				};
 				addedCount++;
+			} else {
+				existing[key]._base_original = entry.original;
 			}
 		}
 

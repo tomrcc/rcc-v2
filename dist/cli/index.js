@@ -72,9 +72,12 @@ async function writeLocales(options = {}) {
       if (!existing[key]) {
         existing[key] = {
           original: entry.original,
-          value: entry.original
+          value: entry.original,
+          _base_original: entry.original
         };
         addedCount++;
+      } else {
+        existing[key]._base_original = entry.original;
       }
     }
     await import_node_fs.default.promises.writeFile(

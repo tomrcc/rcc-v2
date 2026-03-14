@@ -99,7 +99,15 @@ function trackElements(scope) {
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
-    tracked.push({ element: el, roseyKey, originalContent: el.innerHTML, focused: false });
+    tracked.push({
+      element: el,
+      roseyKey,
+      originalContent: el.innerHTML,
+      focused: false,
+      stale: false,
+      baseOriginal: null,
+      localeOriginal: null
+    });
   }
   log(`Tracked ${tracked.length} translatable elements`);
 }
@@ -135,6 +143,180 @@ async function prescanOriginals(container) {
   }
   log(`Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`);
 }
+var STALE_AMBER = "#f59e0b";
+var STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
+var WARNING_ICON = [
+  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"',
+  ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
+  '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>',
+  '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  "</svg>"
+].join("");
+var staleCount = 0;
+function updateStaleBadge() {
+  const badge = document.getElementById("rcc-stale-badge");
+  if (!badge) return;
+  if (staleCount > 0) {
+    badge.textContent = String(staleCount);
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+function recountStale() {
+  staleCount = tracked.filter((t) => t.stale).length;
+  updateStaleBadge();
+}
+function attachStaleIndicator(t, file) {
+  t.element.style.outline = `2px dashed ${STALE_AMBER}`;
+  t.element.style.outlineOffset = "2px";
+  t.element.style.backgroundColor = STALE_AMBER_BG;
+  t.element.style.position = "relative";
+  const indicator = document.createElement("div");
+  indicator.className = "rcc-stale-indicator";
+  Object.assign(indicator.style, {
+    position: "absolute",
+    top: "-10px",
+    right: "-10px",
+    width: "20px",
+    height: "20px",
+    borderRadius: "50%",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    zIndex: "10",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+    fontFamily: "system-ui, sans-serif"
+  });
+  indicator.innerHTML = WARNING_ICON;
+  const tooltip = document.createElement("div");
+  tooltip.className = "rcc-stale-tooltip";
+  Object.assign(tooltip.style, {
+    position: "absolute",
+    bottom: "calc(100% + 8px)",
+    right: "0",
+    background: "#ffffff",
+    border: `1px solid ${STALE_AMBER}`,
+    borderRadius: "8px",
+    padding: "10px 12px",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: "12px",
+    lineHeight: "1.5",
+    color: "#1e293b",
+    minWidth: "240px",
+    maxWidth: "360px",
+    display: "none",
+    zIndex: "11",
+    whiteSpace: "normal"
+  });
+  const heading = document.createElement("div");
+  Object.assign(heading.style, {
+    fontWeight: "600",
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: STALE_AMBER,
+    marginBottom: "6px"
+  });
+  heading.textContent = "Source text changed";
+  tooltip.appendChild(heading);
+  const oldLabel = document.createElement("div");
+  Object.assign(oldLabel.style, { fontSize: "10px", color: "#9ca3af", marginBottom: "2px" });
+  oldLabel.textContent = "Previous:";
+  tooltip.appendChild(oldLabel);
+  const oldText = document.createElement("div");
+  Object.assign(oldText.style, {
+    textDecoration: "line-through",
+    color: "#9ca3af",
+    marginBottom: "8px",
+    wordBreak: "break-word"
+  });
+  tooltip.appendChild(oldText);
+  const newLabel = document.createElement("div");
+  Object.assign(newLabel.style, { fontSize: "10px", color: "#9ca3af", marginBottom: "2px" });
+  newLabel.textContent = "Current:";
+  tooltip.appendChild(newLabel);
+  const newText = document.createElement("div");
+  Object.assign(newText.style, { color: "#1e293b", marginBottom: "10px", wordBreak: "break-word" });
+  tooltip.appendChild(newText);
+  const reviewBtn = document.createElement("button");
+  Object.assign(reviewBtn.style, {
+    display: "block",
+    width: "100%",
+    padding: "6px 10px",
+    border: "none",
+    borderRadius: "5px",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "background 0.15s"
+  });
+  reviewBtn.textContent = "Mark as reviewed";
+  reviewBtn.addEventListener("mouseenter", () => {
+    reviewBtn.style.background = "#d97706";
+  });
+  reviewBtn.addEventListener("mouseleave", () => {
+    reviewBtn.style.background = STALE_AMBER;
+  });
+  reviewBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resolveStale(t, file);
+  });
+  tooltip.appendChild(reviewBtn);
+  indicator.appendChild(tooltip);
+  indicator.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = tooltip.style.display === "block";
+    closeAllStaleTooltips();
+    if (!isVisible) {
+      const data = getStaleDisplayData(t);
+      oldText.innerHTML = data.oldOriginal;
+      newText.innerHTML = data.newOriginal;
+      tooltip.style.display = "block";
+    }
+  });
+  t.element.appendChild(indicator);
+  t.staleIndicator = indicator;
+}
+function getStaleDisplayData(t) {
+  const stripHtml = (html) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent ?? html;
+  };
+  return {
+    oldOriginal: stripHtml(t.localeOriginal ?? ""),
+    newOriginal: stripHtml(t.baseOriginal ?? "")
+  };
+}
+function closeAllStaleTooltips() {
+  for (const el of document.querySelectorAll(".rcc-stale-tooltip")) {
+    el.style.display = "none";
+  }
+}
+function removeStaleIndicator(t) {
+  t.stale = false;
+  t.element.style.outline = "";
+  t.element.style.outlineOffset = "";
+  t.element.style.backgroundColor = "";
+  if (t.staleIndicator) {
+    t.staleIndicator.remove();
+    t.staleIndicator = void 0;
+  }
+  recountStale();
+}
+function resolveStale(t, file) {
+  if (!t.stale || !t.baseOriginal) return;
+  log(`[${t.roseyKey}] Resolving stale \u2014 updating .original`);
+  file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
+  removeStaleIndicator(t);
+}
 function teardownEditors() {
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
@@ -143,6 +325,8 @@ function teardownEditors() {
   activeDatasetListener = null;
   for (const t of tracked) t.editor = void 0;
   tracked.length = 0;
+  staleCount = 0;
+  updateStaleBadge();
   if (translationContainer && originalContainer) {
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
@@ -186,6 +370,7 @@ async function switchLocale(locale) {
     return;
   }
   let setupComplete = false;
+  staleCount = 0;
   let editorsCreated = 0;
   for (const t of tracked) {
     if (myGeneration !== switchGeneration) {
@@ -195,7 +380,15 @@ async function switchLocale(locale) {
     try {
       const data = await file.data.get({ slug: t.roseyKey });
       const value = data?.value ?? data?.original ?? t.originalContent;
+      const isStale = data?._base_original != null && data?.original != null && data._base_original !== data.original;
+      t.stale = isStale;
+      t.baseOriginal = data?._base_original ?? null;
+      t.localeOriginal = data?.original ?? null;
       t.element.innerHTML = value;
+      if (isStale) {
+        attachStaleIndicator(t, file);
+        staleCount++;
+      }
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : void 0;
       const editor = await api.createTextEditableRegion(
@@ -206,6 +399,9 @@ async function switchLocale(locale) {
           if (content == null) return;
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+          if (t.stale && t.baseOriginal) {
+            resolveStale(t, file);
+          }
         },
         {
           elementType: t.element.dataset.type,
@@ -225,7 +421,8 @@ async function switchLocale(locale) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
   }
-  log(`Created ${editorsCreated} editors`);
+  updateStaleBadge();
+  log(`Created ${editorsCreated} editors (${staleCount} stale)`);
   if (myGeneration !== switchGeneration) return;
   await Promise.resolve();
   setupComplete = true;
@@ -346,6 +543,27 @@ function injectSwitcher(locales) {
     pointerEvents: "none"
   });
   fab.appendChild(badge);
+  const staleBadge = document.createElement("div");
+  staleBadge.id = "rcc-stale-badge";
+  Object.assign(staleBadge.style, {
+    position: "absolute",
+    bottom: "-4px",
+    right: "-4px",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    fontSize: "9px",
+    fontWeight: "700",
+    lineHeight: "1",
+    padding: "3px 5px",
+    borderRadius: "8px",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "16px",
+    textAlign: "center",
+    pointerEvents: "none"
+  });
+  fab.appendChild(staleBadge);
   const popover = document.createElement("div");
   popover.id = "rcc-locale-popover";
   Object.assign(popover.style, {
@@ -508,6 +726,11 @@ function injectSwitcher(locales) {
     if (!popoverOpen) return;
     if (fab.contains(e.target) || popover.contains(e.target)) return;
     closePopover();
+  });
+  document.addEventListener("pointerdown", (e) => {
+    const target = e.target;
+    if (target.closest(".rcc-stale-indicator")) return;
+    closeAllStaleTooltips();
   });
   document.addEventListener("keydown", (e) => {
     if (popoverOpen && e.key === "Escape") closePopover();
