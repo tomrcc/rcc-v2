@@ -321,6 +321,9 @@ async function switchLocale(locale: string | null): Promise<void> {
 			t.element.innerHTML = value;
 
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
+			const rccInputConfig = inputConfig
+				? { ...inputConfig, type: "html" }
+				: undefined;
 
 			const editor = await api!.createTextEditableRegion(
 				t.element,
@@ -333,7 +336,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 				},
 				{
 					elementType: t.element.dataset.type,
-					...(inputConfig != null && { inputConfig }),
+					...(rccInputConfig != null && { inputConfig: rccInputConfig }),
 				},
 			);
 			t.editor = editor;
