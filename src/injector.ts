@@ -281,7 +281,15 @@ function attachStaleIndicator(
 	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
 	t.element.style.outlineOffset = "2px";
 	t.element.style.backgroundColor = STALE_AMBER_BG;
-	t.element.style.position = "relative";
+
+	// Wrap the element so the indicator lives outside ProseMirror's control.
+	// ProseMirror takes over t.element's inner DOM, so children appended
+	// directly would be destroyed. The wrapper is invisible to layout.
+	const wrapper = document.createElement("div");
+	wrapper.className = "rcc-stale-wrapper";
+	Object.assign(wrapper.style, { position: "relative" });
+	t.element.replaceWith(wrapper);
+	wrapper.appendChild(t.element);
 
 	const indicator = document.createElement("div");
 	indicator.className = "rcc-stale-indicator";
@@ -398,8 +406,8 @@ function attachStaleIndicator(
 		}
 	});
 
-	t.element.appendChild(indicator);
-	t.staleIndicator = indicator;
+	wrapper.appendChild(indicator);
+	t.staleIndicator = wrapper;
 }
 
 function getStaleDisplayData(t: TrackedElement): { oldOriginal: string; newOriginal: string } {
@@ -426,7 +434,8 @@ function removeStaleIndicator(t: TrackedElement): void {
 	t.element.style.outlineOffset = "";
 	t.element.style.backgroundColor = "";
 	if (t.staleIndicator) {
-		t.staleIndicator.remove();
+		// Unwrap: move element out of wrapper, then remove the wrapper shell
+		t.staleIndicator.replaceWith(t.element);
 		t.staleIndicator = undefined;
 	}
 	recountStale();
@@ -1000,9 +1009,9 @@ async function init(): Promise<void> {
 		return;
 	}
 
-	await prescanOriginals(main);
-
 	injectSwitcher(locales);
+
+	await prescanOriginals(main);
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
 }
 

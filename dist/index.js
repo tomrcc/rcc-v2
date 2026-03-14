@@ -171,7 +171,11 @@ function attachStaleIndicator(t, file) {
   t.element.style.outline = `2px dashed ${STALE_AMBER}`;
   t.element.style.outlineOffset = "2px";
   t.element.style.backgroundColor = STALE_AMBER_BG;
-  t.element.style.position = "relative";
+  const wrapper = document.createElement("div");
+  wrapper.className = "rcc-stale-wrapper";
+  Object.assign(wrapper.style, { position: "relative" });
+  t.element.replaceWith(wrapper);
+  wrapper.appendChild(t.element);
   const indicator = document.createElement("div");
   indicator.className = "rcc-stale-indicator";
   Object.assign(indicator.style, {
@@ -281,8 +285,8 @@ function attachStaleIndicator(t, file) {
       tooltip.style.display = "block";
     }
   });
-  t.element.appendChild(indicator);
-  t.staleIndicator = indicator;
+  wrapper.appendChild(indicator);
+  t.staleIndicator = wrapper;
 }
 function getStaleDisplayData(t) {
   const stripHtml = (html) => {
@@ -306,7 +310,7 @@ function removeStaleIndicator(t) {
   t.element.style.outlineOffset = "";
   t.element.style.backgroundColor = "";
   if (t.staleIndicator) {
-    t.staleIndicator.remove();
+    t.staleIndicator.replaceWith(t.element);
     t.staleIndicator = void 0;
   }
   recountStale();
@@ -759,8 +763,8 @@ async function init() {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
-  await prescanOriginals(main);
   injectSwitcher(locales);
+  await prescanOriginals(main);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }
 if (window.inEditorMode && window.CloudCannonAPI) {
