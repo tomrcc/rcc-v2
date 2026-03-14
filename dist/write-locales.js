@@ -72,19 +72,27 @@ async function writeLocales(options = {}) {
       existing = JSON.parse(raw);
     } catch {
     }
+    const unusedKeys = Object.keys(existing).filter((key) => !(key in keys));
+    for (const key of unusedKeys) {
+      delete existing[key];
+    }
+    let addedCount = 0;
     for (const [key, entry] of Object.entries(keys)) {
       if (!existing[key]) {
         existing[key] = {
           original: entry.original,
           value: entry.original
         };
+        addedCount++;
       }
     }
     await import_node_fs.default.promises.writeFile(
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
-    console.log(`RCC: Wrote ${Object.keys(existing).length} keys to ${localePath}`);
+    console.log(
+      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
+    );
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

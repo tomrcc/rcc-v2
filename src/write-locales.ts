@@ -79,12 +79,19 @@ export async function writeLocales(
 			// File doesn't exist yet — start fresh
 		}
 
+		const unusedKeys = Object.keys(existing).filter((key) => !(key in keys));
+		for (const key of unusedKeys) {
+			delete existing[key];
+		}
+
+		let addedCount = 0;
 		for (const [key, entry] of Object.entries(keys)) {
 			if (!existing[key]) {
 				existing[key] = {
 					original: entry.original,
 					value: entry.original,
 				};
+				addedCount++;
 			}
 		}
 
@@ -92,6 +99,8 @@ export async function writeLocales(
 			localePath,
 			JSON.stringify(sortKeys(existing), null, 2),
 		);
-		console.log(`RCC: Wrote ${Object.keys(existing).length} keys to ${localePath}`);
+		console.log(
+			`RCC: Wrote ${localePath} — ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`,
+		);
 	}
 }
