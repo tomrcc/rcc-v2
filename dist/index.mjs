@@ -481,7 +481,7 @@ function injectSwitcher(locales) {
   document.body.appendChild(popover);
   updateButtonStates();
 }
-function init() {
+async function init() {
   const ccWindow = window;
   if (!ccWindow.CloudCannonAPI) {
     warn("CloudCannonAPI not available");
@@ -501,6 +501,67 @@ function init() {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
+  const CONFIG_TIMEOUT = 500;
+  const diagElements = main.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
+  );
+  const diagResults = [];
+  for (const el of diagElements) {
+    const roseyKey = resolveRoseyKey(el);
+    if (!roseyKey) continue;
+    const prop = el.dataset.prop;
+    const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
+    let inputConfig = "(skipped)";
+    let timedOut = false;
+    if (prop && isEditable) {
+      try {
+        const configPromise = new Promise((resolve) => {
+          el.dispatchEvent(
+            new CustomEvent("cloudcannon-api", {
+              bubbles: true,
+              detail: { action: "get-input-config", source: prop, callback: resolve }
+            })
+          );
+        });
+        const timeoutPromise = new Promise(
+          (resolve) => setTimeout(() => resolve(null), CONFIG_TIMEOUT)
+        );
+        const result = await Promise.race([configPromise, timeoutPromise]);
+        if (result === null) {
+          inputConfig = "(timeout)";
+          timedOut = true;
+        } else {
+          inputConfig = result;
+        }
+      } catch (err) {
+        inputConfig = `(error: ${err})`;
+      }
+    }
+    diagResults.push({
+      roseyKey,
+      dataProp: prop,
+      dataType: el.dataset.type,
+      tagName: el.tagName,
+      dataEditable: el.dataset.editable,
+      hasBlockChildren: el.querySelector(BLOCK_LEVEL_SELECTOR) !== null,
+      inputConfig,
+      timedOut
+    });
+  }
+  console.group("[rcc-v2 DIAG] getInputConfig results");
+  console.table(
+    diagResults.map((r) => ({
+      roseyKey: r.roseyKey,
+      prop: r.dataProp ?? "-",
+      tag: r.tagName,
+      editable: r.dataEditable ?? "-",
+      "data-type": r.dataType ?? "-",
+      blockChildren: r.hasBlockChildren,
+      timedOut: r.timedOut,
+      configJSON: typeof r.inputConfig === "string" ? r.inputConfig : JSON.stringify(r.inputConfig)
+    }))
+  );
+  console.groupEnd();
   injectSwitcher(locales);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }
