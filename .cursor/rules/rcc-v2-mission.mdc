@@ -53,6 +53,7 @@ The clone is processed while detached from the DOM, so there are no MutationObse
 - **`createTextEditableRegion` does not use existing innerHTML**: The editor starts empty; you must call `editor.setContent(value)` after creation to populate it (matching CC's own `EditableText.mountEditor()` pattern).
 - **Slug path separator**: CloudCannon's data API uses `.` as a path separator. Colons in Rosey keys are literal characters. To target the `value` field inside a `{ original, value }` locale entry, use slug `roseyKey.value`.
 - **Skip `setContent` on focused editors**: When a data `change` event fires, `setContent` must be skipped for any editor the user is actively typing in — otherwise ProseMirror resets the cursor and steals focus. This matches CC's own `EditableText.shouldUpdate()` pattern which checks `!this.focused`.
+- **Console logging**: Verbose logging (gated on `data-rcc-verbose`) uses summary counts rather than per-element lines to keep the console readable. The dataset change listener logs one summary line per event, not one per tracked element.
 - **`<editable-text>` replacement tag**: When stripping CC custom elements from the clone, `<editable-text>` is replaced with `<span>` (inline) by default, but upgrades to `<div>` if `data-type="block"|"text"` is set or the element contains block-level children. This prevents invalid HTML nesting.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.

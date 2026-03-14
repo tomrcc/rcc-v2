@@ -152,6 +152,7 @@ async function switchLocale(locale) {
     return;
   }
   let setupComplete = false;
+  let editorsCreated = 0;
   for (const t of tracked) {
     if (myGeneration !== switchGeneration) {
       log(`Generation changed, aborting "${locale}" setup`);
@@ -167,7 +168,7 @@ async function switchLocale(locale) {
           if (myGeneration !== switchGeneration) return;
           if (!setupComplete) return;
           if (content == null) return;
-          log(`[${t.roseyKey}] onChange \u2192 set(".value", ${JSON.stringify(content).slice(0, 80)})`);
+          log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
         }
       );
@@ -175,17 +176,16 @@ async function switchLocale(locale) {
       editor.setContent(value);
       t.element.addEventListener("focus", () => {
         t.focused = true;
-        log(`[${t.roseyKey}] Focused`);
       });
       t.element.addEventListener("blur", () => {
         t.focused = false;
-        log(`[${t.roseyKey}] Blurred`);
       });
-      log(`[${t.roseyKey}] Editor created`);
+      editorsCreated++;
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
     }
   }
+  log(`Created ${editorsCreated} editors`);
   if (myGeneration !== switchGeneration) return;
   await Promise.resolve();
   setupComplete = true;
@@ -193,23 +193,25 @@ async function switchLocale(locale) {
   activeDataset = dataset;
   activeDatasetListener = async () => {
     if (myGeneration !== switchGeneration) return;
-    log("Dataset change event received");
     const freshFile = await resolveFile(dataset);
     if (!freshFile) return;
+    let updated = 0;
+    let skipped = 0;
     for (const t of tracked) {
       if (!t.editor) continue;
       if (t.focused) {
-        log(`[${t.roseyKey}] Skipping setContent (focused)`);
+        skipped++;
         continue;
       }
       try {
         const data = await freshFile.data.get({ slug: t.roseyKey });
         const value = data?.value ?? data?.original ?? t.originalContent;
-        log(`[${t.roseyKey}] setContent from change event`);
         t.editor.setContent(value);
+        updated++;
       } catch {
       }
     }
+    log(`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`);
   };
   dataset.addEventListener("change", activeDatasetListener);
   log(`Switched to ${locale}`);
