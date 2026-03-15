@@ -29,7 +29,6 @@ interface TrackedElement {
 	stale: boolean;
 	baseOriginal: string | null;
 	localeOriginal: string | null;
-	staleIndicator?: HTMLElement;
 }
 
 interface CCFile {
@@ -67,6 +66,7 @@ let translationContainer: HTMLElement | null = null;
 
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
+let activeFile: CCFile | null = null;
 
 /**
  * Guards against stale ProseMirror onChange fires. createTextEditableRegion
@@ -248,14 +248,6 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 const STALE_AMBER = "#f59e0b";
 const STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
 
-const WARNING_ICON = [
-	'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"',
-	' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
-	'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>',
-	'<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
-	"</svg>",
-].join("");
-
 let staleCount = 0;
 
 function updateStaleBadge(): void {
@@ -272,189 +264,95 @@ function updateStaleBadge(): void {
 function recountStale(): void {
 	staleCount = tracked.filter((t) => t.stale).length;
 	updateStaleBadge();
+	updateStaleList();
 }
 
-/**
- * Position a fixed-position indicator at the top-right corner of its
- * target element. Called once on attach and again on scroll/resize.
- */
-function positionIndicator(indicator: HTMLElement, element: HTMLElement): void {
-	const rect = element.getBoundingClientRect();
-	indicator.style.top = `${rect.top - 6}px`;
-	indicator.style.left = `${rect.right - 6}px`;
+function truncateText(text: string, max: number): string {
+	return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
-/** Single scroll/resize handler that repositions all active indicators. */
-function repositionAllIndicators(): void {
-	for (const t of tracked) {
-		if (t.staleIndicator) positionIndicator(t.staleIndicator, t.element);
+function updateStaleList(): void {
+	const container = document.getElementById("rcc-stale-list");
+	if (!container) return;
+
+	const staleItems = tracked.filter((t) => t.stale);
+	if (staleItems.length === 0) {
+		container.style.display = "none";
+		return;
 	}
+
+	container.style.display = "block";
+
+	const countEl = container.querySelector<HTMLElement>("[data-rcc-stale-count]");
+	if (countEl) countEl.textContent = `${staleItems.length} out of date`;
+
+	const list = container.querySelector<HTMLElement>("[data-rcc-stale-items]");
+	if (!list) return;
+	list.innerHTML = "";
+
+	for (const t of staleItems) {
+		const textPreview = truncateText(
+			t.element.textContent?.trim() || t.roseyKey,
+			50,
+		);
+
+		const item = document.createElement("button");
+		Object.assign(item.style, {
+			display: "flex",
+			flexDirection: "column",
+			gap: "1px",
+			width: "100%",
+			padding: "6px 8px",
+			border: "none",
+			borderRadius: "5px",
+			cursor: "pointer",
+			fontSize: "12px",
+			textAlign: "left",
+			background: "transparent",
+			transition: "background 0.15s",
+			color: "#1e293b",
+			fontFamily: "system-ui, sans-serif",
+		});
+
+		const preview = document.createElement("span");
+		Object.assign(preview.style, {
+			overflow: "hidden",
+			textOverflow: "ellipsis",
+			whiteSpace: "nowrap",
+		});
+		preview.textContent = textPreview;
+
+		const key = document.createElement("span");
+		Object.assign(key.style, { fontSize: "10px", color: "#9ca3af" });
+		key.textContent = t.roseyKey;
+
+		item.appendChild(preview);
+		item.appendChild(key);
+
+		item.addEventListener("mouseenter", () => { item.style.background = "#fef3c7"; });
+		item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+		item.addEventListener("click", () => {
+			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
+		});
+
+		list.appendChild(item);
+	}
+
+	const resolveBtn = container.querySelector<HTMLElement>("[data-rcc-resolve-all]");
+	if (resolveBtn) resolveBtn.style.display = staleItems.length > 0 ? "block" : "none";
 }
 
-let staleRepositionBound = false;
-
-function ensureRepositionListeners(): void {
-	if (staleRepositionBound) return;
-	staleRepositionBound = true;
-	window.addEventListener("scroll", repositionAllIndicators, true);
-	window.addEventListener("resize", repositionAllIndicators);
-}
-
-function removeRepositionListeners(): void {
-	if (!staleRepositionBound) return;
-	staleRepositionBound = false;
-	window.removeEventListener("scroll", repositionAllIndicators, true);
-	window.removeEventListener("resize", repositionAllIndicators);
-}
-
-function attachStaleIndicator(
-	t: TrackedElement,
-	file: CCFile,
-): void {
+function markStaleElement(t: TrackedElement): void {
 	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
 	t.element.style.outlineOffset = "2px";
 	t.element.style.backgroundColor = STALE_AMBER_BG;
-
-	// Fixed-position overlay on document.body — zero layout impact, outside
-	// ProseMirror's control. Repositioned via scroll/resize listeners.
-	const indicator = document.createElement("div");
-	indicator.className = "rcc-stale-indicator";
-	Object.assign(indicator.style, {
-		position: "fixed",
-		width: "20px",
-		height: "20px",
-		borderRadius: "50%",
-		background: STALE_AMBER,
-		color: "#ffffff",
-		display: "flex",
-		alignItems: "center",
-		justifyContent: "center",
-		cursor: "pointer",
-		zIndex: "999990",
-		boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-		fontFamily: "system-ui, sans-serif",
-	});
-	indicator.innerHTML = WARNING_ICON;
-	positionIndicator(indicator, t.element);
-
-	const tooltip = document.createElement("div");
-	tooltip.className = "rcc-stale-tooltip";
-	Object.assign(tooltip.style, {
-		position: "absolute",
-		bottom: "calc(100% + 8px)",
-		right: "0",
-		background: "#ffffff",
-		border: `1px solid ${STALE_AMBER}`,
-		borderRadius: "8px",
-		padding: "10px 12px",
-		boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-		fontFamily: "system-ui, sans-serif",
-		fontSize: "12px",
-		lineHeight: "1.5",
-		color: "#1e293b",
-		minWidth: "240px",
-		maxWidth: "360px",
-		display: "none",
-		zIndex: "999991",
-		whiteSpace: "normal",
-	});
-
-	const heading = document.createElement("div");
-	Object.assign(heading.style, {
-		fontWeight: "600",
-		fontSize: "11px",
-		textTransform: "uppercase",
-		letterSpacing: "0.05em",
-		color: STALE_AMBER,
-		marginBottom: "6px",
-	});
-	heading.textContent = "Source text changed";
-	tooltip.appendChild(heading);
-
-	const oldLabel = document.createElement("div");
-	Object.assign(oldLabel.style, { fontSize: "10px", color: "#9ca3af", marginBottom: "2px" });
-	oldLabel.textContent = "Previous:";
-	tooltip.appendChild(oldLabel);
-
-	const oldText = document.createElement("div");
-	Object.assign(oldText.style, {
-		textDecoration: "line-through",
-		color: "#9ca3af",
-		marginBottom: "8px",
-		wordBreak: "break-word",
-	});
-	tooltip.appendChild(oldText);
-
-	const newLabel = document.createElement("div");
-	Object.assign(newLabel.style, { fontSize: "10px", color: "#9ca3af", marginBottom: "2px" });
-	newLabel.textContent = "Current:";
-	tooltip.appendChild(newLabel);
-
-	const newText = document.createElement("div");
-	Object.assign(newText.style, { color: "#1e293b", marginBottom: "10px", wordBreak: "break-word" });
-	tooltip.appendChild(newText);
-
-	const reviewBtn = document.createElement("button");
-	Object.assign(reviewBtn.style, {
-		display: "block",
-		width: "100%",
-		padding: "6px 10px",
-		border: "none",
-		borderRadius: "5px",
-		background: STALE_AMBER,
-		color: "#ffffff",
-		fontSize: "12px",
-		fontWeight: "600",
-		cursor: "pointer",
-		transition: "background 0.15s",
-	});
-	reviewBtn.textContent = "Mark as reviewed";
-	reviewBtn.addEventListener("mouseenter", () => { reviewBtn.style.background = "#d97706"; });
-	reviewBtn.addEventListener("mouseleave", () => { reviewBtn.style.background = STALE_AMBER; });
-	reviewBtn.addEventListener("click", (e) => {
-		e.stopPropagation();
-		resolveStale(t, file);
-	});
-	tooltip.appendChild(reviewBtn);
-
-	indicator.appendChild(tooltip);
-
-	indicator.addEventListener("click", (e) => {
-		e.stopPropagation();
-		const isVisible = tooltip.style.display === "block";
-		closeAllStaleTooltips();
-		if (!isVisible) {
-			const stripHtml = (html: string) => {
-				const div = document.createElement("div");
-				div.innerHTML = html;
-				return div.textContent ?? html;
-			};
-			oldText.textContent = stripHtml(t.localeOriginal ?? "");
-			newText.textContent = stripHtml(t.baseOriginal ?? "");
-			tooltip.style.display = "block";
-		}
-	});
-
-	document.body.appendChild(indicator);
-	t.staleIndicator = indicator;
-	ensureRepositionListeners();
 }
 
-function closeAllStaleTooltips(): void {
-	for (const el of document.querySelectorAll<HTMLElement>(".rcc-stale-tooltip")) {
-		el.style.display = "none";
-	}
-}
-
-function removeStaleIndicator(t: TrackedElement): void {
+function unmarkStaleElement(t: TrackedElement): void {
 	t.stale = false;
 	t.element.style.outline = "";
 	t.element.style.outlineOffset = "";
 	t.element.style.backgroundColor = "";
-	if (t.staleIndicator) {
-		t.staleIndicator.remove();
-		t.staleIndicator = undefined;
-	}
 	recountStale();
 }
 
@@ -462,7 +360,7 @@ function resolveStale(t: TrackedElement, file: CCFile): void {
 	if (!t.stale || !t.baseOriginal) return;
 	log(`[${t.roseyKey}] Resolving stale — updating .original`);
 	file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
-	removeStaleIndicator(t);
+	unmarkStaleElement(t);
 }
 
 // ---------------------------------------------------------------------------
@@ -475,19 +373,14 @@ function teardownEditors(): void {
 	}
 	activeDataset = null;
 	activeDatasetListener = null;
+	activeFile = null;
 
-	for (const t of tracked) {
-		t.editor = undefined;
-		if (t.staleIndicator) {
-			t.staleIndicator.remove();
-			t.staleIndicator = undefined;
-		}
-	}
+	for (const t of tracked) t.editor = undefined;
 	tracked.length = 0;
 
 	staleCount = 0;
 	updateStaleBadge();
-	removeRepositionListeners();
+	updateStaleList();
 
 	if (translationContainer && originalContainer) {
 		translationContainer.replaceWith(originalContainer);
@@ -551,6 +444,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 		return;
 	}
 
+	activeFile = file;
 	let setupComplete = false;
 	staleCount = 0;
 
@@ -575,8 +469,10 @@ async function switchLocale(locale: string | null): Promise<void> {
 			t.element.innerHTML = value;
 
 			if (isStale) {
-				attachStaleIndicator(t, file);
+				markStaleElement(t);
 				staleCount++;
+				updateStaleBadge();
+				updateStaleList();
 			}
 
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
@@ -612,7 +508,6 @@ async function switchLocale(locale: string | null): Promise<void> {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
 	}
-	updateStaleBadge();
 	log(`Created ${editorsCreated} editors (${staleCount} stale)`);
 
 	if (myGeneration !== switchGeneration) return;
@@ -854,6 +749,73 @@ function injectSwitcher(locales: string[]): void {
 		popover.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
 	}
 
+	// --- Stale translations list ------------------------------------------
+
+	const staleSection = document.createElement("div");
+	staleSection.id = "rcc-stale-list";
+	staleSection.style.display = "none";
+
+	const staleDivider = document.createElement("div");
+	Object.assign(staleDivider.style, {
+		height: "1px",
+		background: "#e5e7eb",
+		margin: "6px 0 4px",
+	});
+	staleSection.appendChild(staleDivider);
+
+	const staleHeader = document.createElement("div");
+	staleHeader.dataset.rccStaleCount = "";
+	Object.assign(staleHeader.style, {
+		fontWeight: "600",
+		fontSize: "11px",
+		color: STALE_AMBER,
+		textTransform: "uppercase",
+		letterSpacing: "0.05em",
+		padding: "4px 8px 2px",
+	});
+	staleSection.appendChild(staleHeader);
+
+	const staleItems = document.createElement("div");
+	staleItems.dataset.rccStaleItems = "";
+	Object.assign(staleItems.style, {
+		maxHeight: "180px",
+		overflowY: "auto",
+		display: "flex",
+		flexDirection: "column",
+		gap: "1px",
+	});
+	staleSection.appendChild(staleItems);
+
+	const resolveAllBtn = document.createElement("button");
+	resolveAllBtn.dataset.rccResolveAll = "";
+	Object.assign(resolveAllBtn.style, {
+		display: "none",
+		width: "100%",
+		marginTop: "4px",
+		padding: "6px 10px",
+		border: "none",
+		borderRadius: "5px",
+		background: STALE_AMBER,
+		color: "#ffffff",
+		fontSize: "11px",
+		fontWeight: "600",
+		cursor: "pointer",
+		transition: "background 0.15s",
+		fontFamily: "system-ui, sans-serif",
+	});
+	resolveAllBtn.textContent = "Resolve all";
+	resolveAllBtn.addEventListener("mouseenter", () => { resolveAllBtn.style.background = "#d97706"; });
+	resolveAllBtn.addEventListener("mouseleave", () => { resolveAllBtn.style.background = STALE_AMBER; });
+	resolveAllBtn.addEventListener("click", () => {
+		const stale = tracked.filter((t) => t.stale);
+		for (const t of stale) {
+			if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+		}
+	});
+	staleSection.appendChild(resolveAllBtn);
+
+	popover.appendChild(staleSection);
+
 	// --- Drag logic -------------------------------------------------------
 
 	let isDragging = false;
@@ -980,13 +942,6 @@ function injectSwitcher(locales: string[]): void {
 		if (!popoverOpen) return;
 		if (fab.contains(e.target as Node) || popover.contains(e.target as Node)) return;
 		closePopover();
-	});
-
-	// Close stale tooltips on outside click
-	document.addEventListener("pointerdown", (e: PointerEvent) => {
-		const target = e.target as HTMLElement;
-		if (target.closest(".rcc-stale-indicator")) return;
-		closeAllStaleTooltips();
 	});
 
 	// Close on Escape
