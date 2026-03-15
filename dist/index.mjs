@@ -164,38 +164,65 @@ function truncateText(text, max) {
   return text.length > max ? text.slice(0, max) + "\u2026" : text;
 }
 function updateStaleList() {
-  const container = document.getElementById("rcc-stale-list");
-  if (!container) return;
+  const allSubmenus = document.querySelectorAll("[data-rcc-stale-submenu]");
+  for (const sub of allSubmenus) {
+    if (sub.dataset.rccStaleSubmenu !== currentLocale) {
+      sub.style.display = "none";
+    }
+  }
+  if (!currentLocale) return;
+  const submenu = document.querySelector(
+    `[data-rcc-stale-submenu="${currentLocale}"]`
+  );
+  if (!submenu) return;
   const staleItems = tracked.filter((t) => t.stale);
   if (staleItems.length === 0) {
-    container.style.display = "none";
+    submenu.style.display = "none";
     return;
   }
-  container.style.display = "block";
-  const countEl = container.querySelector("[data-rcc-stale-count]");
+  submenu.style.display = "block";
+  if (!submenu.dataset.rccExpanded) submenu.dataset.rccExpanded = "true";
+  const countEl = submenu.querySelector("[data-rcc-stale-count]");
   if (countEl) countEl.textContent = `${staleItems.length} out of date`;
-  const list = container.querySelector("[data-rcc-stale-items]");
+  const isExpanded = submenu.dataset.rccExpanded === "true";
+  const body = submenu.querySelector("[data-rcc-stale-body]");
+  if (body) body.style.display = isExpanded ? "block" : "none";
+  const chevron = submenu.querySelector("[data-rcc-stale-chevron]");
+  if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "rotate(0deg)";
+  const list = submenu.querySelector("[data-rcc-stale-items]");
   if (!list) return;
   list.innerHTML = "";
   for (const t of staleItems) {
     const textPreview = truncateText(
       t.element.textContent?.trim() || t.roseyKey,
-      50
+      40
     );
-    const item = document.createElement("button");
-    Object.assign(item.style, {
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex",
+      alignItems: "stretch",
+      borderRadius: "4px",
+      transition: "background 0.15s"
+    });
+    row.addEventListener("mouseenter", () => {
+      row.style.background = "#fef3c7";
+    });
+    row.addEventListener("mouseleave", () => {
+      row.style.background = "transparent";
+    });
+    const scrollBtn = document.createElement("button");
+    Object.assign(scrollBtn.style, {
       display: "flex",
       flexDirection: "column",
       gap: "1px",
-      width: "100%",
-      padding: "6px 8px",
+      flex: "1",
+      minWidth: "0",
+      padding: "5px 6px",
       border: "none",
-      borderRadius: "5px",
       cursor: "pointer",
-      fontSize: "12px",
+      fontSize: "11px",
       textAlign: "left",
       background: "transparent",
-      transition: "background 0.15s",
       color: "#1e293b",
       fontFamily: "system-ui, sans-serif"
     });
@@ -206,24 +233,45 @@ function updateStaleList() {
       whiteSpace: "nowrap"
     });
     preview.textContent = textPreview;
-    const key = document.createElement("span");
-    Object.assign(key.style, { fontSize: "10px", color: "#9ca3af" });
-    key.textContent = t.roseyKey;
-    item.appendChild(preview);
-    item.appendChild(key);
-    item.addEventListener("mouseenter", () => {
-      item.style.background = "#fef3c7";
-    });
-    item.addEventListener("mouseleave", () => {
-      item.style.background = "transparent";
-    });
-    item.addEventListener("click", () => {
+    const keyEl = document.createElement("span");
+    Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
+    keyEl.textContent = t.roseyKey;
+    scrollBtn.appendChild(preview);
+    scrollBtn.appendChild(keyEl);
+    scrollBtn.addEventListener("click", () => {
       t.element.scrollIntoView({ behavior: "smooth", block: "center" });
     });
-    list.appendChild(item);
+    const resolveBtn = document.createElement("button");
+    Object.assign(resolveBtn.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0 6px",
+      border: "none",
+      cursor: "pointer",
+      background: "transparent",
+      color: "#d1d5db",
+      transition: "color 0.15s",
+      flexShrink: "0"
+    });
+    resolveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+    resolveBtn.title = "Mark as reviewed";
+    resolveBtn.addEventListener("mouseenter", () => {
+      resolveBtn.style.color = STALE_AMBER;
+    });
+    resolveBtn.addEventListener("mouseleave", () => {
+      resolveBtn.style.color = "#d1d5db";
+    });
+    resolveBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (activeFile) resolveStale(t, activeFile);
+    });
+    row.appendChild(scrollBtn);
+    row.appendChild(resolveBtn);
+    list.appendChild(row);
   }
-  const resolveBtn = container.querySelector("[data-rcc-resolve-all]");
-  if (resolveBtn) resolveBtn.style.display = staleItems.length > 0 ? "block" : "none";
+  const resolveAllBtn = submenu.querySelector("[data-rcc-resolve-all]");
+  if (resolveAllBtn) resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
 }
 function markStaleElement(t) {
   t.element.style.outline = `2px dashed ${STALE_AMBER}`;
@@ -574,71 +622,104 @@ function injectSwitcher(locales) {
   }
   popover.appendChild(makeLocaleButton("Original", null));
   for (const locale of locales) {
-    popover.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+    const submenu = document.createElement("div");
+    submenu.dataset.rccStaleSubmenu = locale;
+    Object.assign(submenu.style, {
+      display: "none",
+      marginLeft: "8px",
+      borderLeft: `2px solid ${STALE_AMBER}`,
+      paddingLeft: "8px",
+      marginTop: "2px",
+      marginBottom: "2px"
+    });
+    const toggleHeader = document.createElement("div");
+    Object.assign(toggleHeader.style, {
+      display: "flex",
+      alignItems: "center",
+      gap: "4px",
+      cursor: "pointer",
+      padding: "3px 0",
+      userSelect: "none"
+    });
+    const chevron = document.createElement("span");
+    chevron.dataset.rccStaleChevron = "";
+    Object.assign(chevron.style, {
+      display: "inline-flex",
+      transition: "transform 0.2s",
+      transform: "rotate(90deg)",
+      color: STALE_AMBER,
+      fontSize: "10px",
+      lineHeight: "1"
+    });
+    chevron.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+    const countLabel = document.createElement("span");
+    countLabel.dataset.rccStaleCount = "";
+    Object.assign(countLabel.style, {
+      fontWeight: "600",
+      fontSize: "10px",
+      color: STALE_AMBER,
+      textTransform: "uppercase",
+      letterSpacing: "0.05em"
+    });
+    toggleHeader.appendChild(chevron);
+    toggleHeader.appendChild(countLabel);
+    toggleHeader.addEventListener("click", () => {
+      const isExpanded = submenu.dataset.rccExpanded === "true";
+      submenu.dataset.rccExpanded = isExpanded ? "false" : "true";
+      const bodyEl = submenu.querySelector("[data-rcc-stale-body]");
+      if (bodyEl) bodyEl.style.display = isExpanded ? "none" : "block";
+      chevron.style.transform = isExpanded ? "rotate(0deg)" : "rotate(90deg)";
+    });
+    const body = document.createElement("div");
+    body.dataset.rccStaleBody = "";
+    const staleItems = document.createElement("div");
+    staleItems.dataset.rccStaleItems = "";
+    Object.assign(staleItems.style, {
+      maxHeight: "180px",
+      overflowY: "auto",
+      display: "flex",
+      flexDirection: "column",
+      gap: "1px"
+    });
+    const resolveAllBtn = document.createElement("button");
+    resolveAllBtn.dataset.rccResolveAll = "";
+    Object.assign(resolveAllBtn.style, {
+      display: "none",
+      width: "100%",
+      marginTop: "4px",
+      padding: "5px 8px",
+      border: "none",
+      borderRadius: "4px",
+      background: STALE_AMBER,
+      color: "#ffffff",
+      fontSize: "10px",
+      fontWeight: "600",
+      cursor: "pointer",
+      transition: "background 0.15s",
+      fontFamily: "system-ui, sans-serif"
+    });
+    resolveAllBtn.textContent = "Resolve all";
+    resolveAllBtn.addEventListener("mouseenter", () => {
+      resolveAllBtn.style.background = "#d97706";
+    });
+    resolveAllBtn.addEventListener("mouseleave", () => {
+      resolveAllBtn.style.background = STALE_AMBER;
+    });
+    resolveAllBtn.addEventListener("click", () => {
+      const stale = tracked.filter((t) => t.stale);
+      for (const t of stale) {
+        if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+      }
+    });
+    body.appendChild(staleItems);
+    body.appendChild(resolveAllBtn);
+    submenu.appendChild(toggleHeader);
+    submenu.appendChild(body);
+    wrapper.appendChild(submenu);
+    popover.appendChild(wrapper);
   }
-  const staleSection = document.createElement("div");
-  staleSection.id = "rcc-stale-list";
-  staleSection.style.display = "none";
-  const staleDivider = document.createElement("div");
-  Object.assign(staleDivider.style, {
-    height: "1px",
-    background: "#e5e7eb",
-    margin: "6px 0 4px"
-  });
-  staleSection.appendChild(staleDivider);
-  const staleHeader = document.createElement("div");
-  staleHeader.dataset.rccStaleCount = "";
-  Object.assign(staleHeader.style, {
-    fontWeight: "600",
-    fontSize: "11px",
-    color: STALE_AMBER,
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    padding: "4px 8px 2px"
-  });
-  staleSection.appendChild(staleHeader);
-  const staleItems = document.createElement("div");
-  staleItems.dataset.rccStaleItems = "";
-  Object.assign(staleItems.style, {
-    maxHeight: "180px",
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1px"
-  });
-  staleSection.appendChild(staleItems);
-  const resolveAllBtn = document.createElement("button");
-  resolveAllBtn.dataset.rccResolveAll = "";
-  Object.assign(resolveAllBtn.style, {
-    display: "none",
-    width: "100%",
-    marginTop: "4px",
-    padding: "6px 10px",
-    border: "none",
-    borderRadius: "5px",
-    background: STALE_AMBER,
-    color: "#ffffff",
-    fontSize: "11px",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "background 0.15s",
-    fontFamily: "system-ui, sans-serif"
-  });
-  resolveAllBtn.textContent = "Resolve all";
-  resolveAllBtn.addEventListener("mouseenter", () => {
-    resolveAllBtn.style.background = "#d97706";
-  });
-  resolveAllBtn.addEventListener("mouseleave", () => {
-    resolveAllBtn.style.background = STALE_AMBER;
-  });
-  resolveAllBtn.addEventListener("click", () => {
-    const stale = tracked.filter((t) => t.stale);
-    for (const t of stale) {
-      if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
-    }
-  });
-  staleSection.appendChild(resolveAllBtn);
-  popover.appendChild(staleSection);
   let isDragging = false;
   let hasDragged = false;
   let dragStartX = 0;

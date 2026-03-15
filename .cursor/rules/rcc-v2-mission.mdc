@@ -50,10 +50,11 @@ The clone is processed while detached from the DOM, so there are no MutationObse
 Locale entries store three fields: `original` (the source text when the translation was last acknowledged), `value` (the translation), and `_base_original` (the current source text from `base.json`, updated by `write-locales` on every run). When `original !== _base_original`, the translation is flagged as stale.
 
 In the Visual Editor:
-- Stale elements get an amber dashed border and a warning badge showing old vs new source text
+- Stale elements get an amber dashed border and a faint amber background
 - The FAB shows an amber count badge with the number of stale translations
-- Staleness is resolved by either editing the translation (auto-resolves) or clicking "Mark as reviewed" in the tooltip
-- Both paths update the locale's `original` via `file.data.set({ slug: "key.original", value: baseOriginal })`
+- Each locale button in the popover has a collapsible stale submenu (amber left border, chevron toggle) listing its stale items with per-item "Mark as reviewed" (checkmark) buttons and a "Resolve all" button
+- Staleness is resolved by editing the translation (auto-resolves), clicking a per-item resolve button, or clicking "Resolve all"
+- All paths update the locale's `original` via `file.data.set({ slug: "key.original", value: baseOriginal })`
 
 At build time:
 - `write-locales` always sets `_base_original` to the current `base.json` original for every entry (new and existing)
