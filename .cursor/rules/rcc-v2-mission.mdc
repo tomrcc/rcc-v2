@@ -52,7 +52,7 @@ Locale entries store three fields: `original` (the source text when the translat
 In the Visual Editor:
 - Stale elements get an amber dashed border and a faint amber background
 - The FAB shows an amber count badge with the number of stale translations
-- Each locale button in the popover has a collapsible stale submenu (amber left border, chevron toggle) listing its stale items with per-item "Mark as reviewed" (checkmark) buttons and a "Resolve all" button
+- Each locale button in the popover has a toggle row (chevron + count) that opens a separate floating stale panel beside the popover, listing stale items with per-item "Mark as reviewed" (checkmark) buttons and a "Resolve all" button
 - Staleness is resolved by editing the translation (auto-resolves), clicking a per-item resolve button, or clicking "Resolve all"
 - All paths update the locale's `original` via `file.data.set({ slug: "key.original", value: baseOriginal })`
 

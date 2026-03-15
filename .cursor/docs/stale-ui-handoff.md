@@ -14,23 +14,23 @@ Stale elements get `outline: 2px dashed #f59e0b` + a faint amber background. App
 
 `#rcc-stale-badge` — amber pill showing the count of stale translations. Updated by `updateStaleBadge()`. Sits at bottom-right of the FAB (the locale badge sits top-right).
 
-### 3. Per-locale stale submenu in the popover
+### 3. Stale toggle row + floating panel
 
-Each locale button in the popover is wrapped in a container `<div>` that also holds a stale translations submenu (`[data-rcc-stale-submenu="locale"]`). The submenu only appears under the **active** locale when it has stale items. Structure:
+Each locale button in the popover is wrapped in a container `<div>` that also holds a toggle row (`[data-rcc-stale-submenu="locale"]`). The toggle row only appears under the **active** locale when it has stale items. It contains a chevron SVG (`[data-rcc-stale-chevron]`) + count label (`[data-rcc-stale-count]`).
 
-- Amber left border (visual nesting under the locale button)
-- Toggle header: clickable row with a chevron SVG (`[data-rcc-stale-chevron]`) + count label (`[data-rcc-stale-count]`)
-- Collapsible body (`[data-rcc-stale-body]`):
-  - Scrollable item list (`[data-rcc-stale-items]`, max-height 180px)
-  - "Resolve all" button (`[data-rcc-resolve-all]`)
+Clicking the toggle row opens/closes a separate floating panel (`#rcc-stale-panel`) positioned beside the popover. The panel is styled as its own card (white background, shadow, amber top border) and contains:
+
+- Header with count (`[data-rcc-panel-count]`)
+- Scrollable item list (`[data-rcc-stale-items]`, max-height 240px)
+- "Resolve all" button (`[data-rcc-resolve-all]`)
 
 Each stale item is a flex row with two zones:
 - **Left** (click to scroll): text preview + Rosey key — scrolls the element into view
 - **Right** (click to resolve): checkmark button that calls `resolveStale(t, activeFile)` for that single item
 
-The toggle header expands/collapses the body. Expanded state is stored in `dataset.rccExpanded` on the submenu element and persists across popover open/close and `updateStaleList` rebuilds. Defaults to expanded on first show.
+The panel positions itself to the left of the popover (or right if not enough space). It repositions on FAB drag and window resize. Closing the popover also closes the panel. Outside clicks dismiss both.
 
-The list is rebuilt from scratch by `updateStaleList()` (~line 274) which reads from `tracked.filter(t => t.stale)`. When called, it hides all submenus except the active locale's, then rebuilds items for the active locale.
+The list is rebuilt from scratch by `updateStaleList()` (~line 274) which reads from `tracked.filter(t => t.stale)`. When called, it hides all toggle rows except the active locale's, then rebuilds items in the panel.
 
 ### 4. Auto-resolve on edit
 

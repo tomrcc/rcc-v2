@@ -164,32 +164,41 @@ function truncateText(text, max) {
   return text.length > max ? text.slice(0, max) + "\u2026" : text;
 }
 function updateStaleList() {
+  const panel = document.getElementById("rcc-stale-panel");
   const allSubmenus = document.querySelectorAll("[data-rcc-stale-submenu]");
   for (const sub of allSubmenus) {
     if (sub.dataset.rccStaleSubmenu !== currentLocale) {
       sub.style.display = "none";
+      const ch = sub.querySelector("[data-rcc-stale-chevron]");
+      if (ch) ch.style.transform = "rotate(0deg)";
     }
   }
-  if (!currentLocale) return;
+  if (!currentLocale) {
+    if (panel) panel.style.display = "none";
+    return;
+  }
   const submenu = document.querySelector(
     `[data-rcc-stale-submenu="${currentLocale}"]`
   );
-  if (!submenu) return;
   const staleItems = tracked.filter((t) => t.stale);
   if (staleItems.length === 0) {
-    submenu.style.display = "none";
+    if (submenu) {
+      submenu.style.display = "none";
+      const ch = submenu.querySelector("[data-rcc-stale-chevron]");
+      if (ch) ch.style.transform = "rotate(0deg)";
+    }
+    if (panel) panel.style.display = "none";
     return;
   }
-  submenu.style.display = "block";
-  if (!submenu.dataset.rccExpanded) submenu.dataset.rccExpanded = "true";
-  const countEl = submenu.querySelector("[data-rcc-stale-count]");
-  if (countEl) countEl.textContent = `${staleItems.length} out of date`;
-  const isExpanded = submenu.dataset.rccExpanded === "true";
-  const body = submenu.querySelector("[data-rcc-stale-body]");
-  if (body) body.style.display = isExpanded ? "block" : "none";
-  const chevron = submenu.querySelector("[data-rcc-stale-chevron]");
-  if (chevron) chevron.style.transform = isExpanded ? "rotate(90deg)" : "rotate(0deg)";
-  const list = submenu.querySelector("[data-rcc-stale-items]");
+  if (submenu) {
+    submenu.style.display = "flex";
+    const countEl = submenu.querySelector("[data-rcc-stale-count]");
+    if (countEl) countEl.textContent = `${staleItems.length} out of date`;
+  }
+  if (!panel) return;
+  const panelCount = panel.querySelector("[data-rcc-panel-count]");
+  if (panelCount) panelCount.textContent = `${staleItems.length} out of date`;
+  const list = panel.querySelector("[data-rcc-stale-items]");
   if (!list) return;
   list.innerHTML = "";
   for (const t of staleItems) {
@@ -270,7 +279,7 @@ function updateStaleList() {
     row.appendChild(resolveBtn);
     list.appendChild(row);
   }
-  const resolveAllBtn = submenu.querySelector("[data-rcc-resolve-all]");
+  const resolveAllBtn = panel.querySelector("[data-rcc-resolve-all]");
   if (resolveAllBtn) resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
 }
 function markStaleElement(t) {
@@ -628,19 +637,10 @@ function injectSwitcher(locales) {
     submenu.dataset.rccStaleSubmenu = locale;
     Object.assign(submenu.style, {
       display: "none",
-      marginLeft: "8px",
-      borderLeft: `2px solid ${STALE_AMBER}`,
-      paddingLeft: "8px",
-      marginTop: "2px",
-      marginBottom: "2px"
-    });
-    const toggleHeader = document.createElement("div");
-    Object.assign(toggleHeader.style, {
-      display: "flex",
       alignItems: "center",
       gap: "4px",
       cursor: "pointer",
-      padding: "3px 0",
+      padding: "4px 12px 2px",
       userSelect: "none"
     });
     const chevron = document.createElement("span");
@@ -648,7 +648,7 @@ function injectSwitcher(locales) {
     Object.assign(chevron.style, {
       display: "inline-flex",
       transition: "transform 0.2s",
-      transform: "rotate(90deg)",
+      transform: "rotate(0deg)",
       color: STALE_AMBER,
       fontSize: "10px",
       lineHeight: "1"
@@ -660,65 +660,121 @@ function injectSwitcher(locales) {
       fontWeight: "600",
       fontSize: "10px",
       color: STALE_AMBER,
-      textTransform: "uppercase",
-      letterSpacing: "0.05em"
+      letterSpacing: "0.03em"
     });
-    toggleHeader.appendChild(chevron);
-    toggleHeader.appendChild(countLabel);
-    toggleHeader.addEventListener("click", () => {
-      const isExpanded = submenu.dataset.rccExpanded === "true";
-      submenu.dataset.rccExpanded = isExpanded ? "false" : "true";
-      const bodyEl = submenu.querySelector("[data-rcc-stale-body]");
-      if (bodyEl) bodyEl.style.display = isExpanded ? "none" : "block";
-      chevron.style.transform = isExpanded ? "rotate(0deg)" : "rotate(90deg)";
+    submenu.appendChild(chevron);
+    submenu.appendChild(countLabel);
+    submenu.addEventListener("click", () => {
+      toggleStalePanel();
     });
-    const body = document.createElement("div");
-    body.dataset.rccStaleBody = "";
-    const staleItems = document.createElement("div");
-    staleItems.dataset.rccStaleItems = "";
-    Object.assign(staleItems.style, {
-      maxHeight: "180px",
-      overflowY: "auto",
-      display: "flex",
-      flexDirection: "column",
-      gap: "1px"
-    });
-    const resolveAllBtn = document.createElement("button");
-    resolveAllBtn.dataset.rccResolveAll = "";
-    Object.assign(resolveAllBtn.style, {
-      display: "none",
-      width: "100%",
-      marginTop: "4px",
-      padding: "5px 8px",
-      border: "none",
-      borderRadius: "4px",
-      background: STALE_AMBER,
-      color: "#ffffff",
-      fontSize: "10px",
-      fontWeight: "600",
-      cursor: "pointer",
-      transition: "background 0.15s",
-      fontFamily: "system-ui, sans-serif"
-    });
-    resolveAllBtn.textContent = "Resolve all";
-    resolveAllBtn.addEventListener("mouseenter", () => {
-      resolveAllBtn.style.background = "#d97706";
-    });
-    resolveAllBtn.addEventListener("mouseleave", () => {
-      resolveAllBtn.style.background = STALE_AMBER;
-    });
-    resolveAllBtn.addEventListener("click", () => {
-      const stale = tracked.filter((t) => t.stale);
-      for (const t of stale) {
-        if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
-      }
-    });
-    body.appendChild(staleItems);
-    body.appendChild(resolveAllBtn);
-    submenu.appendChild(toggleHeader);
-    submenu.appendChild(body);
     wrapper.appendChild(submenu);
     popover.appendChild(wrapper);
+  }
+  const stalePanel = document.createElement("div");
+  stalePanel.id = "rcc-stale-panel";
+  Object.assign(stalePanel.style, {
+    position: "fixed",
+    zIndex: "999997",
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "8px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+    display: "none",
+    flexDirection: "column",
+    gap: "4px",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: "13px",
+    minWidth: "200px",
+    maxWidth: "260px",
+    borderTop: `3px solid ${STALE_AMBER}`
+  });
+  const panelHeader = document.createElement("div");
+  Object.assign(panelHeader.style, {
+    fontWeight: "600",
+    fontSize: "11px",
+    color: STALE_AMBER,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    padding: "4px 8px 2px"
+  });
+  panelHeader.dataset.rccPanelCount = "";
+  stalePanel.appendChild(panelHeader);
+  const panelItems = document.createElement("div");
+  panelItems.dataset.rccStaleItems = "";
+  Object.assign(panelItems.style, {
+    maxHeight: "240px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "1px"
+  });
+  stalePanel.appendChild(panelItems);
+  const resolveAllBtn = document.createElement("button");
+  resolveAllBtn.dataset.rccResolveAll = "";
+  Object.assign(resolveAllBtn.style, {
+    display: "none",
+    width: "100%",
+    marginTop: "4px",
+    padding: "6px 10px",
+    border: "none",
+    borderRadius: "5px",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    fontSize: "11px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "background 0.15s",
+    fontFamily: "system-ui, sans-serif"
+  });
+  resolveAllBtn.textContent = "Resolve all";
+  resolveAllBtn.addEventListener("mouseenter", () => {
+    resolveAllBtn.style.background = "#d97706";
+  });
+  resolveAllBtn.addEventListener("mouseleave", () => {
+    resolveAllBtn.style.background = STALE_AMBER;
+  });
+  resolveAllBtn.addEventListener("click", () => {
+    const stale = tracked.filter((t) => t.stale);
+    for (const t of stale) {
+      if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+    }
+  });
+  stalePanel.appendChild(resolveAllBtn);
+  function positionStalePanel() {
+    stalePanel.style.visibility = "hidden";
+    stalePanel.style.display = "flex";
+    const popRect = popover.getBoundingClientRect();
+    const panelRect = stalePanel.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    let left = popRect.left - panelRect.width - gap;
+    if (left < 4) left = popRect.right + gap;
+    if (left + panelRect.width > vw - 4) left = 4;
+    let top = popRect.top;
+    if (top + panelRect.height > vh - 4) top = vh - panelRect.height - 4;
+    top = Math.max(4, top);
+    stalePanel.style.top = `${top}px`;
+    stalePanel.style.left = `${left}px`;
+    stalePanel.style.visibility = "visible";
+  }
+  function openStalePanel() {
+    positionStalePanel();
+    const chevron = document.querySelector(
+      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+    );
+    if (chevron) chevron.style.transform = "rotate(90deg)";
+  }
+  function closeStalePanel() {
+    stalePanel.style.display = "none";
+    const chevron = document.querySelector(
+      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+    );
+    if (chevron) chevron.style.transform = "rotate(0deg)";
+  }
+  function toggleStalePanel() {
+    if (stalePanel.style.display !== "none") closeStalePanel();
+    else openStalePanel();
   }
   let isDragging = false;
   let hasDragged = false;
@@ -759,7 +815,10 @@ function injectSwitcher(locales) {
     fab.style.right = "auto";
     fab.style.top = `${y}px`;
     fab.style.left = `${x}px`;
-    if (popoverOpen) positionPopover();
+    if (popoverOpen) {
+      positionPopover();
+      if (stalePanel.style.display !== "none") positionStalePanel();
+    }
   });
   fab.addEventListener("pointerup", () => {
     if (!isDragging) return;
@@ -782,7 +841,10 @@ function injectSwitcher(locales) {
       fab.style.left = `${x}px`;
       saveFabPosition();
     }
-    if (popoverOpen) positionPopover();
+    if (popoverOpen) {
+      positionPopover();
+      if (stalePanel.style.display !== "none") positionStalePanel();
+    }
   });
   let popoverOpen = false;
   function positionPopover() {
@@ -808,6 +870,7 @@ function injectSwitcher(locales) {
   function closePopover() {
     popover.style.display = "none";
     popoverOpen = false;
+    closeStalePanel();
   }
   function togglePopover() {
     if (popoverOpen) closePopover();
@@ -815,7 +878,8 @@ function injectSwitcher(locales) {
   }
   document.addEventListener("pointerdown", (e) => {
     if (!popoverOpen) return;
-    if (fab.contains(e.target) || popover.contains(e.target)) return;
+    const target = e.target;
+    if (fab.contains(target) || popover.contains(target) || stalePanel.contains(target)) return;
     closePopover();
   });
   document.addEventListener("keydown", (e) => {
@@ -823,6 +887,7 @@ function injectSwitcher(locales) {
   });
   document.body.appendChild(fab);
   document.body.appendChild(popover);
+  document.body.appendChild(stalePanel);
   updateButtonStates();
 }
 async function init() {
