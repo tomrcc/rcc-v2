@@ -448,32 +448,58 @@ async function switchLocale(locale: string | null): Promise<void> {
 	let setupComplete = false;
 	staleCount = 0;
 
+	// --- Phase 1: Parallel data fetch + stale detection --------------------
+	// Load all locale data in one batch so the stale list populates instantly
+	// instead of trickling in one-by-one during sequential editor creation.
+
+	const dataResults = await Promise.all(
+		tracked.map((t) =>
+			file.data.get({ slug: t.roseyKey }).catch(() => null),
+		),
+	);
+
+	if (myGeneration !== switchGeneration) {
+		log(`Generation changed after data fetch, aborting "${locale}" setup`);
+		return;
+	}
+
+	const resolvedValues: string[] = [];
+	for (let i = 0; i < tracked.length; i++) {
+		const t = tracked[i];
+		const data = dataResults[i];
+		const value = data?.value ?? data?.original ?? t.originalContent;
+		resolvedValues[i] = value;
+
+		const isStale = data?._base_original != null
+			&& data?.original != null
+			&& data._base_original !== data.original;
+		t.stale = isStale;
+		t.baseOriginal = data?._base_original ?? null;
+		t.localeOriginal = data?.original ?? null;
+
+		t.element.innerHTML = value;
+
+		if (isStale) {
+			markStaleElement(t);
+			staleCount++;
+		}
+	}
+	updateStaleBadge();
+	updateStaleList();
+	log(`Data loaded — ${staleCount} stale of ${tracked.length} elements`);
+
+	// --- Phase 2: Sequential editor creation --------------------------------
+
 	let editorsCreated = 0;
-	for (const t of tracked) {
+	for (let i = 0; i < tracked.length; i++) {
+		const t = tracked[i];
 		if (myGeneration !== switchGeneration) {
-			log(`Generation changed, aborting "${locale}" setup`);
+			log(`Generation changed, aborting "${locale}" editor setup`);
 			return;
 		}
 
 		try {
-			const data = await file.data.get({ slug: t.roseyKey });
-			const value = data?.value ?? data?.original ?? t.originalContent;
-
-			const isStale = data?._base_original != null
-				&& data?.original != null
-				&& data._base_original !== data.original;
-			t.stale = isStale;
-			t.baseOriginal = data?._base_original ?? null;
-			t.localeOriginal = data?.original ?? null;
-
-			t.element.innerHTML = value;
-
-			if (isStale) {
-				markStaleElement(t);
-				staleCount++;
-				updateStaleBadge();
-				updateStaleList();
-			}
+			const value = resolvedValues[i];
 
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
@@ -508,7 +534,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
 		}
 	}
-	log(`Created ${editorsCreated} editors (${staleCount} stale)`);
+	log(`Created ${editorsCreated} editors`);
 
 	if (myGeneration !== switchGeneration) return;
 
