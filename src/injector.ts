@@ -26,6 +26,9 @@ interface TrackedElement {
 	originalContent: string;
 	focused: boolean;
 	editor?: { setContent: (content?: string | null) => void };
+	stale: boolean;
+	baseOriginal: string | null;
+	localeOriginal: string | null;
 }
 
 interface CCFile {
@@ -63,6 +66,7 @@ let translationContainer: HTMLElement | null = null;
 
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
+let activeFile: CCFile | null = null;
 
 /**
  * Guards against stale ProseMirror onChange fires. createTextEditableRegion
@@ -180,7 +184,15 @@ function trackElements(scope: Element): void {
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
-		tracked.push({ element: el, roseyKey, originalContent: el.innerHTML, focused: false });
+		tracked.push({
+			element: el,
+			roseyKey,
+			originalContent: el.innerHTML,
+			focused: false,
+			stale: false,
+			baseOriginal: null,
+			localeOriginal: null,
+		});
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
 }
@@ -230,6 +242,186 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Stale translation indicators
+// ---------------------------------------------------------------------------
+
+const STALE_AMBER = "#f59e0b";
+const STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
+
+let staleCount = 0;
+
+function updateStaleBadge(): void {
+	const badge = document.getElementById("rcc-stale-badge");
+	if (!badge) return;
+	if (staleCount > 0) {
+		badge.textContent = String(staleCount);
+		badge.style.display = "flex";
+	} else {
+		badge.style.display = "none";
+	}
+}
+
+function recountStale(): void {
+	staleCount = tracked.filter((t) => t.stale).length;
+	updateStaleBadge();
+	updateStaleList();
+}
+
+function truncateText(text: string, max: number): string {
+	return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+function updateStaleList(): void {
+	const panel = document.getElementById("rcc-stale-panel");
+
+	const allSubmenus = document.querySelectorAll<HTMLElement>("[data-rcc-stale-submenu]");
+	for (const sub of allSubmenus) {
+		if (sub.dataset.rccStaleSubmenu !== currentLocale) {
+			sub.style.display = "none";
+			const ch = sub.querySelector<HTMLElement>("[data-rcc-stale-chevron]");
+			if (ch) ch.style.transform = "rotate(0deg)";
+		}
+	}
+
+	if (!currentLocale) {
+		if (panel) panel.style.display = "none";
+		return;
+	}
+
+	const submenu = document.querySelector<HTMLElement>(
+		`[data-rcc-stale-submenu="${currentLocale}"]`,
+	);
+
+	const staleItems = tracked.filter((t) => t.stale);
+	if (staleItems.length === 0) {
+		if (submenu) {
+			submenu.style.display = "none";
+			const ch = submenu.querySelector<HTMLElement>("[data-rcc-stale-chevron]");
+			if (ch) ch.style.transform = "rotate(0deg)";
+		}
+		if (panel) panel.style.display = "none";
+		return;
+	}
+
+	if (submenu) {
+		submenu.style.display = "flex";
+		const countEl = submenu.querySelector<HTMLElement>("[data-rcc-stale-count]");
+		if (countEl) countEl.textContent = `${staleItems.length} out of date`;
+	}
+
+	if (!panel) return;
+
+	const panelCount = panel.querySelector<HTMLElement>("[data-rcc-panel-count]");
+	if (panelCount) panelCount.textContent = `${staleItems.length} out of date`;
+
+	const list = panel.querySelector<HTMLElement>("[data-rcc-stale-items]");
+	if (!list) return;
+	list.innerHTML = "";
+
+	for (const t of staleItems) {
+		const textPreview = truncateText(
+			t.element.textContent?.trim() || t.roseyKey,
+			40,
+		);
+
+		const row = document.createElement("div");
+		Object.assign(row.style, {
+			display: "flex",
+			alignItems: "stretch",
+			borderRadius: "4px",
+			transition: "background 0.15s",
+		});
+		row.addEventListener("mouseenter", () => { row.style.background = "#fef3c7"; });
+		row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
+
+		const scrollBtn = document.createElement("button");
+		Object.assign(scrollBtn.style, {
+			display: "flex",
+			flexDirection: "column",
+			gap: "1px",
+			flex: "1",
+			minWidth: "0",
+			padding: "5px 6px",
+			border: "none",
+			cursor: "pointer",
+			fontSize: "11px",
+			textAlign: "left",
+			background: "transparent",
+			color: "#1e293b",
+			fontFamily: "system-ui, sans-serif",
+		});
+
+		const preview = document.createElement("span");
+		Object.assign(preview.style, {
+			overflow: "hidden",
+			textOverflow: "ellipsis",
+			whiteSpace: "nowrap",
+		});
+		preview.textContent = textPreview;
+
+		const keyEl = document.createElement("span");
+		Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
+		keyEl.textContent = t.roseyKey;
+
+		scrollBtn.appendChild(preview);
+		scrollBtn.appendChild(keyEl);
+		scrollBtn.addEventListener("click", () => {
+			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
+		});
+
+		const resolveBtn = document.createElement("button");
+		Object.assign(resolveBtn.style, {
+			display: "flex",
+			alignItems: "center",
+			justifyContent: "center",
+			padding: "0 6px",
+			border: "none",
+			cursor: "pointer",
+			background: "transparent",
+			color: "#d1d5db",
+			transition: "color 0.15s",
+			flexShrink: "0",
+		});
+		resolveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+		resolveBtn.title = "Mark as reviewed";
+		resolveBtn.addEventListener("mouseenter", () => { resolveBtn.style.color = STALE_AMBER; });
+		resolveBtn.addEventListener("mouseleave", () => { resolveBtn.style.color = "#d1d5db"; });
+		resolveBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (activeFile) resolveStale(t, activeFile);
+		});
+
+		row.appendChild(scrollBtn);
+		row.appendChild(resolveBtn);
+		list.appendChild(row);
+	}
+
+	const resolveAllBtn = panel.querySelector<HTMLElement>("[data-rcc-resolve-all]");
+	if (resolveAllBtn) resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
+}
+
+function markStaleElement(t: TrackedElement): void {
+	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
+	t.element.style.outlineOffset = "2px";
+	t.element.style.backgroundColor = STALE_AMBER_BG;
+}
+
+function unmarkStaleElement(t: TrackedElement): void {
+	t.stale = false;
+	t.element.style.outline = "";
+	t.element.style.outlineOffset = "";
+	t.element.style.backgroundColor = "";
+	recountStale();
+}
+
+function resolveStale(t: TrackedElement, file: CCFile): void {
+	if (!t.stale || !t.baseOriginal) return;
+	log(`[${t.roseyKey}] Resolving stale — updating .original`);
+	file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
+	unmarkStaleElement(t);
+}
+
+// ---------------------------------------------------------------------------
 // Teardown / restore
 // ---------------------------------------------------------------------------
 
@@ -239,9 +431,14 @@ function teardownEditors(): void {
 	}
 	activeDataset = null;
 	activeDatasetListener = null;
+	activeFile = null;
 
 	for (const t of tracked) t.editor = undefined;
 	tracked.length = 0;
+
+	staleCount = 0;
+	updateStaleBadge();
+	updateStaleList();
 
 	if (translationContainer && originalContainer) {
 		translationContainer.replaceWith(originalContainer);
@@ -305,20 +502,62 @@ async function switchLocale(locale: string | null): Promise<void> {
 		return;
 	}
 
+	activeFile = file;
 	let setupComplete = false;
+	staleCount = 0;
+
+	// --- Phase 1: Parallel data fetch + stale detection --------------------
+	// Load all locale data in one batch so the stale list populates instantly
+	// instead of trickling in one-by-one during sequential editor creation.
+
+	const dataResults = await Promise.all(
+		tracked.map((t) =>
+			file.data.get({ slug: t.roseyKey }).catch(() => null),
+		),
+	);
+
+	if (myGeneration !== switchGeneration) {
+		log(`Generation changed after data fetch, aborting "${locale}" setup`);
+		return;
+	}
+
+	const resolvedValues: string[] = [];
+	for (let i = 0; i < tracked.length; i++) {
+		const t = tracked[i];
+		const data = dataResults[i];
+		const value = data?.value ?? data?.original ?? t.originalContent;
+		resolvedValues[i] = value;
+
+		const isStale = data?._base_original != null
+			&& data?.original != null
+			&& data._base_original !== data.original;
+		t.stale = isStale;
+		t.baseOriginal = data?._base_original ?? null;
+		t.localeOriginal = data?.original ?? null;
+
+		t.element.innerHTML = value;
+
+		if (isStale) {
+			markStaleElement(t);
+			staleCount++;
+		}
+	}
+	updateStaleBadge();
+	updateStaleList();
+	log(`Data loaded — ${staleCount} stale of ${tracked.length} elements`);
+
+	// --- Phase 2: Sequential editor creation --------------------------------
 
 	let editorsCreated = 0;
-	for (const t of tracked) {
+	for (let i = 0; i < tracked.length; i++) {
+		const t = tracked[i];
 		if (myGeneration !== switchGeneration) {
-			log(`Generation changed, aborting "${locale}" setup`);
+			log(`Generation changed, aborting "${locale}" editor setup`);
 			return;
 		}
 
 		try {
-			const data = await file.data.get({ slug: t.roseyKey });
-			const value = data?.value ?? data?.original ?? t.originalContent;
-
-			t.element.innerHTML = value;
+			const value = resolvedValues[i];
 
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
@@ -333,6 +572,9 @@ async function switchLocale(locale: string | null): Promise<void> {
 					if (content == null) return;
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+					if (t.stale && t.baseOriginal) {
+						resolveStale(t, file);
+					}
 				},
 				{
 					elementType: t.element.dataset.type,
@@ -497,6 +739,29 @@ function injectSwitcher(locales: string[]): void {
 	});
 	fab.appendChild(badge);
 
+	// Stale badge — shows count of out-of-date translations
+	const staleBadge = document.createElement("div");
+	staleBadge.id = "rcc-stale-badge";
+	Object.assign(staleBadge.style, {
+		position: "absolute",
+		bottom: "-4px",
+		right: "-4px",
+		background: STALE_AMBER,
+		color: "#ffffff",
+		fontSize: "9px",
+		fontWeight: "700",
+		lineHeight: "1",
+		padding: "3px 5px",
+		borderRadius: "8px",
+		display: "none",
+		alignItems: "center",
+		justifyContent: "center",
+		minWidth: "16px",
+		textAlign: "center",
+		pointerEvents: "none",
+	});
+	fab.appendChild(staleBadge);
+
 	// --- Popover ----------------------------------------------------------
 
 	const popover = document.createElement("div");
@@ -565,7 +830,162 @@ function injectSwitcher(locales: string[]): void {
 
 	popover.appendChild(makeLocaleButton("Original", null));
 	for (const locale of locales) {
-		popover.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+		const wrapper = document.createElement("div");
+		wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+
+		const submenu = document.createElement("div");
+		submenu.dataset.rccStaleSubmenu = locale;
+		Object.assign(submenu.style, {
+			display: "none",
+			alignItems: "center",
+			gap: "4px",
+			cursor: "pointer",
+			padding: "4px 12px 2px",
+			userSelect: "none",
+		});
+
+		const chevron = document.createElement("span");
+		chevron.dataset.rccStaleChevron = "";
+		Object.assign(chevron.style, {
+			display: "inline-flex",
+			transition: "transform 0.2s",
+			transform: "rotate(0deg)",
+			color: STALE_AMBER,
+			fontSize: "10px",
+			lineHeight: "1",
+		});
+		chevron.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+
+		const countLabel = document.createElement("span");
+		countLabel.dataset.rccStaleCount = "";
+		Object.assign(countLabel.style, {
+			fontWeight: "600",
+			fontSize: "10px",
+			color: STALE_AMBER,
+			letterSpacing: "0.03em",
+		});
+
+		submenu.appendChild(chevron);
+		submenu.appendChild(countLabel);
+		submenu.addEventListener("click", () => { toggleStalePanel(); });
+
+		wrapper.appendChild(submenu);
+		popover.appendChild(wrapper);
+	}
+
+	// --- Stale translations panel (separate floating card) ----------------
+
+	const stalePanel = document.createElement("div");
+	stalePanel.id = "rcc-stale-panel";
+	Object.assign(stalePanel.style, {
+		position: "fixed",
+		zIndex: "999997",
+		background: "#ffffff",
+		borderRadius: "10px",
+		padding: "8px",
+		boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+		display: "none",
+		flexDirection: "column",
+		gap: "4px",
+		fontFamily: "system-ui, sans-serif",
+		fontSize: "13px",
+		minWidth: "200px",
+		maxWidth: "260px",
+		borderTop: `3px solid ${STALE_AMBER}`,
+	});
+
+	const panelHeader = document.createElement("div");
+	Object.assign(panelHeader.style, {
+		fontWeight: "600",
+		fontSize: "11px",
+		color: STALE_AMBER,
+		textTransform: "uppercase",
+		letterSpacing: "0.05em",
+		padding: "4px 8px 2px",
+	});
+	panelHeader.dataset.rccPanelCount = "";
+	stalePanel.appendChild(panelHeader);
+
+	const panelItems = document.createElement("div");
+	panelItems.dataset.rccStaleItems = "";
+	Object.assign(panelItems.style, {
+		maxHeight: "240px",
+		overflowY: "auto",
+		display: "flex",
+		flexDirection: "column",
+		gap: "1px",
+	});
+	stalePanel.appendChild(panelItems);
+
+	const resolveAllBtn = document.createElement("button");
+	resolveAllBtn.dataset.rccResolveAll = "";
+	Object.assign(resolveAllBtn.style, {
+		display: "none",
+		width: "100%",
+		marginTop: "4px",
+		padding: "6px 10px",
+		border: "none",
+		borderRadius: "5px",
+		background: STALE_AMBER,
+		color: "#ffffff",
+		fontSize: "11px",
+		fontWeight: "600",
+		cursor: "pointer",
+		transition: "background 0.15s",
+		fontFamily: "system-ui, sans-serif",
+	});
+	resolveAllBtn.textContent = "Resolve all";
+	resolveAllBtn.addEventListener("mouseenter", () => { resolveAllBtn.style.background = "#d97706"; });
+	resolveAllBtn.addEventListener("mouseleave", () => { resolveAllBtn.style.background = STALE_AMBER; });
+	resolveAllBtn.addEventListener("click", () => {
+		const stale = tracked.filter((t) => t.stale);
+		for (const t of stale) {
+			if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+		}
+	});
+	stalePanel.appendChild(resolveAllBtn);
+
+	function positionStalePanel() {
+		stalePanel.style.visibility = "hidden";
+		stalePanel.style.display = "flex";
+		const popRect = popover.getBoundingClientRect();
+		const panelRect = stalePanel.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const gap = 8;
+
+		let left = popRect.left - panelRect.width - gap;
+		if (left < 4) left = popRect.right + gap;
+		if (left + panelRect.width > vw - 4) left = 4;
+
+		let top = popRect.top;
+		if (top + panelRect.height > vh - 4) top = vh - panelRect.height - 4;
+		top = Math.max(4, top);
+
+		stalePanel.style.top = `${top}px`;
+		stalePanel.style.left = `${left}px`;
+		stalePanel.style.visibility = "visible";
+	}
+
+	function openStalePanel() {
+		positionStalePanel();
+		const chevron = document.querySelector<HTMLElement>(
+			`[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`,
+		);
+		if (chevron) chevron.style.transform = "rotate(90deg)";
+	}
+
+	function closeStalePanel() {
+		stalePanel.style.display = "none";
+		const chevron = document.querySelector<HTMLElement>(
+			`[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`,
+		);
+		if (chevron) chevron.style.transform = "rotate(0deg)";
+	}
+
+	function toggleStalePanel() {
+		if (stalePanel.style.display !== "none") closeStalePanel();
+		else openStalePanel();
 	}
 
 	// --- Drag logic -------------------------------------------------------
@@ -615,7 +1035,10 @@ function injectSwitcher(locales: string[]): void {
 		fab.style.top = `${y}px`;
 		fab.style.left = `${x}px`;
 
-		if (popoverOpen) positionPopover();
+		if (popoverOpen) {
+			positionPopover();
+			if (stalePanel.style.display !== "none") positionStalePanel();
+		}
 	});
 
 	fab.addEventListener("pointerup", () => {
@@ -642,7 +1065,10 @@ function injectSwitcher(locales: string[]): void {
 			fab.style.left = `${x}px`;
 			saveFabPosition();
 		}
-		if (popoverOpen) positionPopover();
+		if (popoverOpen) {
+			positionPopover();
+			if (stalePanel.style.display !== "none") positionStalePanel();
+		}
 	});
 
 	// --- Popover positioning & toggling -----------------------------------
@@ -682,6 +1108,7 @@ function injectSwitcher(locales: string[]): void {
 	function closePopover() {
 		popover.style.display = "none";
 		popoverOpen = false;
+		closeStalePanel();
 	}
 
 	function togglePopover() {
@@ -692,7 +1119,8 @@ function injectSwitcher(locales: string[]): void {
 	// Close on outside click
 	document.addEventListener("pointerdown", (e: PointerEvent) => {
 		if (!popoverOpen) return;
-		if (fab.contains(e.target as Node) || popover.contains(e.target as Node)) return;
+		const target = e.target as Node;
+		if (fab.contains(target) || popover.contains(target) || stalePanel.contains(target)) return;
 		closePopover();
 	});
 
@@ -705,6 +1133,7 @@ function injectSwitcher(locales: string[]): void {
 
 	document.body.appendChild(fab);
 	document.body.appendChild(popover);
+	document.body.appendChild(stalePanel);
 	updateButtonStates();
 }
 
@@ -740,9 +1169,9 @@ async function init(): Promise<void> {
 		return;
 	}
 
-	await prescanOriginals(main);
-
 	injectSwitcher(locales);
+
+	await prescanOriginals(main);
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
 }
 

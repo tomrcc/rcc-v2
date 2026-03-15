@@ -23,6 +23,7 @@ var originalContainer = null;
 var translationContainer = null;
 var activeDataset = null;
 var activeDatasetListener = null;
+var activeFile = null;
 var switchGeneration = 0;
 var originalInputConfigs = /* @__PURE__ */ new Map();
 function resolveRoseyKey(el) {
@@ -97,7 +98,15 @@ function trackElements(scope) {
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
-    tracked.push({ element: el, roseyKey, originalContent: el.innerHTML, focused: false });
+    tracked.push({
+      element: el,
+      roseyKey,
+      originalContent: el.innerHTML,
+      focused: false,
+      stale: false,
+      baseOriginal: null,
+      localeOriginal: null
+    });
   }
   log(`Tracked ${tracked.length} translatable elements`);
 }
@@ -133,14 +142,176 @@ async function prescanOriginals(container) {
   }
   log(`Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`);
 }
+var STALE_AMBER = "#f59e0b";
+var STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
+var staleCount = 0;
+function updateStaleBadge() {
+  const badge = document.getElementById("rcc-stale-badge");
+  if (!badge) return;
+  if (staleCount > 0) {
+    badge.textContent = String(staleCount);
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+function recountStale() {
+  staleCount = tracked.filter((t) => t.stale).length;
+  updateStaleBadge();
+  updateStaleList();
+}
+function truncateText(text, max) {
+  return text.length > max ? text.slice(0, max) + "\u2026" : text;
+}
+function updateStaleList() {
+  const panel = document.getElementById("rcc-stale-panel");
+  const allSubmenus = document.querySelectorAll("[data-rcc-stale-submenu]");
+  for (const sub of allSubmenus) {
+    if (sub.dataset.rccStaleSubmenu !== currentLocale) {
+      sub.style.display = "none";
+      const ch = sub.querySelector("[data-rcc-stale-chevron]");
+      if (ch) ch.style.transform = "rotate(0deg)";
+    }
+  }
+  if (!currentLocale) {
+    if (panel) panel.style.display = "none";
+    return;
+  }
+  const submenu = document.querySelector(
+    `[data-rcc-stale-submenu="${currentLocale}"]`
+  );
+  const staleItems = tracked.filter((t) => t.stale);
+  if (staleItems.length === 0) {
+    if (submenu) {
+      submenu.style.display = "none";
+      const ch = submenu.querySelector("[data-rcc-stale-chevron]");
+      if (ch) ch.style.transform = "rotate(0deg)";
+    }
+    if (panel) panel.style.display = "none";
+    return;
+  }
+  if (submenu) {
+    submenu.style.display = "flex";
+    const countEl = submenu.querySelector("[data-rcc-stale-count]");
+    if (countEl) countEl.textContent = `${staleItems.length} out of date`;
+  }
+  if (!panel) return;
+  const panelCount = panel.querySelector("[data-rcc-panel-count]");
+  if (panelCount) panelCount.textContent = `${staleItems.length} out of date`;
+  const list = panel.querySelector("[data-rcc-stale-items]");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const t of staleItems) {
+    const textPreview = truncateText(
+      t.element.textContent?.trim() || t.roseyKey,
+      40
+    );
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex",
+      alignItems: "stretch",
+      borderRadius: "4px",
+      transition: "background 0.15s"
+    });
+    row.addEventListener("mouseenter", () => {
+      row.style.background = "#fef3c7";
+    });
+    row.addEventListener("mouseleave", () => {
+      row.style.background = "transparent";
+    });
+    const scrollBtn = document.createElement("button");
+    Object.assign(scrollBtn.style, {
+      display: "flex",
+      flexDirection: "column",
+      gap: "1px",
+      flex: "1",
+      minWidth: "0",
+      padding: "5px 6px",
+      border: "none",
+      cursor: "pointer",
+      fontSize: "11px",
+      textAlign: "left",
+      background: "transparent",
+      color: "#1e293b",
+      fontFamily: "system-ui, sans-serif"
+    });
+    const preview = document.createElement("span");
+    Object.assign(preview.style, {
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    });
+    preview.textContent = textPreview;
+    const keyEl = document.createElement("span");
+    Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
+    keyEl.textContent = t.roseyKey;
+    scrollBtn.appendChild(preview);
+    scrollBtn.appendChild(keyEl);
+    scrollBtn.addEventListener("click", () => {
+      t.element.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const resolveBtn = document.createElement("button");
+    Object.assign(resolveBtn.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0 6px",
+      border: "none",
+      cursor: "pointer",
+      background: "transparent",
+      color: "#d1d5db",
+      transition: "color 0.15s",
+      flexShrink: "0"
+    });
+    resolveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+    resolveBtn.title = "Mark as reviewed";
+    resolveBtn.addEventListener("mouseenter", () => {
+      resolveBtn.style.color = STALE_AMBER;
+    });
+    resolveBtn.addEventListener("mouseleave", () => {
+      resolveBtn.style.color = "#d1d5db";
+    });
+    resolveBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (activeFile) resolveStale(t, activeFile);
+    });
+    row.appendChild(scrollBtn);
+    row.appendChild(resolveBtn);
+    list.appendChild(row);
+  }
+  const resolveAllBtn = panel.querySelector("[data-rcc-resolve-all]");
+  if (resolveAllBtn) resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
+}
+function markStaleElement(t) {
+  t.element.style.outline = `2px dashed ${STALE_AMBER}`;
+  t.element.style.outlineOffset = "2px";
+  t.element.style.backgroundColor = STALE_AMBER_BG;
+}
+function unmarkStaleElement(t) {
+  t.stale = false;
+  t.element.style.outline = "";
+  t.element.style.outlineOffset = "";
+  t.element.style.backgroundColor = "";
+  recountStale();
+}
+function resolveStale(t, file) {
+  if (!t.stale || !t.baseOriginal) return;
+  log(`[${t.roseyKey}] Resolving stale \u2014 updating .original`);
+  file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
+  unmarkStaleElement(t);
+}
 function teardownEditors() {
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
   activeDataset = null;
   activeDatasetListener = null;
+  activeFile = null;
   for (const t of tracked) t.editor = void 0;
   tracked.length = 0;
+  staleCount = 0;
+  updateStaleBadge();
+  updateStaleList();
   if (translationContainer && originalContainer) {
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
@@ -183,17 +354,46 @@ async function switchLocale(locale) {
     warn(`No file found in dataset "locales_${locale}"`);
     return;
   }
+  activeFile = file;
   let setupComplete = false;
+  staleCount = 0;
+  const dataResults = await Promise.all(
+    tracked.map(
+      (t) => file.data.get({ slug: t.roseyKey }).catch(() => null)
+    )
+  );
+  if (myGeneration !== switchGeneration) {
+    log(`Generation changed after data fetch, aborting "${locale}" setup`);
+    return;
+  }
+  const resolvedValues = [];
+  for (let i = 0; i < tracked.length; i++) {
+    const t = tracked[i];
+    const data = dataResults[i];
+    const value = data?.value ?? data?.original ?? t.originalContent;
+    resolvedValues[i] = value;
+    const isStale = data?._base_original != null && data?.original != null && data._base_original !== data.original;
+    t.stale = isStale;
+    t.baseOriginal = data?._base_original ?? null;
+    t.localeOriginal = data?.original ?? null;
+    t.element.innerHTML = value;
+    if (isStale) {
+      markStaleElement(t);
+      staleCount++;
+    }
+  }
+  updateStaleBadge();
+  updateStaleList();
+  log(`Data loaded \u2014 ${staleCount} stale of ${tracked.length} elements`);
   let editorsCreated = 0;
-  for (const t of tracked) {
+  for (let i = 0; i < tracked.length; i++) {
+    const t = tracked[i];
     if (myGeneration !== switchGeneration) {
-      log(`Generation changed, aborting "${locale}" setup`);
+      log(`Generation changed, aborting "${locale}" editor setup`);
       return;
     }
     try {
-      const data = await file.data.get({ slug: t.roseyKey });
-      const value = data?.value ?? data?.original ?? t.originalContent;
-      t.element.innerHTML = value;
+      const value = resolvedValues[i];
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : void 0;
       const editor = await api.createTextEditableRegion(
@@ -204,6 +404,9 @@ async function switchLocale(locale) {
           if (content == null) return;
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+          if (t.stale && t.baseOriginal) {
+            resolveStale(t, file);
+          }
         },
         {
           elementType: t.element.dataset.type,
@@ -344,6 +547,27 @@ function injectSwitcher(locales) {
     pointerEvents: "none"
   });
   fab.appendChild(badge);
+  const staleBadge = document.createElement("div");
+  staleBadge.id = "rcc-stale-badge";
+  Object.assign(staleBadge.style, {
+    position: "absolute",
+    bottom: "-4px",
+    right: "-4px",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    fontSize: "9px",
+    fontWeight: "700",
+    lineHeight: "1",
+    padding: "3px 5px",
+    borderRadius: "8px",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "16px",
+    textAlign: "center",
+    pointerEvents: "none"
+  });
+  fab.appendChild(staleBadge);
   const popover = document.createElement("div");
   popover.id = "rcc-locale-popover";
   Object.assign(popover.style, {
@@ -407,7 +631,150 @@ function injectSwitcher(locales) {
   }
   popover.appendChild(makeLocaleButton("Original", null));
   for (const locale of locales) {
-    popover.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+    const wrapper = document.createElement("div");
+    wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
+    const submenu = document.createElement("div");
+    submenu.dataset.rccStaleSubmenu = locale;
+    Object.assign(submenu.style, {
+      display: "none",
+      alignItems: "center",
+      gap: "4px",
+      cursor: "pointer",
+      padding: "4px 12px 2px",
+      userSelect: "none"
+    });
+    const chevron = document.createElement("span");
+    chevron.dataset.rccStaleChevron = "";
+    Object.assign(chevron.style, {
+      display: "inline-flex",
+      transition: "transform 0.2s",
+      transform: "rotate(0deg)",
+      color: STALE_AMBER,
+      fontSize: "10px",
+      lineHeight: "1"
+    });
+    chevron.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+    const countLabel = document.createElement("span");
+    countLabel.dataset.rccStaleCount = "";
+    Object.assign(countLabel.style, {
+      fontWeight: "600",
+      fontSize: "10px",
+      color: STALE_AMBER,
+      letterSpacing: "0.03em"
+    });
+    submenu.appendChild(chevron);
+    submenu.appendChild(countLabel);
+    submenu.addEventListener("click", () => {
+      toggleStalePanel();
+    });
+    wrapper.appendChild(submenu);
+    popover.appendChild(wrapper);
+  }
+  const stalePanel = document.createElement("div");
+  stalePanel.id = "rcc-stale-panel";
+  Object.assign(stalePanel.style, {
+    position: "fixed",
+    zIndex: "999997",
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "8px",
+    boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+    display: "none",
+    flexDirection: "column",
+    gap: "4px",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: "13px",
+    minWidth: "200px",
+    maxWidth: "260px",
+    borderTop: `3px solid ${STALE_AMBER}`
+  });
+  const panelHeader = document.createElement("div");
+  Object.assign(panelHeader.style, {
+    fontWeight: "600",
+    fontSize: "11px",
+    color: STALE_AMBER,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    padding: "4px 8px 2px"
+  });
+  panelHeader.dataset.rccPanelCount = "";
+  stalePanel.appendChild(panelHeader);
+  const panelItems = document.createElement("div");
+  panelItems.dataset.rccStaleItems = "";
+  Object.assign(panelItems.style, {
+    maxHeight: "240px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "1px"
+  });
+  stalePanel.appendChild(panelItems);
+  const resolveAllBtn = document.createElement("button");
+  resolveAllBtn.dataset.rccResolveAll = "";
+  Object.assign(resolveAllBtn.style, {
+    display: "none",
+    width: "100%",
+    marginTop: "4px",
+    padding: "6px 10px",
+    border: "none",
+    borderRadius: "5px",
+    background: STALE_AMBER,
+    color: "#ffffff",
+    fontSize: "11px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "background 0.15s",
+    fontFamily: "system-ui, sans-serif"
+  });
+  resolveAllBtn.textContent = "Resolve all";
+  resolveAllBtn.addEventListener("mouseenter", () => {
+    resolveAllBtn.style.background = "#d97706";
+  });
+  resolveAllBtn.addEventListener("mouseleave", () => {
+    resolveAllBtn.style.background = STALE_AMBER;
+  });
+  resolveAllBtn.addEventListener("click", () => {
+    const stale = tracked.filter((t) => t.stale);
+    for (const t of stale) {
+      if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+    }
+  });
+  stalePanel.appendChild(resolveAllBtn);
+  function positionStalePanel() {
+    stalePanel.style.visibility = "hidden";
+    stalePanel.style.display = "flex";
+    const popRect = popover.getBoundingClientRect();
+    const panelRect = stalePanel.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    let left = popRect.left - panelRect.width - gap;
+    if (left < 4) left = popRect.right + gap;
+    if (left + panelRect.width > vw - 4) left = 4;
+    let top = popRect.top;
+    if (top + panelRect.height > vh - 4) top = vh - panelRect.height - 4;
+    top = Math.max(4, top);
+    stalePanel.style.top = `${top}px`;
+    stalePanel.style.left = `${left}px`;
+    stalePanel.style.visibility = "visible";
+  }
+  function openStalePanel() {
+    positionStalePanel();
+    const chevron = document.querySelector(
+      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+    );
+    if (chevron) chevron.style.transform = "rotate(90deg)";
+  }
+  function closeStalePanel() {
+    stalePanel.style.display = "none";
+    const chevron = document.querySelector(
+      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+    );
+    if (chevron) chevron.style.transform = "rotate(0deg)";
+  }
+  function toggleStalePanel() {
+    if (stalePanel.style.display !== "none") closeStalePanel();
+    else openStalePanel();
   }
   let isDragging = false;
   let hasDragged = false;
@@ -448,7 +815,10 @@ function injectSwitcher(locales) {
     fab.style.right = "auto";
     fab.style.top = `${y}px`;
     fab.style.left = `${x}px`;
-    if (popoverOpen) positionPopover();
+    if (popoverOpen) {
+      positionPopover();
+      if (stalePanel.style.display !== "none") positionStalePanel();
+    }
   });
   fab.addEventListener("pointerup", () => {
     if (!isDragging) return;
@@ -471,7 +841,10 @@ function injectSwitcher(locales) {
       fab.style.left = `${x}px`;
       saveFabPosition();
     }
-    if (popoverOpen) positionPopover();
+    if (popoverOpen) {
+      positionPopover();
+      if (stalePanel.style.display !== "none") positionStalePanel();
+    }
   });
   let popoverOpen = false;
   function positionPopover() {
@@ -497,6 +870,7 @@ function injectSwitcher(locales) {
   function closePopover() {
     popover.style.display = "none";
     popoverOpen = false;
+    closeStalePanel();
   }
   function togglePopover() {
     if (popoverOpen) closePopover();
@@ -504,7 +878,8 @@ function injectSwitcher(locales) {
   }
   document.addEventListener("pointerdown", (e) => {
     if (!popoverOpen) return;
-    if (fab.contains(e.target) || popover.contains(e.target)) return;
+    const target = e.target;
+    if (fab.contains(target) || popover.contains(target) || stalePanel.contains(target)) return;
     closePopover();
   });
   document.addEventListener("keydown", (e) => {
@@ -512,6 +887,7 @@ function injectSwitcher(locales) {
   });
   document.body.appendChild(fab);
   document.body.appendChild(popover);
+  document.body.appendChild(stalePanel);
   updateButtonStates();
 }
 async function init() {
@@ -534,8 +910,8 @@ async function init() {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
-  await prescanOriginals(main);
   injectSwitcher(locales);
+  await prescanOriginals(main);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }
 if (window.inEditorMode && window.CloudCannonAPI) {
