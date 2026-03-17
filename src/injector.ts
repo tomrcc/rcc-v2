@@ -477,7 +477,9 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 	// --- Swap the locale container with a clean clone -----------------------
 
-	const container = document.querySelector<HTMLElement>("main[data-locales]");
+	const container =
+		document.querySelector<HTMLElement>("[data-rcc]") ??
+		document.querySelector<HTMLElement>("main");
 	if (!container) {
 		warn("No locale container found");
 		return;
@@ -1138,6 +1140,30 @@ function injectSwitcher(locales: string[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Locale discovery
+// ---------------------------------------------------------------------------
+
+async function discoverLocales(): Promise<string[] | null> {
+	try {
+		const res = await fetch("/_rcc/locales.json");
+		if (res.ok) {
+			const data: string[] = await res.json();
+			if (Array.isArray(data) && data.length > 0) {
+				log("Discovered locales from manifest:", data);
+				return data;
+			}
+		}
+	} catch {
+		// Manifest unavailable
+	}
+
+	warn(
+		"Could not load /_rcc/locales.json. Ensure write-locales ran with --dest pointing to your build output directory.",
+	);
+	return null;
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 
@@ -1149,18 +1175,29 @@ async function init(): Promise<void> {
 	}
 	api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	const main = document.querySelector<HTMLElement>("main[data-locales]");
-	if (!main) return;
+	const container =
+		document.querySelector<HTMLElement>("[data-rcc]") ??
+		document.querySelector<HTMLElement>("main");
+	if (!container) return;
 
-	const localesAttr = main.getAttribute("data-locales");
-	if (!localesAttr) return;
-	const locales = localesAttr
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
+	const allLocales = await discoverLocales();
+	if (!allLocales || allLocales.length === 0) return;
+
+	const excludeAttr = container.getAttribute("data-rcc-exclude");
+	const excluded = excludeAttr
+		? new Set(
+				excludeAttr
+					.split(",")
+					.map((s) => s.trim())
+					.filter(Boolean),
+			)
+		: null;
+	const locales = excluded
+		? allLocales.filter((l) => !excluded.has(l))
+		: allLocales;
 	if (locales.length === 0) return;
 
-	const elementCount = main.querySelectorAll<HTMLElement>(
+	const elementCount = container.querySelectorAll<HTMLElement>(
 		"[data-rosey]:not([data-rcc-ignore])",
 	).length;
 
@@ -1171,7 +1208,7 @@ async function init(): Promise<void> {
 
 	injectSwitcher(locales);
 
-	await prescanOriginals(main);
+	await prescanOriginals(container);
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
 }
 

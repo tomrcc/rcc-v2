@@ -2,7 +2,7 @@ let verbose: boolean | null = null;
 
 function isVerbose(): boolean {
 	if (verbose === null) {
-		verbose = !!document.querySelector("main[data-rcc-verbose]");
+		verbose = !!document.querySelector("[data-rcc-verbose]");
 	}
 	return verbose;
 }

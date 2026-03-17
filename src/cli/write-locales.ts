@@ -3,6 +3,7 @@ import { writeLocales } from "../write-locales";
 export function run(argv: string[]): void {
 	let source = "rosey";
 	let locales: string[] | undefined;
+	let dest: string | undefined;
 
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -13,17 +14,27 @@ export function run(argv: string[]): void {
 				.split(",")
 				.map((s) => s.trim())
 				.filter(Boolean);
+		} else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
+			dest = argv[++i];
 		} else if (arg === "--help" || arg === "-h") {
 			console.log(
 				"Usage: rcc-v2 write-locales [options]\n\n" +
 					"Options:\n" +
 					"  -s, --source <dir>     Rosey directory (default: rosey)\n" +
 					"  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n" +
+					"  -d, --dest <dir>       (required) Build output dir; writes locale manifest to {dest}/_rcc/locales.json\n" +
 					"  -h, --help             Show this help message\n",
 			);
 			process.exit(0);
 		}
 	}
 
-	writeLocales({ roseyDir: source, locales });
+	if (!dest) {
+		console.error(
+			"Error: --dest <dir> is required. This is the build output directory where the locale manifest (_rcc/locales.json) is written.",
+		);
+		process.exit(1);
+	}
+
+	writeLocales({ roseyDir: source, locales, dest });
 }

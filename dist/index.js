@@ -4,7 +4,7 @@
 var verbose = null;
 function isVerbose() {
   if (verbose === null) {
-    verbose = !!document.querySelector("main[data-rcc-verbose]");
+    verbose = !!document.querySelector("[data-rcc-verbose]");
   }
   return verbose;
 }
@@ -338,7 +338,7 @@ async function switchLocale(locale) {
     log("Switched to Original");
     return;
   }
-  const container = document.querySelector("main[data-locales]");
+  const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) {
     warn("No locale container found");
     return;
@@ -892,6 +892,23 @@ function injectSwitcher(locales) {
   document.body.appendChild(stalePanel);
   updateButtonStates();
 }
+async function discoverLocales() {
+  try {
+    const res = await fetch("/_rcc/locales.json");
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        log("Discovered locales from manifest:", data);
+        return data;
+      }
+    }
+  } catch {
+  }
+  warn(
+    "Could not load /_rcc/locales.json. Ensure write-locales ran with --dest pointing to your build output directory."
+  );
+  return null;
+}
 async function init() {
   const ccWindow = window;
   if (!ccWindow.CloudCannonAPI) {
@@ -899,13 +916,17 @@ async function init() {
     return;
   }
   api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  const main = document.querySelector("main[data-locales]");
-  if (!main) return;
-  const localesAttr = main.getAttribute("data-locales");
-  if (!localesAttr) return;
-  const locales = localesAttr.split(",").map((s) => s.trim()).filter(Boolean);
+  const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
+  if (!container) return;
+  const allLocales = await discoverLocales();
+  if (!allLocales || allLocales.length === 0) return;
+  const excludeAttr = container.getAttribute("data-rcc-exclude");
+  const excluded = excludeAttr ? new Set(
+    excludeAttr.split(",").map((s) => s.trim()).filter(Boolean)
+  ) : null;
+  const locales = excluded ? allLocales.filter((l) => !excluded.has(l)) : allLocales;
   if (locales.length === 0) return;
-  const elementCount = main.querySelectorAll(
+  const elementCount = container.querySelectorAll(
     "[data-rosey]:not([data-rcc-ignore])"
   ).length;
   if (elementCount === 0) {
@@ -913,7 +934,7 @@ async function init() {
     return;
   }
   injectSwitcher(locales);
-  await prescanOriginals(main);
+  await prescanOriginals(container);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }
 if (window.inEditorMode && window.CloudCannonAPI) {

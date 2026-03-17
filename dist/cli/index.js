@@ -31,8 +31,13 @@ function sortKeys(obj) {
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
   );
 }
-async function writeLocales(options = {}) {
+async function writeLocales(options) {
   const roseyDir = options.roseyDir ?? "rosey";
+  const dest = options.dest;
+  if (!dest) {
+    console.error("RCC: dest is required. Pass the build output directory.");
+    process.exit(1);
+  }
   let locales = options.locales;
   const baseJsonPath = import_node_path.default.join(roseyDir, "base.json");
   const baseJsonRaw = await import_node_fs.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
@@ -88,26 +93,76 @@ async function writeLocales(options = {}) {
       `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
     );
   }
+  const rccDir = import_node_path.default.join(dest, "_rcc");
+  await import_node_fs.default.promises.mkdir(rccDir, { recursive: true });
+  const manifestPath = import_node_path.default.join(rccDir, "locales.json");
+  await import_node_fs.default.promises.writeFile(manifestPath, JSON.stringify(locales));
+  console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
+  await validateDataConfig(locales);
+}
+async function validateDataConfig(locales) {
+  const configPaths = [
+    "cloudcannon.config.yml",
+    "cloudcannon.config.yaml",
+    "cloudcannon.config.json",
+    "cloudcannon.config.cjs"
+  ];
+  let configRaw = null;
+  let configPath = null;
+  for (const p of configPaths) {
+    try {
+      configRaw = await import_node_fs.default.promises.readFile(p, "utf-8");
+      configPath = p;
+      break;
+    } catch {
+    }
+  }
+  if (!configRaw || !configPath) return;
+  const missing = [];
+  for (const locale of locales) {
+    const key = `locales_${locale}`;
+    if (!configRaw.includes(key)) {
+      missing.push(locale);
+    }
+  }
+  if (missing.length > 0) {
+    console.warn(
+      `RCC: Missing data_config entries in ${configPath}. Add:
+` + missing.map(
+        (l) => `  locales_${l}:
+    path: rosey/locales/${l}.json`
+      ).join("\n")
+    );
+  }
 }
 
 // src/cli/write-locales.ts
 function run(argv) {
   let source = "rosey";
   let locales;
+  let dest;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if ((arg === "--source" || arg === "-s") && argv[i + 1]) {
       source = argv[++i];
     } else if ((arg === "--locales" || arg === "-l") && argv[i + 1]) {
       locales = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+    } else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
+      dest = argv[++i];
     } else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: rcc-v2 write-locales [options]\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: rosey)\n  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n  -h, --help             Show this help message\n"
+        "Usage: rcc-v2 write-locales [options]\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: rosey)\n  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n  -d, --dest <dir>       (required) Build output dir; writes locale manifest to {dest}/_rcc/locales.json\n  -h, --help             Show this help message\n"
       );
       process.exit(0);
     }
   }
-  writeLocales({ roseyDir: source, locales });
+  if (!dest) {
+    console.error(
+      "Error: --dest <dir> is required. This is the build output directory where the locale manifest (_rcc/locales.json) is written."
+    );
+    process.exit(1);
+  }
+  writeLocales({ roseyDir: source, locales, dest });
 }
 
 // src/cli/index.ts

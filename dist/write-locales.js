@@ -40,8 +40,13 @@ function sortKeys(obj) {
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
   );
 }
-async function writeLocales(options = {}) {
+async function writeLocales(options) {
   const roseyDir = options.roseyDir ?? "rosey";
+  const dest = options.dest;
+  if (!dest) {
+    console.error("RCC: dest is required. Pass the build output directory.");
+    process.exit(1);
+  }
   let locales = options.locales;
   const baseJsonPath = import_node_path.default.join(roseyDir, "base.json");
   const baseJsonRaw = await import_node_fs.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
@@ -95,6 +100,47 @@ async function writeLocales(options = {}) {
     );
     console.log(
       `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
+    );
+  }
+  const rccDir = import_node_path.default.join(dest, "_rcc");
+  await import_node_fs.default.promises.mkdir(rccDir, { recursive: true });
+  const manifestPath = import_node_path.default.join(rccDir, "locales.json");
+  await import_node_fs.default.promises.writeFile(manifestPath, JSON.stringify(locales));
+  console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
+  await validateDataConfig(locales);
+}
+async function validateDataConfig(locales) {
+  const configPaths = [
+    "cloudcannon.config.yml",
+    "cloudcannon.config.yaml",
+    "cloudcannon.config.json",
+    "cloudcannon.config.cjs"
+  ];
+  let configRaw = null;
+  let configPath = null;
+  for (const p of configPaths) {
+    try {
+      configRaw = await import_node_fs.default.promises.readFile(p, "utf-8");
+      configPath = p;
+      break;
+    } catch {
+    }
+  }
+  if (!configRaw || !configPath) return;
+  const missing = [];
+  for (const locale of locales) {
+    const key = `locales_${locale}`;
+    if (!configRaw.includes(key)) {
+      missing.push(locale);
+    }
+  }
+  if (missing.length > 0) {
+    console.warn(
+      `RCC: Missing data_config entries in ${configPath}. Add:
+` + missing.map(
+        (l) => `  locales_${l}:
+    path: rosey/locales/${l}.json`
+      ).join("\n")
     );
   }
 }
