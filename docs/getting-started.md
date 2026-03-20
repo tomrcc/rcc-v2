@@ -1,0 +1,189 @@
+# Getting Started
+
+This guide walks you through going from zero to a working translation editing setup. There are four things to configure:
+
+1. Mark up your HTML with `data-rosey` attributes
+2. Import the client-side script in your layout
+3. Configure `cloudcannon.config.yml` with `data_config` entries for each locale
+4. Set up a postbuild script to run `write-locales` and `rosey build`
+
+## Step 1: Add `data-rosey` to translatable elements
+
+Any element with a `data-rosey` attribute is automatically picked up by both Rosey and this connector. The attribute value is the translation key:
+
+```html
+<h1 data-rosey="hero:title">Welcome to my site</h1>
+<p data-rosey="hero:subtitle">The best site on the internet</p>
+```
+
+If you're using CloudCannon's editable regions, these work together:
+
+```html
+<editable-text data-editable="text" data-prop="title" data-rosey="hero:title">
+  Welcome to my site
+</editable-text>
+```
+
+See [Tagging Content](tagging-content.md) for full details on namespacing and key resolution.
+
+## Step 2: Import the script in your layout
+
+Import the package in your site's layout file. The script self-initializes when the CloudCannon Visual Editor fires the `cloudcannon:load` event — it does nothing outside the editor, so there's no performance cost in production.
+
+**Astro (recommended — lazy-load in editor only):**
+
+```astro
+<script>
+  if (window?.inEditorMode) {
+    import("rosey-cloudcannon-connector");
+  }
+</script>
+```
+
+The `window.inEditorMode` flag is set by CloudCannon's Visual Editor before your scripts run.
+
+> **Note:** The script must be loaded as a module (`type="module"` or via a bundler `import`). It does not support `<script src="...">` without `type="module"`.
+
+## Step 3: Configure `cloudcannon.config.yml`
+
+For the connector to read and write translation data, each locale needs a `data_config` entry in your CloudCannon config. The key **must** follow the format `locales_{code}`:
+
+```yaml
+# cloudcannon.config.yml
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_de:
+    path: rosey/locales/de.json
+  locales_es:
+    path: rosey/locales/es.json
+```
+
+This tells CloudCannon to expose these JSON files through its data API. The connector uses `api.dataset("locales_fr")` to access them, so the naming convention is important.
+
+## Step 4: Set up the postbuild script
+
+Create `.cloudcannon/postbuild` in your repo root. This runs after every CloudCannon build and handles three things: generating `base.json`, creating/updating locale files, and building the translated site.
+
+```bash
+#!/usr/bin/env bash
+
+# 1. Generate Rosey's base.json from the built HTML
+npx rosey generate --source dist
+
+# 2. Create/update locale JSON files + write the locale manifest
+npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+
+# 3. Build the translated site with Rosey
+mv ./dist ./_untranslated_site
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root
+
+# 4. Copy the _rcc manifest into the final output
+#    (Rosey excludes _-prefixed directories from its build output)
+cp -r _untranslated_site/_rcc dist/_rcc
+```
+
+Adjust `--source dist` if your SSG outputs to a different directory (e.g. `_site`, `public`, `build`).
+
+### Why the `cp` step?
+
+Rosey skips directories prefixed with `_` during its build. The connector fetches `/_rcc/locales.json` at runtime for locale discovery, so the `_rcc` directory must be present in the final `dist/` output. The `cp` at the end copies it from the pre-Rosey build into the post-Rosey output.
+
+## What happens at runtime
+
+When the page loads in CloudCannon's Visual Editor:
+
+1. The script waits for the `cloudcannon:load` event
+2. Acquires the CloudCannon JS API handle
+3. Fetches `/_rcc/locales.json` to discover available locales
+4. Finds the snapshot boundary (`[data-rcc]` element or `<main>`)
+5. Tracks all `[data-rosey]` elements (excluding `[data-rcc-ignore]`)
+6. Pre-scans input configs from the original container
+7. Injects a draggable locale switcher FAB (floating action button) in the bottom-right corner
+8. Clicking the FAB opens a popover listing all available locales plus "Original"
+9. Selecting a locale:
+   - Clones the snapshot boundary and strips all CloudCannon editing infrastructure from the clone
+   - Swaps the original container out, the clean clone in
+   - Fetches locale data and creates inline ProseMirror editors on each translatable element
+   - Edits are pushed directly to the locale JSON file via CloudCannon's data API
+10. Selecting "Original" swaps the original container back in — CloudCannon's editing automatically reconnects
+
+The FAB can be dragged anywhere on the page; its position persists across reloads via `sessionStorage`.
+
+## Full Example: Astro Site
+
+### `package.json`
+
+```json
+{
+  "dependencies": {
+    "astro": "^5.0.0",
+    "rosey": "^2.3.10",
+    "rosey-cloudcannon-connector": "latest"
+  }
+}
+```
+
+### `src/layouts/Layout.astro`
+
+```astro
+---
+// your frontmatter
+---
+<html lang="en">
+  <head><!-- ... --></head>
+  <body>
+    <nav><!-- navigation, outside the boundary --></nav>
+    <script>
+      if (window?.inEditorMode) {
+        import("rosey-cloudcannon-connector");
+      }
+    </script>
+    <main>
+      <slot />
+    </main>
+    <footer><!-- footer, outside the boundary --></footer>
+  </body>
+</html>
+```
+
+### `cloudcannon.config.yml`
+
+```yaml
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_de:
+    path: rosey/locales/de.json
+```
+
+### `.cloudcannon/postbuild`
+
+```bash
+#!/usr/bin/env bash
+npx rosey generate --source dist
+npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+mv ./dist ./_untranslated_site
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root
+cp -r _untranslated_site/_rcc dist/_rcc
+```
+
+### A page with translatable content
+
+```astro
+---
+layout: ../layouts/Layout.astro
+title: Home
+---
+<section data-rosey-ns="hero">
+  <h1 data-rosey="title">Welcome to Sendit</h1>
+  <p data-rosey="subtitle">Email marketing made easy</p>
+</section>
+
+<section data-rosey-ns="features">
+  <h2 data-rosey="heading">Features</h2>
+  <p data-rosey="description">Everything you need to grow your business</p>
+</section>
+```
+
+With `data-rosey-root` on `<main>` in the layout (or on the page itself), the resolved keys would be namespaced further — see [Tagging Content](tagging-content.md) for full details.

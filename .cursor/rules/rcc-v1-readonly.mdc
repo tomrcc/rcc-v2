@@ -1,0 +1,11 @@
+---
+description: The RCC v1 repo is read-only reference material for agents
+alwaysApply: true
+---
+
+# RCC v1 is Read-Only
+
+The directory `/Users/tomrichardson/Dev/work/multilingual/rcc/` contains the published v1 version of the Rosey CloudCannon Connector. Agents must NEVER write to, edit, delete, or modify any file in this directory. It is reference material only.
+
+- Read and search operations are fine.
+- All write operations (StrReplace, Write, Delete, Shell commands that modify files) targeting paths under `/Users/tomrichardson/Dev/work/multilingual/rcc/` are forbidden.
