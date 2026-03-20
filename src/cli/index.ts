@@ -1,15 +1,18 @@
+import { run as init } from "./init";
 import { run as writeLocales } from "./write-locales";
 
-const COMMANDS: Record<string, (argv: string[]) => void> = {
+const COMMANDS: Record<string, (argv: string[]) => void | Promise<void>> = {
 	"write-locales": writeLocales,
+	init: init,
 };
 
 function printUsage(): void {
 	console.log(
-		"Usage: rcc-v2 <command> [options]\n\n" +
+		"Usage: rosey-cloudcannon-connector <command> [options]\n\n" +
 			"Commands:\n" +
+			"  init            Interactive setup wizard for Rosey + CloudCannon\n" +
 			"  write-locales   Write/update locale files from Rosey base.json\n\n" +
-			"Run rcc-v2 <command> --help for command-specific options.\n",
+			"Run rosey-cloudcannon-connector <command> --help for command-specific options.\n",
 	);
 }
 

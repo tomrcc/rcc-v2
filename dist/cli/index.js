@@ -23,9 +23,619 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// src/write-locales.ts
+// src/cli/init/actions.ts
+var import_node_child_process = require("child_process");
 var import_node_fs = __toESM(require("fs"));
 var import_node_path = __toESM(require("path"));
+function installDependencies(ctx) {
+  if (!ctx.hasPackageJson) {
+    console.log(
+      "\n\u26A0  No package.json found \u2014 skipping dependency installation."
+    );
+    console.log(
+      "   Install manually: npm install rosey rosey-cloudcannon-connector"
+    );
+    return;
+  }
+  const pkgs = [];
+  if (!ctx.roseyInstalled) pkgs.push("rosey");
+  if (!ctx.rccInstalled) pkgs.push("rosey-cloudcannon-connector");
+  if (pkgs.length === 0) {
+    console.log(
+      "\n\u2713  rosey and rosey-cloudcannon-connector already installed."
+    );
+    return;
+  }
+  const installCmd = {
+    npm: `npm install ${pkgs.join(" ")}`,
+    yarn: `yarn add ${pkgs.join(" ")}`,
+    pnpm: `pnpm add ${pkgs.join(" ")}`,
+    bun: `bun add ${pkgs.join(" ")}`
+  }[ctx.packageManager];
+  console.log(`
+Installing ${pkgs.join(", ")}...`);
+  try {
+    (0, import_node_child_process.execSync)(installCmd, { stdio: "inherit" });
+    console.log("\u2713  Dependencies installed.");
+  } catch {
+    console.error(`
+\u26A0  Install failed. Run manually: ${installCmd}`);
+  }
+}
+function buildPostbuildBlock(answers) {
+  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } = answers;
+  const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
+  const lines = [];
+  if (useBuiltinWriteLocales) {
+    lines.push(`npx rosey generate --source ${buildDir}`);
+    lines.push(
+      `npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir} --locales ${locales.join(",")}`
+    );
+  } else {
+    lines.push(`npx rosey generate --source ${buildDir}`);
+    lines.push("");
+    lines.push("# TODO: Replace with your custom locale generation script.");
+    lines.push("# Your script should:");
+    lines.push(`#   1. Read ${roseyDir}/base.json for translation keys`);
+    lines.push(
+      `#   2. Create/update locale files at ${roseyDir}/locales/{code}.json`
+    );
+    lines.push(
+      `#   3. Write a locale manifest array to ${buildDir}/_rcc/locales.json`
+    );
+    lines.push(
+      `# npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir}`
+    );
+  }
+  lines.push("");
+  lines.push(`mv ./${buildDir} ./_untranslated_site`);
+  lines.push(
+    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""}`
+  );
+  lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
+  return lines.join("\n");
+}
+function writePostbuild(ctx, answers) {
+  const dir = import_node_path.default.join(process.cwd(), ".cloudcannon");
+  const filePath = import_node_path.default.join(dir, "postbuild");
+  const block = buildPostbuildBlock(answers);
+  if (ctx.postbuildExists && ctx.postbuildContent != null) {
+    const appended = `${ctx.postbuildContent.trimEnd()}
+
+# Rosey
+${block}
+`;
+    import_node_fs.default.mkdirSync(dir, { recursive: true });
+    import_node_fs.default.writeFileSync(filePath, appended);
+    console.log("\u2713  Appended Rosey commands to .cloudcannon/postbuild");
+  } else {
+    const content = `#!/usr/bin/env bash
+
+# Rosey
+${block}
+`;
+    import_node_fs.default.mkdirSync(dir, { recursive: true });
+    import_node_fs.default.writeFileSync(filePath, content, { mode: 493 });
+    console.log("\u2713  Created .cloudcannon/postbuild");
+  }
+}
+function writeRoseyConfig(ctx, answers) {
+  if (ctx.roseyConfigExists) {
+    console.log("\u2713  Rosey config already exists \u2014 skipping.");
+    return;
+  }
+  const content = [
+    `source: ${answers.buildDir}`,
+    `default_language: ${answers.defaultLanguage}`,
+    ""
+  ].join("\n");
+  import_node_fs.default.writeFileSync(import_node_path.default.join(process.cwd(), "rosey.yml"), content);
+  console.log("\u2713  Created rosey.yml");
+}
+function buildDataConfigYaml(answers, indent) {
+  return answers.locales.map(
+    (locale) => `${indent}locales_${locale}:
+${indent}  path: ${answers.roseyDir}/locales/${locale}.json`
+  ).join("\n");
+}
+function buildCollectionsConfigYaml(answers, indent) {
+  const lines = [
+    `${indent}locales:`,
+    `${indent}  path: ${answers.roseyDir}/locales`,
+    `${indent}  name: Locales`,
+    `${indent}  icon: translate`,
+    `${indent}  disable_add: true`,
+    `${indent}  disable_add_folder: true`,
+    `${indent}  disable_file_actions: true`,
+    `${indent}  _inputs:`,
+    `${indent}    value:`,
+    `${indent}      type: html`,
+    `${indent}      label: Translation`,
+    `${indent}      cascade: true`,
+    `${indent}    original:`,
+    `${indent}      hidden: true`,
+    `${indent}      cascade: true`,
+    `${indent}    _base_original:`,
+    `${indent}      disabled: true`,
+    `${indent}      cascade: true`
+  ];
+  return lines.join("\n");
+}
+function buildDataConfigJson(answers) {
+  const obj = {};
+  for (const locale of answers.locales) {
+    obj[`locales_${locale}`] = {
+      path: `${answers.roseyDir}/locales/${locale}.json`
+    };
+  }
+  return obj;
+}
+function buildCollectionsConfigJson(answers) {
+  return {
+    locales: {
+      path: `${answers.roseyDir}/locales`,
+      name: "Locales",
+      icon: "translate",
+      disable_add: true,
+      disable_add_folder: true,
+      disable_file_actions: true,
+      _inputs: {
+        value: { type: "html", label: "Translation", cascade: true },
+        original: { hidden: true, cascade: true },
+        _base_original: { disabled: true, cascade: true }
+      }
+    }
+  };
+}
+function findYamlBlockEnd(content, key) {
+  const regex = new RegExp(`^${key}:\\s*$`, "m");
+  const match = regex.exec(content);
+  if (!match) return -1;
+  const startIdx = match.index + match[0].length;
+  const lines = content.slice(startIdx).split("\n");
+  let endIdx = startIdx;
+  for (const line of lines) {
+    if (line.trim() === "" || /^\s/.test(line)) {
+      endIdx += line.length + 1;
+    } else {
+      break;
+    }
+  }
+  return endIdx;
+}
+function detectIndent(content, key) {
+  const regex = new RegExp(`^${key}:\\s*\\n([ \\t]+)`, "m");
+  const match = regex.exec(content);
+  return match ? match[1] : "  ";
+}
+function hasLocaleEntry(content, locale) {
+  return new RegExp(`^\\s+locales_${locale}:`, "m").test(content);
+}
+function updateYamlConfig(content, answers) {
+  let result = content;
+  const missingDataLocales = answers.locales.filter(
+    (l) => !hasLocaleEntry(result, l)
+  );
+  if (missingDataLocales.length > 0) {
+    const blockEnd = findYamlBlockEnd(result, "data_config");
+    const indent = detectIndent(result, "data_config") || "  ";
+    const newEntries = missingDataLocales.map(
+      (l) => `${indent}locales_${l}:
+${indent}  path: ${answers.roseyDir}/locales/${l}.json`
+    ).join("\n");
+    if (blockEnd === -1) {
+      result = `${result.trimEnd()}
+data_config:
+${newEntries}
+`;
+    } else {
+      result = `${result.slice(0, blockEnd)}${newEntries}
+${result.slice(blockEnd)}`;
+    }
+  }
+  if (answers.exposeAsCollection) {
+    const hasCollection = /^\s+locales:/m.test(result) && result.includes("collections_config");
+    if (!hasCollection) {
+      const collectionsEnd = findYamlBlockEnd(result, "collections_config");
+      const indent = detectIndent(result, "collections_config") || "  ";
+      const entry = buildCollectionsConfigYaml(answers, indent);
+      if (collectionsEnd === -1) {
+        result = `${result.trimEnd()}
+collections_config:
+${entry}
+`;
+      } else {
+        result = `${result.slice(0, collectionsEnd)}${entry}
+${result.slice(collectionsEnd)}`;
+      }
+    }
+  }
+  return result;
+}
+function updateJsonConfig(content, answers) {
+  const config = JSON.parse(content);
+  if (!config.data_config) config.data_config = {};
+  const newDataEntries = buildDataConfigJson(answers);
+  for (const [key, value] of Object.entries(newDataEntries)) {
+    if (!(key in config.data_config)) {
+      config.data_config[key] = value;
+    }
+  }
+  if (answers.exposeAsCollection) {
+    if (!config.collections_config) config.collections_config = {};
+    if (!config.collections_config.locales) {
+      Object.assign(
+        config.collections_config,
+        buildCollectionsConfigJson(answers)
+      );
+    }
+  }
+  return `${JSON.stringify(config, null, 2)}
+`;
+}
+function buildFreshYamlConfig(answers) {
+  const lines = [];
+  lines.push("data_config:");
+  lines.push(buildDataConfigYaml(answers, "  "));
+  if (answers.exposeAsCollection) {
+    lines.push("collections_config:");
+    lines.push(buildCollectionsConfigYaml(answers, "  "));
+  }
+  return `${lines.join("\n")}
+`;
+}
+function updateCloudCannonConfig(ctx, answers) {
+  if (ctx.ccConfigFormat === "cjs") {
+    console.log("\n\u26A0  Cannot automatically modify cloudcannon.config.cjs.");
+    console.log("   Add the following to your config manually:\n");
+    console.log("   data_config:");
+    for (const locale of answers.locales) {
+      console.log(`     locales_${locale}:`);
+      console.log(`       path: ${answers.roseyDir}/locales/${locale}.json`);
+    }
+    if (answers.exposeAsCollection) {
+      console.log("\n   collections_config:");
+      console.log(buildCollectionsConfigYaml(answers, "     "));
+    }
+    return;
+  }
+  if (!ctx.ccConfigPath) {
+    const newPath = import_node_path.default.join(process.cwd(), "cloudcannon.config.yml");
+    import_node_fs.default.writeFileSync(newPath, buildFreshYamlConfig(answers));
+    console.log("\u2713  Created cloudcannon.config.yml");
+    return;
+  }
+  const raw = import_node_fs.default.readFileSync(ctx.ccConfigPath, "utf-8");
+  let updated;
+  if (ctx.ccConfigFormat === "json") {
+    updated = updateJsonConfig(raw, answers);
+  } else {
+    updated = updateYamlConfig(raw, answers);
+  }
+  if (updated !== raw) {
+    import_node_fs.default.writeFileSync(ctx.ccConfigPath, updated);
+    console.log(`\u2713  Updated ${import_node_path.default.basename(ctx.ccConfigPath)}`);
+  } else {
+    console.log(
+      `\u2713  ${import_node_path.default.basename(ctx.ccConfigPath)} already has the required entries.`
+    );
+  }
+}
+function printInstructions(answers) {
+  const { buildDir, defaultLanguage } = answers;
+  console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+  console.log("  Next steps");
+  console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n");
+  console.log("1. Sync paths");
+  console.log("   Add the following preserved paths in your CloudCannon");
+  console.log("   site settings (Build > Configuration) so that locale");
+  console.log("   file edits sync back to your repo:");
+  console.log("     rosey/locales/\n");
+  console.log("2. HTML lang attribute");
+  console.log(
+    `   Ensure your root <html> tag has lang="${defaultLanguage}" set.`
+  );
+  console.log("   This tells Rosey the source language of your content.\n");
+  console.log("3. Tag translatable content");
+  console.log("   Add data-rosey attributes to translatable elements in");
+  console.log("   your templates. See: https://rosey.app/docs/\n");
+  console.log("4. Import the RCC");
+  console.log("   Add this to your root layout's <body> to enable visual");
+  console.log("   locale editing in CloudCannon:\n");
+  console.log("     <script>");
+  console.log("       if (window?.inEditorMode) {");
+  console.log('         import("rosey-cloudcannon-connector");');
+  console.log("       }");
+  console.log("     </script>\n");
+  console.log("5. First run");
+  console.log("   Build your site, then run:");
+  console.log(`     npx rosey generate --source ${buildDir}`);
+  console.log("   to create the initial base.json. After that, the");
+  console.log("   postbuild script handles everything automatically.\n");
+}
+
+// src/cli/init/detect.ts
+var import_node_fs2 = __toESM(require("fs"));
+var import_node_path2 = __toESM(require("path"));
+var CC_CONFIG_CANDIDATES = [
+  { file: "cloudcannon.config.yml", format: "yml" },
+  { file: "cloudcannon.config.yaml", format: "yaml" },
+  { file: "cloudcannon.config.json", format: "json" },
+  { file: "cloudcannon.config.cjs", format: "cjs" }
+];
+var BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
+var LOCK_FILES = [
+  { file: "pnpm-lock.yaml", pm: "pnpm" },
+  { file: "yarn.lock", pm: "yarn" },
+  { file: "bun.lock", pm: "bun" },
+  { file: "bun.lockb", pm: "bun" },
+  { file: "package-lock.json", pm: "npm" }
+];
+var ROSEY_CONFIG_FILES = ["rosey.toml", "rosey.yml", "rosey.json"];
+function fileExists(filePath) {
+  try {
+    return import_node_fs2.default.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+function dirExists(dirPath) {
+  try {
+    return import_node_fs2.default.statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function detectProject(cwd = process.cwd()) {
+  let ccConfigPath = null;
+  let ccConfigFormat = null;
+  for (const candidate of CC_CONFIG_CANDIDATES) {
+    const full = import_node_path2.default.join(cwd, candidate.file);
+    if (fileExists(full)) {
+      ccConfigPath = full;
+      ccConfigFormat = candidate.format;
+      break;
+    }
+  }
+  let buildDir = null;
+  for (const dir of BUILD_DIR_CANDIDATES) {
+    if (dirExists(import_node_path2.default.join(cwd, dir))) {
+      buildDir = dir;
+      break;
+    }
+  }
+  let packageManager = "npm";
+  for (const lock of LOCK_FILES) {
+    if (fileExists(import_node_path2.default.join(cwd, lock.file))) {
+      packageManager = lock.pm;
+      break;
+    }
+  }
+  const pkgPath = import_node_path2.default.join(cwd, "package.json");
+  const hasPackageJson = fileExists(pkgPath);
+  let roseyInstalled = false;
+  let rccInstalled = false;
+  if (hasPackageJson) {
+    try {
+      const pkg = JSON.parse(import_node_fs2.default.readFileSync(pkgPath, "utf-8"));
+      const allDeps = {
+        ...pkg.dependencies,
+        ...pkg.devDependencies
+      };
+      roseyInstalled = "rosey" in allDeps;
+      rccInstalled = "rosey-cloudcannon-connector" in allDeps;
+    } catch {
+    }
+  }
+  const postbuildPath = import_node_path2.default.join(cwd, ".cloudcannon", "postbuild");
+  const postbuildExists = fileExists(postbuildPath);
+  let postbuildContent = null;
+  if (postbuildExists) {
+    try {
+      postbuildContent = import_node_fs2.default.readFileSync(postbuildPath, "utf-8");
+    } catch {
+    }
+  }
+  let roseyConfigExists = false;
+  for (const f of ROSEY_CONFIG_FILES) {
+    if (fileExists(import_node_path2.default.join(cwd, f))) {
+      roseyConfigExists = true;
+      break;
+    }
+  }
+  return {
+    ccConfigPath,
+    ccConfigFormat,
+    buildDir,
+    packageManager,
+    hasPackageJson,
+    roseyInstalled,
+    rccInstalled,
+    postbuildExists,
+    postbuildContent,
+    roseyConfigExists
+  };
+}
+
+// src/cli/init/prompts.ts
+var import_node_readline = __toESM(require("readline"));
+var rl = null;
+function getRL() {
+  if (!rl) {
+    rl = import_node_readline.default.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+    rl.on("close", () => process.exit(0));
+  }
+  return rl;
+}
+function closePrompts() {
+  if (rl) {
+    rl.close();
+    rl = null;
+  }
+}
+function question(prompt) {
+  return new Promise((resolve) => {
+    getRL().question(prompt, (answer) => resolve(answer));
+  });
+}
+async function askText(prompt, defaultValue) {
+  const suffix = defaultValue ? ` (${defaultValue})` : "";
+  const answer = (await question(`${prompt}${suffix}: `)).trim();
+  return answer || defaultValue || "";
+}
+async function askSelect(prompt, options) {
+  console.log(`
+${prompt}`);
+  for (let i = 0; i < options.length; i++) {
+    console.log(`  ${i + 1}) ${options[i].label}`);
+  }
+  while (true) {
+    const answer = (await question(`Choose [1-${options.length}]: `)).trim();
+    const idx = Number.parseInt(answer, 10) - 1;
+    if (idx >= 0 && idx < options.length) {
+      return options[idx].value;
+    }
+    console.log(`  Please enter a number between 1 and ${options.length}.`);
+  }
+}
+async function askConfirm(prompt, defaultYes = true) {
+  const hint = defaultYes ? "Y/n" : "y/N";
+  const answer = (await question(`${prompt} (${hint}): `)).trim().toLowerCase();
+  if (answer === "") return defaultYes;
+  return answer === "y" || answer === "yes";
+}
+
+// src/cli/init/index.ts
+async function run(argv) {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(
+      "Usage: rosey-cloudcannon-connector init\n\nInteractive setup wizard that configures Rosey and the\nCloudCannon connector for your project. No flags required \u2014\nthe wizard will prompt for all options.\n"
+    );
+    process.exit(0);
+  }
+  console.log("\nRosey + CloudCannon setup wizard\n");
+  const ctx = detectProject();
+  if (ctx.buildDir) {
+    console.log(`  Detected build directory: ${ctx.buildDir}`);
+  }
+  if (ctx.ccConfigPath) {
+    console.log(`  Detected CloudCannon config: ${ctx.ccConfigPath}`);
+  }
+  if (ctx.roseyInstalled || ctx.rccInstalled) {
+    const installed = [
+      ctx.roseyInstalled && "rosey",
+      ctx.rccInstalled && "rosey-cloudcannon-connector"
+    ].filter(Boolean).join(", ");
+    console.log(`  Already installed: ${installed}`);
+  }
+  console.log("");
+  const localesRaw = await askText(
+    "What locales do you want to support? (comma-separated, e.g. fr,de,es)"
+  );
+  if (!localesRaw) {
+    console.error("At least one locale is required.");
+    closePrompts();
+    process.exit(1);
+  }
+  const locales = localesRaw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const defaultLanguage = await askText(
+    "What is the default/source language?",
+    "en"
+  );
+  const useBuiltinWriteLocales = await askSelect(
+    "How do you want to generate locale files from Rosey's base.json?",
+    [
+      {
+        label: "Use the built-in write-locales command",
+        value: "builtin"
+      },
+      {
+        label: "Write my own script (e.g. for external translation services)",
+        value: "custom"
+      }
+    ]
+  ) === "builtin";
+  const contentAtRoot = await askSelect(
+    "How should the original (default language) content be served?",
+    [
+      {
+        label: `At the root \u2014 original URLs stay as-is (e.g. /about/)`,
+        value: "root"
+      },
+      {
+        label: `Under a locale prefix with a redirect at the root (e.g. /${defaultLanguage}/about/)`,
+        value: "redirect"
+      }
+    ]
+  ) === "root";
+  const exposeAsCollection = await askConfirm(
+    "Expose locale files as a browsable data collection in CloudCannon?",
+    true
+  );
+  const buildDir = await askText(
+    "Build output directory?",
+    ctx.buildDir || "dist"
+  );
+  const roseyDir = await askText("Rosey source directory?", "rosey");
+  const answers = {
+    locales,
+    defaultLanguage,
+    useBuiltinWriteLocales,
+    contentAtRoot,
+    exposeAsCollection,
+    buildDir,
+    roseyDir
+  };
+  let writePostbuildFile = true;
+  if (ctx.postbuildExists) {
+    console.log("\n  Existing .cloudcannon/postbuild found.");
+    console.log("  The following Rosey commands will be appended:\n");
+    const preview = buildPostbuildPreview(answers);
+    for (const line of preview.split("\n")) {
+      console.log(`    ${line}`);
+    }
+    console.log("");
+    writePostbuildFile = await askConfirm("Append these commands?", true);
+  }
+  closePrompts();
+  console.log("");
+  installDependencies(ctx);
+  if (writePostbuildFile) {
+    writePostbuild(ctx, answers);
+  } else {
+    console.log("  Skipped .cloudcannon/postbuild (user declined).");
+  }
+  writeRoseyConfig(ctx, answers);
+  updateCloudCannonConfig(ctx, answers);
+  printInstructions(answers);
+}
+function buildPostbuildPreview(answers) {
+  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } = answers;
+  const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
+  const lines = ["# Rosey"];
+  if (useBuiltinWriteLocales) {
+    lines.push(`npx rosey generate --source ${buildDir}`);
+    lines.push(
+      `npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir} --locales ${locales.join(",")}`
+    );
+  } else {
+    lines.push(`npx rosey generate --source ${buildDir}`);
+    lines.push("# TODO: Add your custom locale generation script here");
+  }
+  lines.push(`mv ./${buildDir} ./_untranslated_site`);
+  lines.push(
+    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag}`
+  );
+  lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
+  return lines.join("\n");
+}
+
+// src/write-locales.ts
+var import_node_fs3 = __toESM(require("fs"));
+var import_node_path3 = __toESM(require("path"));
 function sortKeys(obj) {
   return Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
@@ -39,8 +649,8 @@ async function writeLocales(options) {
     process.exit(1);
   }
   let locales = options.locales;
-  const baseJsonPath = import_node_path.default.join(roseyDir, "base.json");
-  const baseJsonRaw = await import_node_fs.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
+  const baseJsonPath = import_node_path3.default.join(roseyDir, "base.json");
+  const baseJsonRaw = await import_node_fs3.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
     console.error(
       `RCC: Could not read ${baseJsonPath}. Run rosey generate first.`
     );
@@ -48,10 +658,10 @@ async function writeLocales(options) {
   });
   const baseJson = JSON.parse(baseJsonRaw);
   const keys = baseJson.keys;
-  const localesDir = import_node_path.default.join(roseyDir, "locales");
-  await import_node_fs.default.promises.mkdir(localesDir, { recursive: true });
+  const localesDir = import_node_path3.default.join(roseyDir, "locales");
+  await import_node_fs3.default.promises.mkdir(localesDir, { recursive: true });
   if (!locales || locales.length === 0) {
-    const files = await import_node_fs.default.promises.readdir(localesDir);
+    const files = await import_node_fs3.default.promises.readdir(localesDir);
     locales = files.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""));
     if (locales.length === 0) {
       console.warn(
@@ -61,10 +671,10 @@ async function writeLocales(options) {
     }
   }
   for (const locale of locales) {
-    const localePath = import_node_path.default.join(localesDir, `${locale}.json`);
+    const localePath = import_node_path3.default.join(localesDir, `${locale}.json`);
     let existing = {};
     try {
-      const raw = await import_node_fs.default.promises.readFile(localePath, "utf-8");
+      const raw = await import_node_fs3.default.promises.readFile(localePath, "utf-8");
       existing = JSON.parse(raw);
     } catch {
     }
@@ -85,7 +695,7 @@ async function writeLocales(options) {
         existing[key]._base_original = entry.original;
       }
     }
-    await import_node_fs.default.promises.writeFile(
+    await import_node_fs3.default.promises.writeFile(
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
@@ -93,10 +703,10 @@ async function writeLocales(options) {
       `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
     );
   }
-  const rccDir = import_node_path.default.join(dest, "_rcc");
-  await import_node_fs.default.promises.mkdir(rccDir, { recursive: true });
-  const manifestPath = import_node_path.default.join(rccDir, "locales.json");
-  await import_node_fs.default.promises.writeFile(manifestPath, JSON.stringify(locales));
+  const rccDir = import_node_path3.default.join(dest, "_rcc");
+  await import_node_fs3.default.promises.mkdir(rccDir, { recursive: true });
+  const manifestPath = import_node_path3.default.join(rccDir, "locales.json");
+  await import_node_fs3.default.promises.writeFile(manifestPath, JSON.stringify(locales));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
   await validateDataConfig(locales);
 }
@@ -111,7 +721,7 @@ async function validateDataConfig(locales) {
   let configPath = null;
   for (const p of configPaths) {
     try {
-      configRaw = await import_node_fs.default.promises.readFile(p, "utf-8");
+      configRaw = await import_node_fs3.default.promises.readFile(p, "utf-8");
       configPath = p;
       break;
     } catch {
@@ -137,7 +747,7 @@ async function validateDataConfig(locales) {
 }
 
 // src/cli/write-locales.ts
-function run(argv) {
+function run2(argv) {
   let source = "rosey";
   let locales;
   let dest;
@@ -167,11 +777,12 @@ function run(argv) {
 
 // src/cli/index.ts
 var COMMANDS = {
-  "write-locales": run
+  "write-locales": run2,
+  init: run
 };
 function printUsage() {
   console.log(
-    "Usage: rcc-v2 <command> [options]\n\nCommands:\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rcc-v2 <command> --help for command-specific options.\n"
+    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Interactive setup wizard for Rosey + CloudCannon\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
   );
 }
 var args = process.argv.slice(2);

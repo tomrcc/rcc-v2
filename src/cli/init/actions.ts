@@ -1,0 +1,407 @@
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import type { ProjectContext } from "./detect";
+import type { WizardAnswers } from "./index";
+
+// ── Install dependencies ────────────────────────────────────────────
+
+export function installDependencies(ctx: ProjectContext): void {
+	if (!ctx.hasPackageJson) {
+		console.log(
+			"\n⚠  No package.json found — skipping dependency installation.",
+		);
+		console.log(
+			"   Install manually: npm install rosey rosey-cloudcannon-connector",
+		);
+		return;
+	}
+
+	const pkgs: string[] = [];
+	if (!ctx.roseyInstalled) pkgs.push("rosey");
+	if (!ctx.rccInstalled) pkgs.push("rosey-cloudcannon-connector");
+
+	if (pkgs.length === 0) {
+		console.log(
+			"\n✓  rosey and rosey-cloudcannon-connector already installed.",
+		);
+		return;
+	}
+
+	const installCmd = {
+		npm: `npm install ${pkgs.join(" ")}`,
+		yarn: `yarn add ${pkgs.join(" ")}`,
+		pnpm: `pnpm add ${pkgs.join(" ")}`,
+		bun: `bun add ${pkgs.join(" ")}`,
+	}[ctx.packageManager];
+
+	console.log(`\nInstalling ${pkgs.join(", ")}...`);
+	try {
+		execSync(installCmd, { stdio: "inherit" });
+		console.log("✓  Dependencies installed.");
+	} catch {
+		console.error(`\n⚠  Install failed. Run manually: ${installCmd}`);
+	}
+}
+
+// ── Postbuild script ────────────────────────────────────────────────
+
+function buildPostbuildBlock(answers: WizardAnswers): string {
+	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } =
+		answers;
+	const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
+
+	const lines: string[] = [];
+
+	if (useBuiltinWriteLocales) {
+		lines.push(`npx rosey generate --source ${buildDir}`);
+		lines.push(
+			`npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir} --locales ${locales.join(",")}`,
+		);
+	} else {
+		lines.push(`npx rosey generate --source ${buildDir}`);
+		lines.push("");
+		lines.push("# TODO: Replace with your custom locale generation script.");
+		lines.push("# Your script should:");
+		lines.push(`#   1. Read ${roseyDir}/base.json for translation keys`);
+		lines.push(
+			`#   2. Create/update locale files at ${roseyDir}/locales/{code}.json`,
+		);
+		lines.push(
+			`#   3. Write a locale manifest array to ${buildDir}/_rcc/locales.json`,
+		);
+		lines.push(
+			`# npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir}`,
+		);
+	}
+
+	lines.push("");
+	lines.push(`mv ./${buildDir} ./_untranslated_site`);
+	lines.push(
+		`npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""}`,
+	);
+	lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
+
+	return lines.join("\n");
+}
+
+export function writePostbuild(
+	ctx: ProjectContext,
+	answers: WizardAnswers,
+): void {
+	const dir = path.join(process.cwd(), ".cloudcannon");
+	const filePath = path.join(dir, "postbuild");
+
+	const block = buildPostbuildBlock(answers);
+
+	if (ctx.postbuildExists && ctx.postbuildContent != null) {
+		const appended = `${ctx.postbuildContent.trimEnd()}\n\n# Rosey\n${block}\n`;
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(filePath, appended);
+		console.log("✓  Appended Rosey commands to .cloudcannon/postbuild");
+	} else {
+		const content = `#!/usr/bin/env bash\n\n# Rosey\n${block}\n`;
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(filePath, content, { mode: 0o755 });
+		console.log("✓  Created .cloudcannon/postbuild");
+	}
+}
+
+// ── Rosey config ────────────────────────────────────────────────────
+
+export function writeRoseyConfig(
+	ctx: ProjectContext,
+	answers: WizardAnswers,
+): void {
+	if (ctx.roseyConfigExists) {
+		console.log("✓  Rosey config already exists — skipping.");
+		return;
+	}
+
+	const content = [
+		`source: ${answers.buildDir}`,
+		`default_language: ${answers.defaultLanguage}`,
+		"",
+	].join("\n");
+
+	fs.writeFileSync(path.join(process.cwd(), "rosey.yml"), content);
+	console.log("✓  Created rosey.yml");
+}
+
+// ── CloudCannon config ──────────────────────────────────────────────
+
+function buildDataConfigYaml(answers: WizardAnswers, indent: string): string {
+	return answers.locales
+		.map(
+			(locale) =>
+				`${indent}locales_${locale}:\n${indent}  path: ${answers.roseyDir}/locales/${locale}.json`,
+		)
+		.join("\n");
+}
+
+function buildCollectionsConfigYaml(
+	answers: WizardAnswers,
+	indent: string,
+): string {
+	const lines = [
+		`${indent}locales:`,
+		`${indent}  path: ${answers.roseyDir}/locales`,
+		`${indent}  name: Locales`,
+		`${indent}  icon: translate`,
+		`${indent}  disable_add: true`,
+		`${indent}  disable_add_folder: true`,
+		`${indent}  disable_file_actions: true`,
+		`${indent}  _inputs:`,
+		`${indent}    value:`,
+		`${indent}      type: html`,
+		`${indent}      label: Translation`,
+		`${indent}      cascade: true`,
+		`${indent}    original:`,
+		`${indent}      hidden: true`,
+		`${indent}      cascade: true`,
+		`${indent}    _base_original:`,
+		`${indent}      disabled: true`,
+		`${indent}      cascade: true`,
+	];
+	return lines.join("\n");
+}
+
+function buildDataConfigJson(answers: WizardAnswers): Record<string, unknown> {
+	const obj: Record<string, unknown> = {};
+	for (const locale of answers.locales) {
+		obj[`locales_${locale}`] = {
+			path: `${answers.roseyDir}/locales/${locale}.json`,
+		};
+	}
+	return obj;
+}
+
+function buildCollectionsConfigJson(
+	answers: WizardAnswers,
+): Record<string, unknown> {
+	return {
+		locales: {
+			path: `${answers.roseyDir}/locales`,
+			name: "Locales",
+			icon: "translate",
+			disable_add: true,
+			disable_add_folder: true,
+			disable_file_actions: true,
+			_inputs: {
+				value: { type: "html", label: "Translation", cascade: true },
+				original: { hidden: true, cascade: true },
+				_base_original: { disabled: true, cascade: true },
+			},
+		},
+	};
+}
+
+/**
+ * Find the end of a top-level YAML block (e.g. `data_config:`) and return
+ * the index of the last character belonging to that block. Returns -1 if
+ * the key is not found.
+ */
+function findYamlBlockEnd(content: string, key: string): number {
+	const regex = new RegExp(`^${key}:\\s*$`, "m");
+	const match = regex.exec(content);
+	if (!match) return -1;
+
+	const startIdx = match.index + match[0].length;
+	const lines = content.slice(startIdx).split("\n");
+
+	let endIdx = startIdx;
+	for (const line of lines) {
+		if (line.trim() === "" || /^\s/.test(line)) {
+			endIdx += line.length + 1; // +1 for the newline
+		} else {
+			break;
+		}
+	}
+
+	return endIdx;
+}
+
+/**
+ * Detect the indentation used under a top-level YAML key. Falls back to
+ * two spaces.
+ */
+function detectIndent(content: string, key: string): string {
+	const regex = new RegExp(`^${key}:\\s*\\n([ \\t]+)`, "m");
+	const match = regex.exec(content);
+	return match ? match[1] : "  ";
+}
+
+/** Check whether a YAML file already has a `locales_XX:` entry for a given locale. */
+function hasLocaleEntry(content: string, locale: string): boolean {
+	return new RegExp(`^\\s+locales_${locale}:`, "m").test(content);
+}
+
+function updateYamlConfig(content: string, answers: WizardAnswers): string {
+	let result = content;
+
+	// ── data_config ──
+	const missingDataLocales = answers.locales.filter(
+		(l) => !hasLocaleEntry(result, l),
+	);
+
+	if (missingDataLocales.length > 0) {
+		const blockEnd = findYamlBlockEnd(result, "data_config");
+		const indent = detectIndent(result, "data_config") || "  ";
+
+		const newEntries = missingDataLocales
+			.map(
+				(l) =>
+					`${indent}locales_${l}:\n${indent}  path: ${answers.roseyDir}/locales/${l}.json`,
+			)
+			.join("\n");
+
+		if (blockEnd === -1) {
+			result = `${result.trimEnd()}\ndata_config:\n${newEntries}\n`;
+		} else {
+			result = `${result.slice(0, blockEnd)}${newEntries}\n${result.slice(blockEnd)}`;
+		}
+	}
+
+	// ── collections_config (optional) ──
+	if (answers.exposeAsCollection) {
+		const hasCollection =
+			/^\s+locales:/m.test(result) && result.includes("collections_config");
+		if (!hasCollection) {
+			const collectionsEnd = findYamlBlockEnd(result, "collections_config");
+			const indent = detectIndent(result, "collections_config") || "  ";
+			const entry = buildCollectionsConfigYaml(answers, indent);
+
+			if (collectionsEnd === -1) {
+				result = `${result.trimEnd()}\ncollections_config:\n${entry}\n`;
+			} else {
+				result = `${result.slice(0, collectionsEnd)}${entry}\n${result.slice(collectionsEnd)}`;
+			}
+		}
+	}
+
+	return result;
+}
+
+function updateJsonConfig(content: string, answers: WizardAnswers): string {
+	const config = JSON.parse(content);
+
+	if (!config.data_config) config.data_config = {};
+	const newDataEntries = buildDataConfigJson(answers);
+	for (const [key, value] of Object.entries(newDataEntries)) {
+		if (!(key in config.data_config)) {
+			config.data_config[key] = value;
+		}
+	}
+
+	if (answers.exposeAsCollection) {
+		if (!config.collections_config) config.collections_config = {};
+		if (!config.collections_config.locales) {
+			Object.assign(
+				config.collections_config,
+				buildCollectionsConfigJson(answers),
+			);
+		}
+	}
+
+	return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+function buildFreshYamlConfig(answers: WizardAnswers): string {
+	const lines: string[] = [];
+
+	lines.push("data_config:");
+	lines.push(buildDataConfigYaml(answers, "  "));
+
+	if (answers.exposeAsCollection) {
+		lines.push("collections_config:");
+		lines.push(buildCollectionsConfigYaml(answers, "  "));
+	}
+
+	return `${lines.join("\n")}\n`;
+}
+
+export function updateCloudCannonConfig(
+	ctx: ProjectContext,
+	answers: WizardAnswers,
+): void {
+	if (ctx.ccConfigFormat === "cjs") {
+		console.log("\n⚠  Cannot automatically modify cloudcannon.config.cjs.");
+		console.log("   Add the following to your config manually:\n");
+		console.log("   data_config:");
+		for (const locale of answers.locales) {
+			console.log(`     locales_${locale}:`);
+			console.log(`       path: ${answers.roseyDir}/locales/${locale}.json`);
+		}
+		if (answers.exposeAsCollection) {
+			console.log("\n   collections_config:");
+			console.log(buildCollectionsConfigYaml(answers, "     "));
+		}
+		return;
+	}
+
+	if (!ctx.ccConfigPath) {
+		const newPath = path.join(process.cwd(), "cloudcannon.config.yml");
+		fs.writeFileSync(newPath, buildFreshYamlConfig(answers));
+		console.log("✓  Created cloudcannon.config.yml");
+		return;
+	}
+
+	const raw = fs.readFileSync(ctx.ccConfigPath, "utf-8");
+	let updated: string;
+
+	if (ctx.ccConfigFormat === "json") {
+		updated = updateJsonConfig(raw, answers);
+	} else {
+		updated = updateYamlConfig(raw, answers);
+	}
+
+	if (updated !== raw) {
+		fs.writeFileSync(ctx.ccConfigPath, updated);
+		console.log(`✓  Updated ${path.basename(ctx.ccConfigPath)}`);
+	} else {
+		console.log(
+			`✓  ${path.basename(ctx.ccConfigPath)} already has the required entries.`,
+		);
+	}
+}
+
+// ── Follow-up instructions ──────────────────────────────────────────
+
+export function printInstructions(answers: WizardAnswers): void {
+	const { buildDir, defaultLanguage } = answers;
+
+	console.log("\n────────────────────────────────────────────");
+	console.log("  Next steps");
+	console.log("────────────────────────────────────────────\n");
+
+	console.log("1. Sync paths");
+	console.log("   Add the following preserved paths in your CloudCannon");
+	console.log("   site settings (Build > Configuration) so that locale");
+	console.log("   file edits sync back to your repo:");
+	console.log("     rosey/locales/\n");
+
+	console.log("2. HTML lang attribute");
+	console.log(
+		`   Ensure your root <html> tag has lang="${defaultLanguage}" set.`,
+	);
+	console.log("   This tells Rosey the source language of your content.\n");
+
+	console.log("3. Tag translatable content");
+	console.log("   Add data-rosey attributes to translatable elements in");
+	console.log("   your templates. See: https://rosey.app/docs/\n");
+
+	console.log("4. Import the RCC");
+	console.log("   Add this to your root layout's <body> to enable visual");
+	console.log("   locale editing in CloudCannon:\n");
+	console.log("     <script>");
+	console.log("       if (window?.inEditorMode) {");
+	console.log('         import("rosey-cloudcannon-connector");');
+	console.log("       }");
+	console.log("     </script>\n");
+
+	console.log("5. First run");
+	console.log("   Build your site, then run:");
+	console.log(`     npx rosey generate --source ${buildDir}`);
+	console.log("   to create the initial base.json. After that, the");
+	console.log("   postbuild script handles everything automatically.\n");
+}
