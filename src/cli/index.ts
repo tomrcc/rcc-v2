@@ -10,7 +10,7 @@ function printUsage(): void {
 	console.log(
 		"Usage: rosey-cloudcannon-connector <command> [options]\n\n" +
 			"Commands:\n" +
-			"  init            Interactive setup wizard for Rosey + CloudCannon\n" +
+			"  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n" +
 			"  write-locales   Write/update locale files from Rosey base.json\n\n" +
 			"Run rosey-cloudcannon-connector <command> --help for command-specific options.\n",
 	);

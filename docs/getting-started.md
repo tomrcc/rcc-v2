@@ -7,6 +7,30 @@ This guide walks you through going from zero to a working translation editing se
 3. Configure `cloudcannon.config.yml` with `data_config` entries for each locale
 4. Set up a postbuild script to run `write-locales` and `rosey build`
 
+## Quick Start (non-interactive)
+
+If you're automating setup (CI, scripting, or agent-driven), you can skip all prompts with `--yes`:
+
+```bash
+npx rosey-cloudcannon-connector init --yes --locales fr,de
+```
+
+This uses sensible defaults for everything not specified. You can override any default:
+
+```bash
+npx rosey-cloudcannon-connector init --yes \
+  --locales fr,de,es \
+  --default-language en \
+  --build-dir dist \
+  --rosey-dir rosey \
+  --content-at-root \
+  --collection
+```
+
+Run `npx rosey-cloudcannon-connector init --help` for the full list of flags.
+
+After running `init`, you still need to tag your templates with `data-rosey` attributes (Step 1 below) and import the client-side script (Step 2 below).
+
 ## Step 1: Add `data-rosey` to translatable elements
 
 Any element with a `data-rosey` attribute is automatically picked up by both Rosey and this connector. The attribute value is the translation key:

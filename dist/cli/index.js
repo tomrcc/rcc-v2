@@ -509,13 +509,52 @@ async function askConfirm(prompt, defaultYes = true) {
 }
 
 // src/cli/init/index.ts
+function parseFlags(argv) {
+  const flags = {
+    yes: false,
+    locales: void 0,
+    defaultLanguage: void 0,
+    buildDir: void 0,
+    roseyDir: void 0,
+    useBuiltinWriteLocales: void 0,
+    contentAtRoot: void 0,
+    exposeAsCollection: void 0
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--yes" || arg === "-y") {
+      flags.yes = true;
+    } else if ((arg === "--locales" || arg === "-l") && argv[i + 1]) {
+      flags.locales = argv[++i].split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    } else if (arg === "--default-language" && argv[i + 1]) {
+      flags.defaultLanguage = argv[++i];
+    } else if ((arg === "--build-dir" || arg === "-b") && argv[i + 1]) {
+      flags.buildDir = argv[++i];
+    } else if (arg === "--rosey-dir" && argv[i + 1]) {
+      flags.roseyDir = argv[++i];
+    } else if (arg === "--write-locales") {
+      flags.useBuiltinWriteLocales = true;
+    } else if (arg === "--no-write-locales") {
+      flags.useBuiltinWriteLocales = false;
+    } else if (arg === "--content-at-root") {
+      flags.contentAtRoot = true;
+    } else if (arg === "--no-content-at-root") {
+      flags.contentAtRoot = false;
+    } else if (arg === "--collection") {
+      flags.exposeAsCollection = true;
+    } else if (arg === "--no-collection") {
+      flags.exposeAsCollection = false;
+    }
+  }
+  return flags;
+}
+var HELP_TEXT = "Usage: rosey-cloudcannon-connector init [options]\n\nSetup wizard for Rosey + CloudCannon. Runs interactively by default;\npass --yes to run headless (useful for CI and agent automation).\n\nOptions:\n  -y, --yes                  Skip all prompts, use flags/defaults\n  -l, --locales <codes>      Comma-separated locale codes (e.g. fr,de,es)\n                             Required in --yes mode\n      --default-language <c> Default/source language (default: en)\n  -b, --build-dir <dir>      Build output directory (default: auto-detect or dist)\n      --rosey-dir <dir>      Rosey source directory (default: rosey)\n      --write-locales        Use built-in write-locales (default)\n      --no-write-locales     Use a custom locale generation script\n      --content-at-root      Serve default language at root URLs (default)\n      --no-content-at-root   Serve default language under a locale prefix\n      --collection           Expose locales as a CloudCannon collection (default)\n      --no-collection        Don't create a locales collection\n  -h, --help                 Show this help message\n";
 async function run(argv) {
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(
-      "Usage: rosey-cloudcannon-connector init\n\nInteractive setup wizard that configures Rosey and the\nCloudCannon connector for your project. No flags required \u2014\nthe wizard will prompt for all options.\n"
-    );
+    console.log(HELP_TEXT);
     process.exit(0);
   }
+  const flags = parseFlags(argv);
   console.log("\nRosey + CloudCannon setup wizard\n");
   const ctx = detectProject();
   if (ctx.buildDir) {
@@ -532,8 +571,40 @@ async function run(argv) {
     console.log(`  Already installed: ${installed}`);
   }
   console.log("");
+  if (flags.yes) {
+    if (!flags.locales || flags.locales.length === 0) {
+      console.error(
+        "Error: --locales is required in non-interactive mode (--yes)."
+      );
+      process.exit(1);
+    }
+    const answers2 = {
+      locales: flags.locales,
+      defaultLanguage: flags.defaultLanguage ?? "en",
+      useBuiltinWriteLocales: flags.useBuiltinWriteLocales ?? true,
+      contentAtRoot: flags.contentAtRoot ?? true,
+      exposeAsCollection: flags.exposeAsCollection ?? true,
+      buildDir: flags.buildDir ?? ctx.buildDir ?? "dist",
+      roseyDir: flags.roseyDir ?? "rosey"
+    };
+    console.log(`  Locales: ${answers2.locales.join(", ")}`);
+    console.log(`  Default language: ${answers2.defaultLanguage}`);
+    console.log(`  Build dir: ${answers2.buildDir}`);
+    console.log(`  Rosey dir: ${answers2.roseyDir}`);
+    console.log(`  Write-locales: ${answers2.useBuiltinWriteLocales ? "built-in" : "custom"}`);
+    console.log(`  Content at root: ${answers2.contentAtRoot}`);
+    console.log(`  Expose as collection: ${answers2.exposeAsCollection}`);
+    console.log("");
+    installDependencies(ctx);
+    writePostbuild(ctx, answers2);
+    writeRoseyConfig(ctx, answers2);
+    updateCloudCannonConfig(ctx, answers2);
+    printInstructions(answers2);
+    return;
+  }
   const localesRaw = await askText(
-    "What locales do you want to support? (comma-separated, e.g. fr,de,es)"
+    "What locales do you want to support? (comma-separated, e.g. fr,de,es)",
+    flags.locales?.join(",")
   );
   if (!localesRaw) {
     console.error("At least one locale is required.");
@@ -543,43 +614,61 @@ async function run(argv) {
   const locales = localesRaw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   const defaultLanguage = await askText(
     "What is the default/source language?",
-    "en"
+    flags.defaultLanguage ?? "en"
   );
-  const useBuiltinWriteLocales = await askSelect(
-    "How do you want to generate locale files from Rosey's base.json?",
-    [
-      {
-        label: "Use the built-in write-locales command",
-        value: "builtin"
-      },
-      {
-        label: "Write my own script (e.g. for external translation services)",
-        value: "custom"
-      }
-    ]
-  ) === "builtin";
-  const contentAtRoot = await askSelect(
-    "How should the original (default language) content be served?",
-    [
-      {
-        label: `At the root \u2014 original URLs stay as-is (e.g. /about/)`,
-        value: "root"
-      },
-      {
-        label: `Under a locale prefix with a redirect at the root (e.g. /${defaultLanguage}/about/)`,
-        value: "redirect"
-      }
-    ]
-  ) === "root";
-  const exposeAsCollection = await askConfirm(
-    "Expose locale files as a browsable data collection in CloudCannon?",
-    true
-  );
+  let useBuiltinWriteLocales;
+  if (flags.useBuiltinWriteLocales !== void 0) {
+    useBuiltinWriteLocales = flags.useBuiltinWriteLocales;
+  } else {
+    useBuiltinWriteLocales = await askSelect(
+      "How do you want to generate locale files from Rosey's base.json?",
+      [
+        {
+          label: "Use the built-in write-locales command",
+          value: "builtin"
+        },
+        {
+          label: "Write my own script (e.g. for external translation services)",
+          value: "custom"
+        }
+      ]
+    ) === "builtin";
+  }
+  let contentAtRoot;
+  if (flags.contentAtRoot !== void 0) {
+    contentAtRoot = flags.contentAtRoot;
+  } else {
+    contentAtRoot = await askSelect(
+      "How should the original (default language) content be served?",
+      [
+        {
+          label: "At the root \u2014 original URLs stay as-is (e.g. /about/)",
+          value: "root"
+        },
+        {
+          label: `Under a locale prefix with a redirect at the root (e.g. /${defaultLanguage}/about/)`,
+          value: "redirect"
+        }
+      ]
+    ) === "root";
+  }
+  let exposeAsCollection;
+  if (flags.exposeAsCollection !== void 0) {
+    exposeAsCollection = flags.exposeAsCollection;
+  } else {
+    exposeAsCollection = await askConfirm(
+      "Expose locale files as a browsable data collection in CloudCannon?",
+      true
+    );
+  }
   const buildDir = await askText(
     "Build output directory?",
-    ctx.buildDir || "dist"
+    flags.buildDir ?? ctx.buildDir ?? "dist"
   );
-  const roseyDir = await askText("Rosey source directory?", "rosey");
+  const roseyDir = await askText(
+    "Rosey source directory?",
+    flags.roseyDir ?? "rosey"
+  );
   const answers = {
     locales,
     defaultLanguage,
@@ -782,7 +871,7 @@ var COMMANDS = {
 };
 function printUsage() {
   console.log(
-    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Interactive setup wizard for Rosey + CloudCannon\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
+    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
   );
 }
 var args = process.argv.slice(2);
