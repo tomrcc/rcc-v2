@@ -15,6 +15,7 @@ function getRL(): readline.Interface {
 
 export function closePrompts(): void {
 	if (rl) {
+		rl.removeAllListeners("close");
 		rl.close();
 		rl = null;
 	}

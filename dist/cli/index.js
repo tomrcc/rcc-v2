@@ -472,6 +472,7 @@ function getRL() {
 }
 function closePrompts() {
   if (rl) {
+    rl.removeAllListeners("close");
     rl.close();
     rl = null;
   }
