@@ -107,7 +107,8 @@ function trackElements(scope) {
       focused: false,
       stale: false,
       baseOriginal: null,
-      localeOriginal: null
+      localeOriginal: null,
+      hasLocaleEntry: false
     });
   }
   log(`Tracked ${tracked.length} translatable elements`);
@@ -372,13 +373,18 @@ async function switchLocale(locale) {
   for (let i = 0; i < tracked.length; i++) {
     const t = tracked[i];
     const data = dataResults[i];
+    t.hasLocaleEntry = data != null;
     const value = data?.value ?? data?.original ?? t.originalContent;
     resolvedValues[i] = value;
-    const isStale = data?._base_original != null && data?.original != null && data._base_original !== data.original;
+    const isStale = t.hasLocaleEntry && data?._base_original != null && data?.original != null && data._base_original !== data.original;
     t.stale = isStale;
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
     t.element.innerHTML = value;
+    if (!t.hasLocaleEntry) {
+      t.element.style.opacity = "0.45";
+      t.element.style.pointerEvents = "none";
+    }
     if (isStale) {
       markStaleElement(t);
       staleCount++;
@@ -394,6 +400,7 @@ async function switchLocale(locale) {
       log(`Generation changed, aborting "${locale}" editor setup`);
       return;
     }
+    if (!t.hasLocaleEntry) continue;
     try {
       const value = resolvedValues[i];
       const inputConfig = originalInputConfigs.get(t.roseyKey);
@@ -441,6 +448,7 @@ async function switchLocale(locale) {
     let updated = 0;
     let skipped = 0;
     for (const t of tracked) {
+      if (!t.hasLocaleEntry) continue;
       if (!t.editor) continue;
       if (t.focused) {
         skipped++;
