@@ -59,6 +59,19 @@ function cleanClone(root) {
   });
   replaceCustomElements(root);
   stripBookshopComments(root);
+  const roseyEls = root.querySelectorAll("[data-rosey]").length;
+  const remainingComments = countComments(root, "bookshop");
+  log(
+    `cleanClone: ${roseyEls} [data-rosey] element(s), ${remainingComments} remaining bookshop comment(s)`
+  );
+}
+function countComments(root, needle) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+  let count = 0;
+  while (walker.nextNode()) {
+    if (walker.currentNode.data.includes(needle)) count++;
+  }
+  return count;
 }
 function stripBookshopComments(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
@@ -70,6 +83,9 @@ function stripBookshopComments(root) {
     }
   }
   for (const node of toRemove) node.remove();
+  if (toRemove.length > 0) {
+    log(`Stripped ${toRemove.length} Bookshop comment(s) from clone`);
+  }
 }
 function stripCCAttributes(el) {
   el.removeAttribute("data-editable");
@@ -317,21 +333,41 @@ function resolveStale(t, file) {
 var originalBookshopUpdate = null;
 function pauseBookshop() {
   const bsl = window.bookshopLive;
-  if (bsl && typeof bsl.update === "function" && !originalBookshopUpdate) {
-    originalBookshopUpdate = bsl.update.bind(bsl);
-    bsl.update = async () => false;
-    log("Paused Bookshop live editing");
+  if (!bsl) {
+    log("pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)");
+    return;
   }
+  if (typeof bsl.update !== "function") {
+    log("pauseBookshop: bookshopLive.update is not a function");
+    return;
+  }
+  if (originalBookshopUpdate) {
+    log("pauseBookshop: already paused");
+    return;
+  }
+  originalBookshopUpdate = bsl.update.bind(bsl);
+  bsl.update = async () => false;
+  log("Paused Bookshop live editing");
 }
 function resumeBookshop() {
-  const bsl = window.bookshopLive;
-  if (bsl && originalBookshopUpdate) {
-    bsl.update = originalBookshopUpdate;
-    originalBookshopUpdate = null;
-    log("Resumed Bookshop live editing");
+  if (!originalBookshopUpdate) {
+    log("resumeBookshop: nothing to resume (was not paused)");
+    return;
   }
+  const bsl = window.bookshopLive;
+  if (!bsl) {
+    warn("resumeBookshop: window.bookshopLive disappeared \u2014 cannot restore");
+    originalBookshopUpdate = null;
+    return;
+  }
+  bsl.update = originalBookshopUpdate;
+  originalBookshopUpdate = null;
+  log("Resumed Bookshop live editing");
 }
 function teardownEditors() {
+  log(
+    `teardownEditors: translationContainer=${!!translationContainer}, originalContainer=${!!originalContainer}, tracked=${tracked.length}`
+  );
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
@@ -345,8 +381,15 @@ function teardownEditors() {
   updateStaleList();
   resumeBookshop();
   if (translationContainer && originalContainer) {
+    const cloneInDOM = translationContainer.isConnected;
+    const originalInDOM = originalContainer.isConnected;
+    log(
+      `teardownEditors: clone connected=${cloneInDOM}, original connected=${originalInDOM} \u2014 swapping`
+    );
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
+  } else {
+    log("teardownEditors: no containers to swap");
   }
   translationContainer = null;
   originalContainer = null;
@@ -374,6 +417,7 @@ async function switchLocale(locale) {
     return;
   }
   originalContainer = container;
+  log(`switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ${container.children.length} child element(s)`);
   const clone = container.cloneNode(true);
   cleanClone(clone);
   container.replaceWith(clone);
@@ -381,12 +425,22 @@ async function switchLocale(locale) {
   log("Swapped in clean translation container");
   pauseBookshop();
   trackElements(clone);
-  const dataset = api.dataset(`locales_${locale}`);
+  if (tracked.length === 0) {
+    warn(
+      `No [data-rosey] elements found in the snapshot boundary. Make sure your translatable elements have data-rosey attributes.`
+    );
+  }
+  const datasetKey = `locales_${locale}`;
+  log(`switchLocale: requesting dataset "${datasetKey}"`);
+  const dataset = api.dataset(datasetKey);
   const file = await resolveFile(dataset);
   if (!file) {
-    warn(`No file found in dataset "locales_${locale}"`);
+    warn(
+      `No file found in dataset "${datasetKey}". Check that data_config.${datasetKey} exists in cloudcannon.config.yml and points to a valid locale file.`
+    );
     return;
   }
+  log(`switchLocale: resolved file from dataset "${datasetKey}"`);
   activeFile = file;
   let setupComplete = false;
   staleCount = 0;
