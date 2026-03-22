@@ -72,6 +72,10 @@ See the [full setup guide](docs/getting-started.md) for detailed explanations of
 | `data-rcc-exclude="de,es"` | Container element | Hide locales from the switcher on this page |
 | `data-rcc-verbose` | Any element | Enable verbose console logging |
 
+## Bookshop Compatibility
+
+Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-based live editing work out of the box. The connector automatically detects Bookshop's live-editing markers and pauses its re-rendering cycle during locale view, preventing conflicts between Bookshop's component rendering and the connector's inline translation editors. Switching back to "Original" fully restores Bookshop live editing.
+
 ## Documentation
 
 - **[Getting Started](docs/getting-started.md)** — Full setup guide with complete examples

@@ -58,10 +58,23 @@ function cleanClone(root) {
     if (el instanceof HTMLElement) stripCCAttributes(el);
   });
   replaceCustomElements(root);
+  stripBookshopComments(root);
+}
+function stripBookshopComments(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+  const toRemove = [];
+  while (walker.nextNode()) {
+    const comment = walker.currentNode;
+    if (comment.data.includes("bookshop-live")) {
+      toRemove.push(comment);
+    }
+  }
+  for (const node of toRemove) node.remove();
 }
 function stripCCAttributes(el) {
   el.removeAttribute("data-editable");
   el.removeAttribute("data-prop");
+  el.removeAttribute("data-cms-bind");
   for (const attr of Array.from(el.attributes)) {
     if (attr.name.startsWith("data-prop-")) {
       el.removeAttribute(attr.name);
@@ -301,6 +314,23 @@ function resolveStale(t, file) {
   file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
   unmarkStaleElement(t);
 }
+var originalBookshopUpdate = null;
+function pauseBookshop() {
+  const bsl = window.bookshopLive;
+  if (bsl && typeof bsl.update === "function" && !originalBookshopUpdate) {
+    originalBookshopUpdate = bsl.update.bind(bsl);
+    bsl.update = async () => false;
+    log("Paused Bookshop live editing");
+  }
+}
+function resumeBookshop() {
+  const bsl = window.bookshopLive;
+  if (bsl && originalBookshopUpdate) {
+    bsl.update = originalBookshopUpdate;
+    originalBookshopUpdate = null;
+    log("Resumed Bookshop live editing");
+  }
+}
 function teardownEditors() {
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
@@ -313,6 +343,7 @@ function teardownEditors() {
   staleCount = 0;
   updateStaleBadge();
   updateStaleList();
+  resumeBookshop();
   if (translationContainer && originalContainer) {
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
@@ -348,6 +379,7 @@ async function switchLocale(locale) {
   container.replaceWith(clone);
   translationContainer = clone;
   log("Swapped in clean translation container");
+  pauseBookshop();
   trackElements(clone);
   const dataset = api.dataset(`locales_${locale}`);
   const file = await resolveFile(dataset);

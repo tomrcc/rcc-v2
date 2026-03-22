@@ -48,6 +48,18 @@ When the user picks a locale, the entire snapshot boundary container (`[data-rcc
 
 The clone is processed while detached from the DOM, so there are no MutationObserver callbacks, no `connectedCallback` firings, and no race conditions during cleanup.
 
+## Bookshop Compatibility
+
+Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-based live editing need additional sanitization. Bookshop's runtime uses `<!--bookshop-live name(...) params(...) -->` HTML comments as component markers and a global `window.bookshopLive` singleton that XPath-scans the entire document for these comments on every `cloudcannon:update` event, re-rendering component HTML between them.
+
+The RCC handles this with two layers:
+
+1. **Comment stripping**: `cleanClone()` removes all `<!--bookshop-live-->` comments from the clone via a `TreeWalker`. With no comment markers in the document, Bookshop's XPath scan finds nothing and produces zero component updates.
+2. **`data-cms-bind` stripping**: `stripCCAttributes()` also removes `data-cms-bind` (Bookshop's click-to-edit panel binding attribute) from clone elements.
+3. **Update cycle pausing**: `switchLocale()` monkey-patches `window.bookshopLive.update` to a no-op during locale view, preventing unnecessary XPath scans. `teardownEditors()` restores the original method before swapping the original container back in.
+
+On restore, the original container (with real Bookshop comments) returns to the DOM. Bookshop's `cloudcannon:update` listener resumes finding comments and re-rendering normally.
+
 ## Stale Translation Detection
 
 Locale entries store three fields: `original` (the source text when the translation was last acknowledged), `value` (the translation), and `_base_original` (the current source text from `base.json`, updated by `write-locales` on every run). When `original !== _base_original`, the translation is flagged as stale.

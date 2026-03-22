@@ -136,11 +136,32 @@ function cleanClone(root: HTMLElement): void {
 	});
 
 	replaceCustomElements(root);
+	stripBookshopComments(root);
+}
+
+/**
+ * Remove Bookshop live-editing comment markers from the clone.
+ * Bookshop's runtime uses XPath to scan the document for
+ * `<!--bookshop-live ...-->` comments and re-renders component HTML
+ * between them. Stripping these prevents Bookshop from overwriting
+ * RCC's translation editors.
+ */
+function stripBookshopComments(root: HTMLElement): void {
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+	const toRemove: Comment[] = [];
+	while (walker.nextNode()) {
+		const comment = walker.currentNode as Comment;
+		if (comment.data.includes("bookshop-live")) {
+			toRemove.push(comment);
+		}
+	}
+	for (const node of toRemove) node.remove();
 }
 
 function stripCCAttributes(el: HTMLElement): void {
 	el.removeAttribute("data-editable");
 	el.removeAttribute("data-prop");
+	el.removeAttribute("data-cms-bind");
 	for (const attr of Array.from(el.attributes)) {
 		if (attr.name.startsWith("data-prop-")) {
 			el.removeAttribute(attr.name);
@@ -424,6 +445,31 @@ function resolveStale(t: TrackedElement, file: CCFile): void {
 }
 
 // ---------------------------------------------------------------------------
+// Bookshop live-editing pause/resume
+// ---------------------------------------------------------------------------
+
+let originalBookshopUpdate: ((...args: any[]) => Promise<boolean>) | null =
+	null;
+
+function pauseBookshop(): void {
+	const bsl = (window as any).bookshopLive;
+	if (bsl && typeof bsl.update === "function" && !originalBookshopUpdate) {
+		originalBookshopUpdate = bsl.update.bind(bsl);
+		bsl.update = async () => false;
+		log("Paused Bookshop live editing");
+	}
+}
+
+function resumeBookshop(): void {
+	const bsl = (window as any).bookshopLive;
+	if (bsl && originalBookshopUpdate) {
+		bsl.update = originalBookshopUpdate;
+		originalBookshopUpdate = null;
+		log("Resumed Bookshop live editing");
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Teardown / restore
 // ---------------------------------------------------------------------------
 
@@ -441,6 +487,8 @@ function teardownEditors(): void {
 	staleCount = 0;
 	updateStaleBadge();
 	updateStaleList();
+
+	resumeBookshop();
 
 	if (translationContainer && originalContainer) {
 		translationContainer.replaceWith(originalContainer);
@@ -493,6 +541,8 @@ async function switchLocale(locale: string | null): Promise<void> {
 	container.replaceWith(clone);
 	translationContainer = clone;
 	log("Swapped in clean translation container");
+
+	pauseBookshop();
 
 	// --- Track elements in the clone and set up editors ---------------------
 
