@@ -368,17 +368,17 @@ export function updateCloudCannonConfig(
 // ── Follow-up instructions ──────────────────────────────────────────
 
 export function printInstructions(answers: WizardAnswers): void {
-	const { buildDir, defaultLanguage } = answers;
+	const { buildDir, defaultLanguage, roseyDir } = answers;
 
 	console.log("\n────────────────────────────────────────────");
 	console.log("  Next steps");
 	console.log("────────────────────────────────────────────\n");
 
 	console.log("1. Sync paths");
-	console.log("   Add the following preserved paths in your CloudCannon");
-	console.log("   site settings (Build > Configuration) so that locale");
-	console.log("   file edits sync back to your repo:");
-	console.log("     rosey/locales/\n");
+	console.log("   Set the CLOUDCANNON_SYNC_PATHS environment variable in your");
+	console.log("   CloudCannon site settings so that files generated during the");
+	console.log("   build (base.json + locale files) are synced back to your repo:");
+	console.log(`     CLOUDCANNON_SYNC_PATHS=/${roseyDir}/\n`);
 
 	console.log("2. HTML lang attribute");
 	console.log(
@@ -391,7 +391,7 @@ export function printInstructions(answers: WizardAnswers): void {
 	console.log("   your templates. See: https://rosey.app/docs/\n");
 
 	console.log("4. Import the RCC");
-	console.log("   Add this to your root layout's <body> to enable visual");
+	console.log("   Add this to your root layout to enable visual");
 	console.log("   locale editing in CloudCannon:\n");
 	console.log("     <script>");
 	console.log("       if (window?.inEditorMode) {");

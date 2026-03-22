@@ -322,15 +322,16 @@ function updateCloudCannonConfig(ctx, answers) {
   }
 }
 function printInstructions(answers) {
-  const { buildDir, defaultLanguage } = answers;
+  const { buildDir, defaultLanguage, roseyDir } = answers;
   console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
   console.log("  Next steps");
   console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n");
   console.log("1. Sync paths");
-  console.log("   Add the following preserved paths in your CloudCannon");
-  console.log("   site settings (Build > Configuration) so that locale");
-  console.log("   file edits sync back to your repo:");
-  console.log("     rosey/locales/\n");
+  console.log("   Set the CLOUDCANNON_SYNC_PATHS environment variable in your");
+  console.log("   CloudCannon site settings so that files generated during the");
+  console.log("   build (base.json + locale files) are synced back to your repo:");
+  console.log(`     CLOUDCANNON_SYNC_PATHS=/${roseyDir}/
+`);
   console.log("2. HTML lang attribute");
   console.log(
     `   Ensure your root <html> tag has lang="${defaultLanguage}" set.`
@@ -340,7 +341,7 @@ function printInstructions(answers) {
   console.log("   Add data-rosey attributes to translatable elements in");
   console.log("   your templates. See: https://rosey.app/docs/\n");
   console.log("4. Import the RCC");
-  console.log("   Add this to your root layout's <body> to enable visual");
+  console.log("   Add this to your root layout to enable visual");
   console.log("   locale editing in CloudCannon:\n");
   console.log("     <script>");
   console.log("       if (window?.inEditorMode) {");
