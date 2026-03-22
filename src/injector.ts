@@ -76,6 +76,9 @@ let activeFile: CCFile | null = null;
  */
 let switchGeneration = 0;
 
+/** True while an async locale switch is running. Blocks re-entrant clicks. */
+let switchInProgress = false;
+
 /**
  * Input configs captured from CC's editable infrastructure at init time.
  * Keyed by resolved Rosey key. Used to pass the exact same inputConfig
@@ -563,10 +566,19 @@ async function switchLocale(locale: string | null): Promise<void> {
 	switchGeneration++;
 	const myGeneration = switchGeneration;
 	log(`switchLocale("${locale}") — generation ${myGeneration}`);
-	if (myGeneration > 1) {
-		console.trace("RCC: switchLocale call stack (generation > 1)");
-	}
 
+	switchInProgress = true;
+	try {
+		await switchLocaleInner(locale, myGeneration);
+	} finally {
+		switchInProgress = false;
+	}
+}
+
+async function switchLocaleInner(
+	locale: string | null,
+	myGeneration: number,
+): Promise<void> {
 	currentLocale = locale;
 	updateButtonStates();
 
@@ -578,6 +590,8 @@ async function switchLocale(locale: string | null): Promise<void> {
 	}
 
 	// --- Swap the locale container with a clean clone -----------------------
+
+	pauseBookshop();
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??
@@ -597,8 +611,6 @@ async function switchLocale(locale: string | null): Promise<void> {
 	translationContainer = clone;
 	log("Swapped in clean translation container");
 
-	pauseBookshop();
-
 	// --- Track elements in the clone and set up editors ---------------------
 
 	trackElements(clone);
@@ -612,7 +624,7 @@ async function switchLocale(locale: string | null): Promise<void> {
 
 	const datasetKey = `locales_${locale}`;
 	log(`switchLocale: requesting dataset "${datasetKey}"`);
-	const dataset = api.dataset(datasetKey);
+	const dataset = api!.dataset(datasetKey);
 	const file = await resolveFile(dataset);
 
 	if (!file) {
@@ -953,7 +965,15 @@ function injectSwitcher(locales: string[]): void {
 				btn.style.background = "#f1f5f9";
 			}
 		});
-		btn.addEventListener("click", () => {
+		btn.addEventListener("click", (e) => {
+			log(
+				`Button clicked: "${label}" (locale=${locale}) ` +
+					`isTrusted=${e.isTrusted}, currentLocale=${currentLocale}`,
+			);
+			if (switchInProgress) {
+				log("Ignoring click — locale switch already in progress");
+				return;
+			}
 			switchLocale(locale);
 			closePopover();
 		});

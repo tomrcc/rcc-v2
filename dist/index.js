@@ -27,6 +27,7 @@ var activeDataset = null;
 var activeDatasetListener = null;
 var activeFile = null;
 var switchGeneration = 0;
+var switchInProgress = false;
 var originalInputConfigs = /* @__PURE__ */ new Map();
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
@@ -406,9 +407,14 @@ async function switchLocale(locale) {
   switchGeneration++;
   const myGeneration = switchGeneration;
   log(`switchLocale("${locale}") \u2014 generation ${myGeneration}`);
-  if (myGeneration > 1) {
-    console.trace("RCC: switchLocale call stack (generation > 1)");
+  switchInProgress = true;
+  try {
+    await switchLocaleInner(locale, myGeneration);
+  } finally {
+    switchInProgress = false;
   }
+}
+async function switchLocaleInner(locale, myGeneration) {
   currentLocale = locale;
   updateButtonStates();
   teardownEditors();
@@ -416,6 +422,7 @@ async function switchLocale(locale) {
     log("Switched to Original");
     return;
   }
+  pauseBookshop();
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) {
     warn("No locale container found");
@@ -428,7 +435,6 @@ async function switchLocale(locale) {
   container.replaceWith(clone);
   translationContainer = clone;
   log("Swapped in clean translation container");
-  pauseBookshop();
   trackElements(clone);
   if (tracked.length === 0) {
     warn(
@@ -722,7 +728,14 @@ function injectSwitcher(locales) {
         btn.style.background = "#f1f5f9";
       }
     });
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      log(
+        `Button clicked: "${label}" (locale=${locale}) isTrusted=${e.isTrusted}, currentLocale=${currentLocale}`
+      );
+      if (switchInProgress) {
+        log("Ignoring click \u2014 locale switch already in progress");
+        return;
+      }
       switchLocale(locale);
       closePopover();
     });
