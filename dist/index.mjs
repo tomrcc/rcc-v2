@@ -404,6 +404,9 @@ async function switchLocale(locale) {
   switchGeneration++;
   const myGeneration = switchGeneration;
   log(`switchLocale("${locale}") \u2014 generation ${myGeneration}`);
+  if (myGeneration > 1) {
+    console.trace("RCC: switchLocale call stack (generation > 1)");
+  }
   currentLocale = locale;
   updateButtonStates();
   teardownEditors();

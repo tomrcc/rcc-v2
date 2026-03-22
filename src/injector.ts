@@ -563,6 +563,9 @@ async function switchLocale(locale: string | null): Promise<void> {
 	switchGeneration++;
 	const myGeneration = switchGeneration;
 	log(`switchLocale("${locale}") — generation ${myGeneration}`);
+	if (myGeneration > 1) {
+		console.trace("RCC: switchLocale call stack (generation > 1)");
+	}
 
 	currentLocale = locale;
 	updateButtonStates();
