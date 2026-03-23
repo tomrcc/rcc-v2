@@ -12,7 +12,6 @@ export interface ProjectContext {
 	rccInstalled: boolean;
 	postbuildExists: boolean;
 	postbuildContent: string | null;
-	roseyConfigExists: boolean;
 }
 
 const CC_CONFIG_CANDIDATES: {
@@ -34,8 +33,6 @@ const LOCK_FILES: { file: string; pm: ProjectContext["packageManager"] }[] = [
 	{ file: "bun.lockb", pm: "bun" },
 	{ file: "package-lock.json", pm: "npm" },
 ];
-
-const ROSEY_CONFIG_FILES = ["rosey.toml", "rosey.yml", "rosey.json"];
 
 function fileExists(filePath: string): boolean {
 	try {
@@ -127,14 +124,6 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 		}
 	}
 
-	let roseyConfigExists = false;
-	for (const f of ROSEY_CONFIG_FILES) {
-		if (fileExists(path.join(cwd, f))) {
-			roseyConfigExists = true;
-			break;
-		}
-	}
-
 	return {
 		ccConfigPath,
 		ccConfigFormat,
@@ -146,6 +135,5 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 		rccInstalled,
 		postbuildExists,
 		postbuildContent,
-		roseyConfigExists,
 	};
 }

@@ -47,8 +47,9 @@ export function installDependencies(ctx: ProjectContext): void {
 // ── Postbuild script ────────────────────────────────────────────────
 
 function buildPostbuildBlock(answers: WizardAnswers): string {
-	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } =
+	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } =
 		answers;
+	const langFlag = `--default-language ${defaultLanguage}`;
 	const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
 
 	const lines: string[] = [];
@@ -78,7 +79,7 @@ function buildPostbuildBlock(answers: WizardAnswers): string {
 	lines.push("");
 	lines.push(`mv ./${buildDir} ./_untranslated_site`);
 	lines.push(
-		`npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""} --exclusions "\\.(html?)$"`,
+		`npx rosey build --source _untranslated_site --dest ${buildDir} ${langFlag}${rootFlag ? ` ${rootFlag}` : ""} --exclusions "\\.(html?)$"`,
 	);
 
 	return lines.join("\n");
@@ -104,27 +105,6 @@ export function writePostbuild(
 		fs.writeFileSync(filePath, content, { mode: 0o755 });
 		console.log("✓  Created .cloudcannon/postbuild");
 	}
-}
-
-// ── Rosey config ────────────────────────────────────────────────────
-
-export function writeRoseyConfig(
-	ctx: ProjectContext,
-	answers: WizardAnswers,
-): void {
-	if (ctx.roseyConfigExists) {
-		console.log("✓  Rosey config already exists — skipping.");
-		return;
-	}
-
-	const content = [
-		`source: ${answers.buildDir}`,
-		`default_language: ${answers.defaultLanguage}`,
-		"",
-	].join("\n");
-
-	fs.writeFileSync(path.join(process.cwd(), "rosey.yml"), content);
-	console.log("✓  Created rosey.yml");
 }
 
 // ── Remove `source` key ─────────────────────────────────────────────

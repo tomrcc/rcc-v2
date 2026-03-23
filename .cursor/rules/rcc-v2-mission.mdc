@@ -100,6 +100,6 @@ For pages with large body content (blog posts, documentation), a hybrid approach
 ## CLI Tooling
 
 - **`write-locales`**: Node CLI that reads Rosey's `base.json` and creates/updates locale JSON files + the `_rcc/locales.json` manifest. See codebase map for details.
-- **`init`**: Setup wizard that configures the entire Rosey + RCC stack (deps, postbuild, `rosey.yml`, CC config). Supports both interactive mode (prompts for all options) and headless mode (`--yes --locales fr,de`) for agent/CI automation. In headless mode, `--locales` is the only required flag; everything else has sensible defaults.
+- **`init`**: Setup wizard that configures the entire Rosey + RCC stack (deps, postbuild, CC config). Supports both interactive mode (prompts for all options) and headless mode (`--yes --locales fr,de`) for agent/CI automation. In headless mode, `--locales` is the only required flag; everything else has sensible defaults.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.

@@ -100,7 +100,7 @@ npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 # 3. Build the translated site (Rosey reads locale files and generates
 #    translated copies of every page)
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
+npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 ### Why `mv`?

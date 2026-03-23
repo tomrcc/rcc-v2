@@ -65,7 +65,7 @@ npx rosey build --source untranslated_site --dest dist --default-language-at-roo
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
+npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 ### 3. Update `cloudcannon.config.yml`

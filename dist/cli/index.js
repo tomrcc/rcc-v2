@@ -63,7 +63,8 @@ Installing ${pkgs.join(", ")}...`);
   }
 }
 function buildPostbuildBlock(answers) {
-  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } = answers;
+  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } = answers;
+  const langFlag = `--default-language ${defaultLanguage}`;
   const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
   const lines = [];
   if (useBuiltinWriteLocales) {
@@ -90,7 +91,7 @@ function buildPostbuildBlock(answers) {
   lines.push("");
   lines.push(`mv ./${buildDir} ./_untranslated_site`);
   lines.push(
-    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""} --exclusions "\\.(html?)$"`
+    `npx rosey build --source _untranslated_site --dest ${buildDir} ${langFlag}${rootFlag ? ` ${rootFlag}` : ""} --exclusions "\\.(html?)$"`
   );
   return lines.join("\n");
 }
@@ -117,19 +118,6 @@ ${block}
     import_node_fs.default.writeFileSync(filePath, content, { mode: 493 });
     console.log("\u2713  Created .cloudcannon/postbuild");
   }
-}
-function writeRoseyConfig(ctx, answers) {
-  if (ctx.roseyConfigExists) {
-    console.log("\u2713  Rosey config already exists \u2014 skipping.");
-    return;
-  }
-  const content = [
-    `source: ${answers.buildDir}`,
-    `default_language: ${answers.defaultLanguage}`,
-    ""
-  ].join("\n");
-  import_node_fs.default.writeFileSync(import_node_path.default.join(process.cwd(), "rosey.yml"), content);
-  console.log("\u2713  Created rosey.yml");
 }
 function rewriteYamlSourcePaths(content, source) {
   const lines = content.split("\n");
@@ -515,7 +503,6 @@ var LOCK_FILES = [
   { file: "bun.lockb", pm: "bun" },
   { file: "package-lock.json", pm: "npm" }
 ];
-var ROSEY_CONFIG_FILES = ["rosey.toml", "rosey.yml", "rosey.json"];
 function fileExists(filePath) {
   try {
     return import_node_fs2.default.statSync(filePath).isFile();
@@ -594,13 +581,6 @@ function detectProject(cwd = process.cwd()) {
     } catch {
     }
   }
-  let roseyConfigExists = false;
-  for (const f of ROSEY_CONFIG_FILES) {
-    if (fileExists(import_node_path2.default.join(cwd, f))) {
-      roseyConfigExists = true;
-      break;
-    }
-  }
   return {
     ccConfigPath,
     ccConfigFormat,
@@ -611,8 +591,7 @@ function detectProject(cwd = process.cwd()) {
     roseyInstalled,
     rccInstalled,
     postbuildExists,
-    postbuildContent,
-    roseyConfigExists
+    postbuildContent
   };
 }
 
@@ -759,7 +738,6 @@ async function run(argv) {
     console.log("");
     installDependencies(ctx);
     writePostbuild(ctx, answers2);
-    writeRoseyConfig(ctx, answers2);
     removeSourceKey(ctx, answers2);
     updateCloudCannonConfig(ctx, answers2);
     printInstructions(answers2);
@@ -868,7 +846,6 @@ async function run(argv) {
   } else {
     console.log("  Skipped .cloudcannon/postbuild (user declined).");
   }
-  writeRoseyConfig(ctx, answers);
   if (shouldRemoveSource) {
     removeSourceKey(ctx, answers);
   } else if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
@@ -880,7 +857,8 @@ async function run(argv) {
   printInstructions(answers);
 }
 function buildPostbuildPreview(answers) {
-  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } = answers;
+  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } = answers;
+  const langFlag = ` --default-language ${defaultLanguage}`;
   const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
   const lines = ["# Rosey"];
   if (useBuiltinWriteLocales) {
@@ -894,7 +872,7 @@ function buildPostbuildPreview(answers) {
   }
   lines.push(`mv ./${buildDir} ./_untranslated_site`);
   lines.push(
-    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag} --exclusions "\\.(html?)$"`
+    `npx rosey build --source _untranslated_site --dest ${buildDir}${langFlag}${rootFlag} --exclusions "\\.(html?)$"`
   );
   return lines.join("\n");
 }

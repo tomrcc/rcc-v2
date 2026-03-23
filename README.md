@@ -21,7 +21,7 @@ The package ships a **client-side injector** (auto-runs in the Visual Editor) an
 
 ## Quick Start
 
-The fastest way to get set up is with the `init` wizard. It installs dependencies, creates the postbuild script, writes `rosey.yml`, and configures `cloudcannon.config.yml` for you:
+The fastest way to get set up is with the `init` wizard. It installs dependencies, creates the postbuild script, and configures `cloudcannon.config.yml` for you:
 
 ```bash
 npx rosey-cloudcannon-connector init
@@ -74,19 +74,12 @@ data_config:
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
+npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through the build as assets. Without it, those files are excluded and must be manually copied back.
 
 > **Note: Rosey JSON translation users.** If your site uses [Rosey's JSON translation feature](https://rosey.app/docs/translating-json/) (`.rosey.json` schema files), be aware that this exclusion override lets all JSON files pass through as-is — including any JSON data files that Rosey would normally process via their `.rosey.json` schemas. If you use both the RCC and Rosey JSON translation, you may need a more targeted exclusion regex (e.g. keeping specific JSON files excluded) or handle the translated JSON output separately.
-
-**3. Create `rosey.yml`** in your project root:
-
-```yaml
-source: dist
-default_language: en
-```
 
 ## Data Attributes
 

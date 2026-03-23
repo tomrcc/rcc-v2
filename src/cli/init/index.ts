@@ -4,7 +4,6 @@ import {
 	removeSourceKey,
 	updateCloudCannonConfig,
 	writePostbuild,
-	writeRoseyConfig,
 } from "./actions";
 import { detectProject } from "./detect";
 import { askConfirm, askSelect, askText, closePrompts } from "./prompts";
@@ -157,7 +156,6 @@ export async function run(argv: string[]): Promise<void> {
 
 		installDependencies(ctx);
 		writePostbuild(ctx, answers);
-		writeRoseyConfig(ctx, answers);
 		removeSourceKey(ctx, answers);
 		updateCloudCannonConfig(ctx, answers);
 		printInstructions(answers);
@@ -292,8 +290,6 @@ export async function run(argv: string[]): Promise<void> {
 		console.log("  Skipped .cloudcannon/postbuild (user declined).");
 	}
 
-	writeRoseyConfig(ctx, answers);
-
 	if (shouldRemoveSource) {
 		removeSourceKey(ctx, answers);
 	} else if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
@@ -308,8 +304,9 @@ export async function run(argv: string[]): Promise<void> {
 }
 
 function buildPostbuildPreview(answers: WizardAnswers): string {
-	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot } =
+	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } =
 		answers;
+	const langFlag = ` --default-language ${defaultLanguage}`;
 	const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
 
 	const lines: string[] = ["# Rosey"];
@@ -326,7 +323,7 @@ function buildPostbuildPreview(answers: WizardAnswers): string {
 
 	lines.push(`mv ./${buildDir} ./_untranslated_site`);
 	lines.push(
-		`npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag} --exclusions "\\.(html?)$"`,
+		`npx rosey build --source _untranslated_site --dest ${buildDir}${langFlag}${rootFlag} --exclusions "\\.(html?)$"`,
 	);
 
 	return lines.join("\n");

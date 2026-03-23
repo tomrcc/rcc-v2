@@ -100,10 +100,10 @@ npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 
 # 3. Build the translated site with Rosey
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
+npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
-Adjust `--source dist` if your SSG outputs to a different directory (e.g. `_site`, `public`, `build`).
+Adjust `--source dist` and `--default-language en` if your SSG outputs to a different directory or uses a different source language.
 
 ### Why `--exclusions`?
 
@@ -184,7 +184,7 @@ data_config:
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
+npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 ### A page with translatable content
