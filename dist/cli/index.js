@@ -299,6 +299,8 @@ function buildCollectionsConfigYaml(answers, indent) {
     `${indent}      cascade: true`,
     `${indent}    _base_original:`,
     `${indent}      disabled: true`,
+    `${indent}      hidden: false`,
+    `${indent}      label: Original Text`,
     `${indent}      cascade: true`
   ];
   return lines.join("\n");

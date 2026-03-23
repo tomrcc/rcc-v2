@@ -389,6 +389,11 @@ function teardownEditors() {
     );
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
+    const cc = window.CloudCannon;
+    if (typeof cc?.refreshInterface === "function") {
+      cc.refreshInterface();
+      log("Called CloudCannon.refreshInterface() to restore component panels");
+    }
   } else {
     log("teardownEditors: no containers to swap");
   }

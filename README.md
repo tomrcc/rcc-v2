@@ -17,17 +17,31 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 npm install rosey-cloudcannon-connector
 ```
 
-The package ships a **client-side injector** (auto-runs in the Visual Editor) and a **CLI tool** (`write-locales`) for build-time locale file management.
+The package ships a **client-side injector** (auto-runs in the Visual Editor) and two **CLI tools**: `init` (setup wizard) and `write-locales` (build-time locale file management).
 
 ## Quick Start
 
-**1. Tag translatable elements** with `data-rosey`:
+The fastest way to get set up is with the `init` wizard. It installs dependencies, creates the postbuild script, writes `rosey.yml`, and configures `cloudcannon.config.yml` for you:
+
+```bash
+npx rosey-cloudcannon-connector init
+```
+
+Or skip all prompts in CI / agent workflows:
+
+```bash
+npx rosey-cloudcannon-connector init --yes --locales fr,de
+```
+
+After running `init`, you still need to:
+
+1. **Tag translatable elements** with `data-rosey`:
 
 ```html
 <h1 data-rosey="hero:title">Welcome to my site</h1>
 ```
 
-**2. Import the script** in your layout (Astro example):
+2. **Import the script** in your layout (Astro example):
 
 ```astro
 <script>
@@ -37,7 +51,13 @@ The package ships a **client-side injector** (auto-runs in the Visual Editor) an
 </script>
 ```
 
-**3. Add `data_config`** entries to `cloudcannon.config.yml`:
+See the [full setup guide](docs/getting-started.md) for detailed explanations and all available `init` flags.
+
+### Manual Setup
+
+If you prefer to configure things yourself, the steps `init` automates are:
+
+**1. Add `data_config`** entries to `cloudcannon.config.yml`:
 
 ```yaml
 data_config:
@@ -47,7 +67,7 @@ data_config:
     path: rosey/locales/de.json
 ```
 
-**4. Set up the postbuild** at `.cloudcannon/postbuild`:
+**2. Set up the postbuild** at `.cloudcannon/postbuild`:
 
 ```bash
 #!/usr/bin/env bash
@@ -58,7 +78,12 @@ npx rosey build --source _untranslated_site --dest dist --default-language-at-ro
 cp -r _untranslated_site/_rcc dist/_rcc
 ```
 
-See the [full setup guide](docs/getting-started.md) for detailed explanations of each step.
+**3. Create `rosey.yml`** in your project root:
+
+```yaml
+source: dist
+default_language: en
+```
 
 ## Data Attributes
 
@@ -75,6 +100,10 @@ See the [full setup guide](docs/getting-started.md) for detailed explanations of
 ## Bookshop Compatibility
 
 Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-based live editing work out of the box. The connector automatically detects Bookshop's live-editing markers and pauses its re-rendering cycle during locale view, preventing conflicts between Bookshop's component rendering and the connector's inline translation editors. Switching back to "Original" fully restores Bookshop live editing.
+
+## Stale Translation Detection
+
+When the source text of an element changes after it was last translated, the connector flags the translation as stale. In the Visual Editor, stale elements get an amber dashed border, and the locale switcher FAB shows a count badge. Clicking a locale button reveals a panel where editors can resolve stale items individually or all at once. Editing a translation auto-resolves its stale flag. See [Stale Translation Detection](docs/stale-translations.md) for details.
 
 ## Documentation
 
