@@ -8,35 +8,55 @@ The connector needs to know which part of the page contains translatable content
 
 ### Default: `<main>`
 
-For most sites, the connector uses `<main>` as the boundary with no configuration needed:
+If no `data-rcc` attribute is found, the connector falls back to `<main>`. This works well when all your translatable content lives inside `<main>`:
 
 ```html
 <body>
-  <nav><!-- unaffected by locale switching --></nav>
+  <nav><!-- not affected by locale switching --></nav>
   <main>
     <!-- everything in here is cloned and translated -->
     <h1 data-rosey="title">Welcome</h1>
   </main>
-  <footer><!-- unaffected by locale switching --></footer>
+  <footer><!-- not affected by locale switching --></footer>
 </body>
 ```
 
-### Custom boundary: `data-rcc`
+### Including navigation and footer: `data-rcc`
 
-If your site doesn't use `<main>`, or you want to limit the scope, add `data-rcc` to the container:
+Navigation and footer text is commonly translated (menu labels, copyright notices, CTAs). Since the default `<main>` boundary excludes these areas, add `data-rcc` to a wrapper that encompasses everything you want to translate in the Visual Editor:
 
 ```html
-<div data-rcc>
-  <h1 data-rosey="title">Hello</h1>
-</div>
+<body>
+  <div data-rcc>
+    <nav>
+      <a data-rosey="nav:home" href="/">Home</a>
+      <a data-rosey="nav:about" href="/about">About</a>
+    </nav>
+    <main>
+      <h1 data-rosey="hero:title">Welcome</h1>
+    </main>
+    <footer>
+      <p data-rosey="footer:copyright">&copy; 2025 My Company</p>
+    </footer>
+  </div>
+  <script>
+    if (window?.inEditorMode) {
+      import("rosey-cloudcannon-connector");
+    }
+  </script>
+</body>
 ```
+
+If your layout already has a wrapper element around the page content (e.g., `<div class="page-wrapper">`), just add `data-rcc` to it. Otherwise, add a thin wrapper `<div data-rcc>` around the content you want to translate.
+
+> **Why not `<body>`?** The connector swaps the boundary element out of the DOM with a clean clone. `<body>` cannot be used because it hosts the connector's own UI (the FAB, popover, stale panel), CloudCannon's editing infrastructure, and `<script>` tags — swapping it would destroy all of those. Any normal element inside `<body>` works fine.
 
 The lookup order is: `[data-rcc]` then `<main>`. If neither exists, the connector logs a warning and does nothing.
 
 ### What the boundary affects
 
-- Content **inside** the boundary is cloned and gets inline translation editors
-- Content **outside** the boundary (navigation, footer, etc.) is untouched during locale switching
+- Content **inside** the boundary is cloned and gets inline translation editors in the Visual Editor
+- Content **outside** the boundary is untouched during locale switching
 - Rosey still translates everything with `data-rosey` at build time, regardless of the boundary — the boundary only matters for the Visual Editor experience
 
 ## Per-page locale exclusion

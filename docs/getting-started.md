@@ -40,7 +40,7 @@ Any element with a `data-rosey` attribute is automatically picked up by both Ros
 <p data-rosey="hero:subtitle">The best site on the internet</p>
 ```
 
-If you're using CloudCannon's editable regions, these work together:
+`data-rosey` is all that's needed — the connector creates its own inline editors and does not require editable regions or Bookshop. If your site already uses CloudCannon's editable regions, the two work together:
 
 ```html
 <editable-text data-editable="text" data-prop="title" data-rosey="hero:title">
@@ -116,7 +116,7 @@ When the page loads in CloudCannon's Visual Editor:
 1. The script waits for the `cloudcannon:load` event
 2. Acquires the CloudCannon JS API handle
 3. Fetches `/_rcc/locales.json` to discover available locales
-4. Finds the snapshot boundary (`[data-rcc]` element or `<main>`)
+4. Finds the snapshot boundary (`[data-rcc]` element, or falls back to `<main>`)
 5. Tracks all `[data-rosey]` elements (excluding `[data-rcc-ignore]`)
 6. Pre-scans input configs from the original container
 7. Injects a draggable locale switcher FAB (floating action button) in the bottom-right corner
@@ -153,19 +153,28 @@ The FAB can be dragged anywhere on the page; its position persists across reload
 <html lang="en">
   <head><!-- ... --></head>
   <body>
-    <nav><!-- navigation, outside the boundary --></nav>
+    <div data-rcc>
+      <nav>
+        <a data-rosey="nav:home" href="/">Home</a>
+        <a data-rosey="nav:about" href="/about">About</a>
+      </nav>
+      <main>
+        <slot />
+      </main>
+      <footer>
+        <p data-rosey="footer:copyright">&copy; 2025 My Company</p>
+      </footer>
+    </div>
     <script>
       if (window?.inEditorMode) {
         import("rosey-cloudcannon-connector");
       }
     </script>
-    <main>
-      <slot />
-    </main>
-    <footer><!-- footer, outside the boundary --></footer>
   </body>
 </html>
 ```
+
+The `data-rcc` wrapper includes navigation and footer so their translatable content appears in the locale switcher. If you only need to translate content inside `<main>`, you can omit the wrapper — the connector falls back to `<main>` automatically. See [Configuration: Snapshot boundary](configuration.md#snapshot-boundary) for details.
 
 ### `cloudcannon.config.yml`
 

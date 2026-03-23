@@ -11,6 +11,8 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 - Translatable elements tagged with `data-rosey` attributes
 - CloudCannon Visual Editor enabled
 
+> **No existing editing setup required.** The connector does not depend on editable regions, Bookshop, or `data-prop` / `data-editable` attributes. It creates its own inline editors on every `data-rosey` element — sites with no editing infrastructure still get full visual translation editing. Editable regions and Bookshop are compatible enhancements (the connector handles them automatically), not prerequisites.
+
 ## Install
 
 ```bash
@@ -89,7 +91,7 @@ The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JS
 | `data-rcc-ignore` | Translatable elements | Opt out of locale switching |
 | `data-rosey-root="{prefix}"` | Parent elements | Root namespace prefix (stops upward traversal) |
 | `data-rosey-ns="{segment}"` | Parent elements | Namespace segment for child keys |
-| `data-rcc` | Container element | Override the snapshot boundary (defaults to `<main>`) |
+| `data-rcc` | Container element | Set the snapshot boundary — use to include nav/footer in locale switching (defaults to `<main>`) |
 | `data-rcc-exclude="de,es"` | Container element | Hide locales from the switcher on this page |
 | `data-rcc-verbose` | Any element | Enable verbose console logging |
 
