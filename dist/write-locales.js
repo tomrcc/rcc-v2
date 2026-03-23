@@ -61,7 +61,7 @@ async function writeLocales(options) {
   await import_node_fs.default.promises.mkdir(localesDir, { recursive: true });
   if (!locales || locales.length === 0) {
     const files = await import_node_fs.default.promises.readdir(localesDir);
-    locales = files.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""));
+    locales = files.filter((f) => f.endsWith(".json") && !f.endsWith(".urls.json")).map((f) => f.replace(/\.json$/, ""));
     if (locales.length === 0) {
       console.warn(
         "RCC: No locales specified and no existing locale files found. Use --locales to specify locale codes."

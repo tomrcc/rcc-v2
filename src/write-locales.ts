@@ -64,7 +64,7 @@ export async function writeLocales(
 	if (!locales || locales.length === 0) {
 		const files = await fs.promises.readdir(localesDir);
 		locales = files
-			.filter((f) => f.endsWith(".json"))
+			.filter((f) => f.endsWith(".json") && !f.endsWith(".urls.json"))
 			.map((f) => f.replace(/\.json$/, ""));
 
 		if (locales.length === 0) {

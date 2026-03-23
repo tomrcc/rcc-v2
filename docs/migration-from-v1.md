@@ -119,21 +119,48 @@ Import the connector in your site's layout file. This is new in v2 — v1 had no
 
 Place this inside the `<body>`, before or after your `<main>` element. See [Getting Started: Step 2](getting-started.md#step-2-import-the-script-in-your-layout) for framework-specific examples.
 
-### 5. Clean up v1 artifacts
+### 5. Set the snapshot boundary
+
+v1 had no client-side component, so no snapshot boundary was needed. v2 clones a container when switching locales and needs to know which part of the page contains translatable content.
+
+If your header and footer contain translatable text (nav links, copyright, etc.), wrap them alongside `<main>` in a `data-rcc` element:
+
+```html
+<body>
+  <div data-rcc>
+    <Header />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+  </div>
+  <script>
+    if (window?.inEditorMode) {
+      import("rosey-cloudcannon-connector");
+    }
+  </script>
+</body>
+```
+
+If only `<main>` content is translatable, you can skip `data-rcc` — the connector falls back to `<main>` automatically.
+
+### 6. Clean up v1 artifacts
 
 Remove files and config that v2 doesn't use:
 
 - **Delete `rosey/rcc.yaml`** — configuration now lives in `cloudcannon.config.yml`
 - **Delete `rosey/translations/`** — the YAML translation files are replaced by locale JSON files
-- **Delete Smartling config and files** if you used the Smartling integration
+- **Delete Smartling config and files** if you used the Smartling integration (`smartling-translations/`, `outgoing-smartling-translations.json`)
+- **Keep `*.urls.json` files** (`base.urls.json`, `locales/*.urls.json`) — these are native Rosey URL translation files, not RCC artifacts. Rosey uses them at build time to generate translated URL paths. v1 exposed them for editing through the `translations` collection; v2 does not provide a UI for editing URL translations, but the files are still consumed by `rosey build` and should not be deleted if they contain translated URLs.
 - **Remove `data-rosey-tagger`** attributes from your HTML templates
 - **Remove `generateRoseyId` imports** — replace with static key strings
+- **Remove the `declare module 'rosey-cloudcannon-connector/utils'`** line from your TypeScript declarations (e.g. `env.d.ts`)
 
-### 6. Update `CLOUDCANNON_SYNC_PATHS`
+### 7. Update `CLOUDCANNON_SYNC_PATHS`
 
 If you set `CLOUDCANNON_SYNC_PATHS=/rosey/` as an environment variable in CloudCannon, verify it still covers the files you need synced. The locale files are still in `rosey/locales/`, so the path should still work. Remove it if it's no longer needed.
 
-### 7. Replace content-derived keys with static keys
+### 8. Replace content-derived keys with static keys
 
 v1 recommended using `generateRoseyId()` to slugify element text as the Rosey key. v2 recommends **static, descriptive keys** that don't change when content changes. This works better with stale translation detection — when the source text changes, the key stays stable and the connector flags the translation as stale.
 
@@ -149,12 +176,42 @@ import { generateRoseyId } from "rosey-cloudcannon-connector/utils";
 **v2:**
 
 ```astro
-<h1 data-rosey="hero:title">{heading.text}</h1>
+<h1 data-rosey="hero-title">{heading.text}</h1>
 ```
 
-> **Important:** Changing Rosey keys means existing translations won't match the new keys. After updating keys, run a build so `write-locales` creates new entries. You'll need to re-enter translations for the new keys (or write a script to remap old keys to new ones in your locale files).
+#### Strategies by component type
 
-### 8. Verify
+**Single-instance elements** (hero headings, copyright text): Use descriptive static keys like `"heading"`, `"copyright"`. Namespacing via `data-rosey-ns` on a parent provides uniqueness.
+
+**Iterated data arrays** (nav links, footer links): Use a simple inline transform of the text content as the key. Since link text is short and stable, `link.text.toLowerCase().replace(/\s+/g, "-")` produces keys like `blog`, `github` — readable and stable unless the link text itself changes.
+
+**Tags and categories**: Tags are typically already lowercase slugs (e.g. `"seo"`, `"tailwind"`). Use the tag value directly as the `data-rosey` key.
+
+**Rendered markdown blocks**: v1 used `data-rosey-tagger` to auto-tag individual elements inside rendered markdown. v2 removes the auto-tagger. Instead, wrap the entire markdown block in a single `data-rosey` tag:
+
+```astro
+<div class="markdown-text" data-rosey="markdown" set:html={markdownContent} />
+```
+
+This translates the full block as one unit, which pairs well with the split-by-directory approach for large body content.
+
+#### Locale picker links
+
+If your site has a visitor-facing locale picker, add `data-rosey-ignore` to the picker's `<a>` tags. Rosey rewrites internal links to add locale prefixes — without `data-rosey-ignore`, the "switch to English" link on a French page would be rewritten to point to the French version.
+
+### 9. Remap existing translations
+
+> **Important:** Changing Rosey keys means existing translations won't match the new keys. After updating keys, run a build so `write-locales` creates new entries.
+
+After the first v2 build, both old (orphaned) and new (empty) keys will coexist in the locale files. You can remap translations with a script that matches entries by `original` text:
+
+1. For each new key with an empty `value`, find an old key with the same `original`
+2. Copy the `value` to the new key
+3. Remove orphaned old keys (those without `_base_original`, which `write-locales` adds to live keys)
+
+A sample migration script is included in the [rosey-astro-starter migration](https://github.com/CloudCannon/rosey-astro-starter) as `scripts/remap-locale-keys.mjs`.
+
+### 10. Verify
 
 After completing the migration:
 
