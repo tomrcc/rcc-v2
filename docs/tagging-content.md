@@ -23,6 +23,57 @@ Use **static, descriptive keys** that don't change when the content changes. Thi
 <h1 data-rosey="welcome-to-sendit">Welcome to Sendit</h1>
 ```
 
+### Key uniqueness and stability
+
+Each Rosey key maps to exactly one entry in the locale file. The connector relies on this 1:1 mapping for two things:
+
+- **[Stale detection](stale-translations.md)** — compares `original` vs `_base_original` per key. If two elements share a key, a source-text change on either one flags both as stale.
+- **Disabled elements** — elements whose resolved key has no entry in the locale file appear grayed out and non-editable. This signals that `write-locales` needs to run before the element can be translated.
+
+Both behaviours break when keys collide or shift unexpectedly.
+
+**The array/index problem.** A common pitfall is using positional indexes as namespace segments for repeating structures (e.g. a list of feature cards):
+
+```html
+<!-- Fragile: index-based keys shift when items are inserted or reordered -->
+<div data-rosey-ns="features">
+  <div data-rosey-ns="0"><h3 data-rosey="title">Fast</h3></div>
+  <div data-rosey-ns="1"><h3 data-rosey="title">Secure</h3></div>
+</div>
+<!-- keys: features:0:title, features:1:title -->
+```
+
+If a new card is inserted between the two, every key after the insertion point shifts by one. The locale file still has entries for the old indexes, so:
+
+- Elements after the insertion map to the wrong locale entry — showing the wrong translation and potentially false stale flags
+- The newly inserted element has no matching locale entry and appears disabled
+- The last element in the original list loses its match and also appears disabled
+
+**Recommended: use stable identifiers.** Instead of indexes, derive namespace segments from something that won't change when items are reordered — a slug, a short descriptive name, or a UUID from your CMS data:
+
+```html
+<!-- Stable: content-derived keys survive insertions and reordering -->
+<div data-rosey-ns="features">
+  <div data-rosey-ns="fast"><h3 data-rosey="title">Fast</h3></div>
+  <div data-rosey-ns="secure"><h3 data-rosey="title">Secure</h3></div>
+</div>
+<!-- keys: features:fast:title, features:secure:title -->
+```
+
+Now inserting a card between them doesn't affect existing keys — the new card simply gets a new key, and existing translations stay matched to the correct elements.
+
+> **Note:** Key design is ultimately a decision for the site author. The connector and Rosey use whatever keys the HTML provides — they don't enforce a naming strategy. Choose an approach that keeps keys unique and stable across content changes.
+
+### Disabled elements (no locale entry)
+
+When switching to a locale in the Visual Editor, any `[data-rosey]` element whose resolved key has no matching entry in the locale file is rendered at reduced opacity and is non-interactive — no inline editor is created, and you can't click or type in it. The element is still visible so the page layout stays intact, but it is effectively read-only.
+
+**Why it happens.** The most common cause is adding a new translatable element to your source and opening the Visual Editor before a build has run. The locale files are generated at build time by `write-locales`, which reads Rosey's `base.json`. Until a build runs, the new key doesn't exist in the locale files and the connector has nothing to connect it to.
+
+This also occurs when [index-based keys shift](#key-uniqueness-and-stability) — displaced elements lose their match and appear disabled even though they had translations before the reorder.
+
+**How to fix it.** Trigger a build (or run `write-locales` locally) so the new key is added to every locale file. After that, the element becomes editable in the next Visual Editor session.
+
 ### Works with CloudCannon editable regions
 
 If you're using CloudCannon's editable region custom elements, `data-rosey` can go right on them:

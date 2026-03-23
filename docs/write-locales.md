@@ -100,15 +100,16 @@ npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 # 3. Build the translated site (Rosey reads locale files and generates
 #    translated copies of every page)
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root
-
-# 4. Rosey excludes _-prefixed directories, so copy the manifest back
-cp -r _untranslated_site/_rcc dist/_rcc
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
 ```
 
-### Why `mv` and then `cp`?
+### Why `mv`?
 
-Rosey reads from a source directory and writes to a dest directory. Since both are `dist`, we rename the original to `_untranslated_site` first. After Rosey builds, the `_rcc` directory (which Rosey skips because of the `_` prefix) needs to be copied back into the final output so the connector can fetch `/_rcc/locales.json` at runtime.
+Rosey reads from a source directory and writes to a dest directory. Since both are `dist`, we rename the original to `_untranslated_site` first so Rosey has a clean source to read from and a fresh dest to write to.
+
+### Why `--exclusions`?
+
+Rosey's default exclusion regex (`\.(html?|json)$`) prevents JSON files from being copied through as assets. The override `\.(html?)$` lets JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through to the final output without manual `cp` steps.
 
 ## Using your own script instead of `write-locales`
 

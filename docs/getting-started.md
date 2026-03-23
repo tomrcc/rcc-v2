@@ -100,18 +100,14 @@ npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 
 # 3. Build the translated site with Rosey
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root
-
-# 4. Copy the _rcc manifest into the final output
-#    (Rosey excludes _-prefixed directories from its build output)
-cp -r _untranslated_site/_rcc dist/_rcc
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 Adjust `--source dist` if your SSG outputs to a different directory (e.g. `_site`, `public`, `build`).
 
-### Why the `cp` step?
+### Why `--exclusions`?
 
-Rosey skips directories prefixed with `_` during its build. The connector fetches `/_rcc/locales.json` at runtime for locale discovery, so the `_rcc` directory must be present in the final `dist/` output. The `cp` at the end copies it from the pre-Rosey build into the post-Rosey output.
+Rosey's default exclusion regex (`\.(html?|json)$`) prevents JSON files from being copied through the build as assets. The `--exclusions "\.(html?)$"` override lets JSON files pass through, so `_rcc/locales.json` (the RCC locale manifest) and `_cloudcannon/info.json` (Bookshop component data) end up in the final output without any manual `cp` steps.
 
 ## What happens at runtime
 
@@ -188,8 +184,7 @@ data_config:
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root
-cp -r _untranslated_site/_rcc dist/_rcc
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 ### A page with translatable content

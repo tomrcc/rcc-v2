@@ -326,9 +326,8 @@ function buildPostbuildPreview(answers: WizardAnswers): string {
 
 	lines.push(`mv ./${buildDir} ./_untranslated_site`);
 	lines.push(
-		`npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag}`,
+		`npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag} --exclusions "\\.(html?)$"`,
 	);
-	lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
 
 	return lines.join("\n");
 }

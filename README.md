@@ -74,9 +74,12 @@ data_config:
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
-npx rosey build --source _untranslated_site --dest dist --default-language-at-root
-cp -r _untranslated_site/_rcc dist/_rcc
+npx rosey build --source _untranslated_site --dest dist --default-language-at-root --exclusions "\.(html?)$"
 ```
+
+The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through the build as assets. Without it, those files are excluded and must be manually copied back.
+
+> **Note: Rosey JSON translation users.** If your site uses [Rosey's JSON translation feature](https://rosey.app/docs/translating-json/) (`.rosey.json` schema files), be aware that this exclusion override lets all JSON files pass through as-is — including any JSON data files that Rosey would normally process via their `.rosey.json` schemas. If you use both the RCC and Rosey JSON translation, you may need a more targeted exclusion regex (e.g. keeping specific JSON files excluded) or handle the translated JSON output separately.
 
 **3. Create `rosey.yml`** in your project root:
 
@@ -104,6 +107,8 @@ Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-ba
 ## Stale Translation Detection
 
 When the source text of an element changes after it was last translated, the connector flags the translation as stale. In the Visual Editor, stale elements get an amber dashed border, and the locale switcher FAB shows a count badge. Clicking a locale button reveals a panel where editors can resolve stale items individually or all at once. Editing a translation auto-resolves its stale flag. See [Stale Translation Detection](docs/stale-translations.md) for details.
+
+Accurate stale detection and element activation depend on each element having a unique, stable Rosey key — see [Tagging Content: Key uniqueness and stability](docs/tagging-content.md#key-uniqueness-and-stability) for guidance on avoiding key collisions in repeating structures. Elements whose key has no entry in the locale file (e.g. newly added content before a build has run) appear at reduced opacity and are non-editable until the next build populates the locale files.
 
 ## Documentation
 

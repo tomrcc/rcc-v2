@@ -23,15 +23,19 @@ Navigation, footers, and other content outside the [snapshot boundary](configura
 
 If you need to translate content outside `<main>` (like navigation links), those translations will only be visible on the built site, not in the Visual Editor's locale preview.
 
-### Rosey excludes `_`-prefixed directories
+### JSON files excluded by default in Rosey build
 
-Rosey skips directories starting with `_` during its build. The connector's locale manifest lives at `/_rcc/locales.json`, so the postbuild script must copy it back into the final output:
+Rosey's default `--exclusions` regex (`\.(html?|json)$`) prevents JSON files from being copied through the build as assets. This blocks essential files like `_rcc/locales.json` (the RCC locale manifest) and `_cloudcannon/info.json` (Bookshop component data). The postbuild `rosey build` command should include `--exclusions "\.(html?)$"` to let JSON files pass through. See [Getting Started: Step 4](getting-started.md#step-4-set-up-the-postbuild-script) for the full postbuild example.
 
-```bash
-cp -r _untranslated_site/_rcc dist/_rcc
-```
+If the locale manifest is missing from the final output, the connector won't find any locales and the switcher won't appear.
 
-If this step is missing, the connector won't find any locales and the switcher won't appear.
+### Key collisions in repeating structures
+
+When repeating components (e.g. card lists, feature grids) use positional indexes in their Rosey keys, inserting or reordering items shifts all subsequent keys. This causes mismatched translations, false stale flags, and elements appearing incorrectly disabled. Use stable, content-derived identifiers instead of array indexes for namespace segments. See [Tagging Content: Key uniqueness and stability](tagging-content.md#key-uniqueness-and-stability) for a full explanation and examples.
+
+### Disabled elements after adding new content
+
+When a new `data-rosey` element is added to the source and the Visual Editor is opened before a build has run, the element appears at reduced opacity and is non-interactive. This is expected behaviour — the connector is signalling that the element's key doesn't exist in the locale files yet. Trigger a build (which runs `write-locales`) to populate the locale files with the new key. See [Tagging Content: Disabled elements](tagging-content.md#disabled-elements-no-locale-entry) for details.
 
 ## Troubleshooting
 

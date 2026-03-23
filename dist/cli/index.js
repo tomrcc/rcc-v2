@@ -90,9 +90,8 @@ function buildPostbuildBlock(answers) {
   lines.push("");
   lines.push(`mv ./${buildDir} ./_untranslated_site`);
   lines.push(
-    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""}`
+    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag ? ` ${rootFlag}` : ""} --exclusions "\\.(html?)$"`
   );
-  lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
   return lines.join("\n");
 }
 function writePostbuild(ctx, answers) {
@@ -895,9 +894,8 @@ function buildPostbuildPreview(answers) {
   }
   lines.push(`mv ./${buildDir} ./_untranslated_site`);
   lines.push(
-    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag}`
+    `npx rosey build --source _untranslated_site --dest ${buildDir}${rootFlag} --exclusions "\\.(html?)$"`
   );
-  lines.push(`cp -r _untranslated_site/_rcc ${buildDir}/_rcc`);
   return lines.join("\n");
 }
 
