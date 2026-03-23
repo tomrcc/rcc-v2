@@ -115,48 +115,64 @@ export async function writeLocales(
 		);
 	}
 
+	const manifest = { locales };
+
 	const rccDir = path.join(dest, "_rcc");
 	await fs.promises.mkdir(rccDir, { recursive: true });
 	const manifestPath = path.join(rccDir, "locales.json");
-	await fs.promises.writeFile(manifestPath, JSON.stringify(locales));
+	await fs.promises.writeFile(manifestPath, JSON.stringify(manifest));
 	console.log(`RCC: Wrote locale manifest → ${manifestPath}`);
 
 	await validateDataConfig(locales);
 }
 
-async function validateDataConfig(locales: string[]): Promise<void> {
-	const configPaths = [
-		"cloudcannon.config.yml",
-		"cloudcannon.config.yaml",
-		"cloudcannon.config.json",
-		"cloudcannon.config.cjs",
-	];
+// ---------------------------------------------------------------------------
+// CloudCannon config reading
+// ---------------------------------------------------------------------------
 
-	let configRaw: string | null = null;
-	let configPath: string | null = null;
-	for (const p of configPaths) {
+const CC_CONFIG_PATHS = [
+	"cloudcannon.config.yml",
+	"cloudcannon.config.yaml",
+	"cloudcannon.config.json",
+	"cloudcannon.config.cjs",
+];
+
+interface CCConfigResult {
+	raw: string;
+	path: string;
+}
+
+async function readCCConfig(): Promise<CCConfigResult | null> {
+	for (const p of CC_CONFIG_PATHS) {
 		try {
-			configRaw = await fs.promises.readFile(p, "utf-8");
-			configPath = p;
-			break;
+			const raw = await fs.promises.readFile(p, "utf-8");
+			return { raw, path: p };
 		} catch {
-			// try next
+			continue;
 		}
 	}
+	return null;
+}
 
-	if (!configRaw || !configPath) return;
+// ---------------------------------------------------------------------------
+// Data config validation
+// ---------------------------------------------------------------------------
+
+async function validateDataConfig(locales: string[]): Promise<void> {
+	const config = await readCCConfig();
+	if (!config) return;
 
 	const missing: string[] = [];
 	for (const locale of locales) {
 		const key = `locales_${locale}`;
-		if (!configRaw.includes(key)) {
+		if (!config.raw.includes(key)) {
 			missing.push(locale);
 		}
 	}
 
 	if (missing.length > 0) {
 		console.warn(
-			`RCC: Missing data_config entries in ${configPath}. Add:\n` +
+			`RCC: Missing data_config entries in ${config.path}. Add:\n` +
 				missing
 					.map(
 						(l) =>

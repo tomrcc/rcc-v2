@@ -947,41 +947,44 @@ async function writeLocales(options) {
       `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
     );
   }
+  const manifest = { locales };
   const rccDir = import_node_path3.default.join(dest, "_rcc");
   await import_node_fs3.default.promises.mkdir(rccDir, { recursive: true });
   const manifestPath = import_node_path3.default.join(rccDir, "locales.json");
-  await import_node_fs3.default.promises.writeFile(manifestPath, JSON.stringify(locales));
+  await import_node_fs3.default.promises.writeFile(manifestPath, JSON.stringify(manifest));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
   await validateDataConfig(locales);
 }
-async function validateDataConfig(locales) {
-  const configPaths = [
-    "cloudcannon.config.yml",
-    "cloudcannon.config.yaml",
-    "cloudcannon.config.json",
-    "cloudcannon.config.cjs"
-  ];
-  let configRaw = null;
-  let configPath = null;
-  for (const p of configPaths) {
+var CC_CONFIG_PATHS = [
+  "cloudcannon.config.yml",
+  "cloudcannon.config.yaml",
+  "cloudcannon.config.json",
+  "cloudcannon.config.cjs"
+];
+async function readCCConfig() {
+  for (const p of CC_CONFIG_PATHS) {
     try {
-      configRaw = await import_node_fs3.default.promises.readFile(p, "utf-8");
-      configPath = p;
-      break;
+      const raw = await import_node_fs3.default.promises.readFile(p, "utf-8");
+      return { raw, path: p };
     } catch {
+      continue;
     }
   }
-  if (!configRaw || !configPath) return;
+  return null;
+}
+async function validateDataConfig(locales) {
+  const config = await readCCConfig();
+  if (!config) return;
   const missing = [];
   for (const locale of locales) {
     const key = `locales_${locale}`;
-    if (!configRaw.includes(key)) {
+    if (!config.raw.includes(key)) {
       missing.push(locale);
     }
   }
   if (missing.length > 0) {
     console.warn(
-      `RCC: Missing data_config entries in ${configPath}. Add:
+      `RCC: Missing data_config entries in ${config.path}. Add:
 ` + missing.map(
         (l) => `  locales_${l}:
     path: rosey/locales/${l}.json`

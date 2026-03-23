@@ -118,30 +118,33 @@ The connector discovers datasets by calling `api.dataset("locales_fr")`, so the 
 
 The `write-locales` CLI validates your config and warns about missing entries — see [write-locales](write-locales.md) for details.
 
-## Toolbar configuration with `_inputs`
+## Toolbar configuration
 
-The connector respects CloudCannon's `_inputs` configuration for toolbar customization. If you have `_inputs` rules that apply to fields inside your locale data files, those toolbar options are used for the inline editors:
+The connector resolves toolbar configuration for each translation editor in priority order:
 
-```yaml
-_inputs:
-  value:
-    type: html
-    options:
-      bold: true
-      italic: true
-      link: true
-      image: false
-```
+1. **Prescanned config from editable regions** — If the element has editable regions (`data-editable="text"` / `<editable-text>` with `data-prop`), the connector captures the exact `inputConfig` CC uses for that field at init time, including expanded toolbar options from `_inputs` defaults.
 
-> **Note:** The connector always forces `type: "html"` regardless of what's configured, because Rosey translations are always HTML (the SSG has already rendered Markdown to HTML at build time). Toolbar options like `bold`, `italic`, and `link` from your `_inputs` config are preserved.
+2. **CC defaults** — If no per-field config is available, CloudCannon's built-in defaults are used with the auto-detected element type.
+
+> **Note:** The connector always forces `type: "html"` regardless of what's configured, because Rosey translations are always HTML (the SSG has already rendered Markdown to HTML at build time). Toolbar options like `bold`, `italic`, and `link` are preserved.
+
+If you need custom toolbar options (e.g. enabling `subscript`, disabling `image`) but your site doesn't use editable regions, [open an issue](https://github.com/tomrcc/rcc-v2/issues) on the repo and we'll look at adding a configuration path for that.
+
+### Element type detection
+
+The connector auto-detects whether each element should use an inline (`"span"`) or block-level (`"block"`) editor based on its DOM content. Elements containing block-level children (e.g., a `<div>` wrapping `<p>` tags) get a block editor with paragraph formatting. Everything else (headings, paragraphs with inline text, spans, buttons) gets an inline editor. You can override this by adding `data-type="block"` or `data-type="span"` to the element.
 
 ## Locale discovery
 
-The connector discovers available locales by fetching `/_rcc/locales.json` at runtime. This manifest is a JSON array of locale codes:
+The connector discovers available locales by fetching `/_rcc/locales.json` at runtime. This manifest is a JSON object:
 
 ```json
-["fr", "de", "es"]
+{
+  "locales": ["fr", "de", "es"]
+}
 ```
+
+The `locales` array is required.
 
 The `write-locales --dest` command generates this file automatically. If you're using your own script instead of `write-locales`, you must produce this manifest yourself — see [write-locales: Using your own script](write-locales.md#using-your-own-script-instead-of-write-locales).
 

@@ -24,6 +24,7 @@ interface TrackedElement {
 	element: HTMLElement;
 	roseyKey: string;
 	originalContent: string;
+	inferredType: "span" | "block";
 	focused: boolean;
 	editor?: { setContent: (content?: string | null) => void };
 	stale: boolean;
@@ -126,6 +127,10 @@ const CC_CUSTOM_ELEMENTS = [
 
 const BLOCK_LEVEL_SELECTOR =
 	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
+
+function inferElementType(el: HTMLElement): "span" | "block" {
+	return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
+}
 
 /**
  * Strip all CC editing infrastructure from a detached DOM tree.
@@ -232,6 +237,9 @@ function trackElements(scope: Element): void {
 			element: el,
 			roseyKey,
 			originalContent: el.innerHTML,
+			inferredType: el.dataset.type === "block" || el.dataset.type === "text"
+				? "block"
+				: inferElementType(el),
 			focused: false,
 			stale: false,
 			baseOriginal: null,
@@ -778,7 +786,7 @@ async function switchLocaleInner(
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
 				? { ...inputConfig, type: "html" }
-				: undefined;
+				: { type: "html" };
 
 			const editor = await api!.createTextEditableRegion(
 				t.element,
@@ -793,7 +801,7 @@ async function switchLocaleInner(
 					}
 				},
 				{
-					elementType: t.element.dataset.type,
+					elementType: t.inferredType,
 					...(rccInputConfig != null && { inputConfig: rccInputConfig }),
 				},
 			);
@@ -1369,15 +1377,18 @@ function injectSwitcher(locales: string[]): void {
 async function discoverLocales(): Promise<string[] | null> {
 	try {
 		const res = await fetch("/_rcc/locales.json");
-		if (res.ok) {
-			const data: string[] = await res.json();
-			if (Array.isArray(data) && data.length > 0) {
-				log("Discovered locales from manifest:", data);
-				return data;
-			}
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+		const data = await res.json();
+		const locales: string[] | undefined = data?.locales;
+		if (!Array.isArray(locales) || locales.length === 0) {
+			throw new Error("manifest missing locales array");
 		}
+
+		log("Discovered locales from manifest:", locales);
+		return locales;
 	} catch {
-		// Manifest unavailable
+		// Manifest unavailable or malformed
 	}
 
 	warn(

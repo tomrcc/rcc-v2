@@ -22,7 +22,7 @@ npx rosey-cloudcannon-connector write-locales [options]
 3. Adds new keys with `{ original, value, _base_original }` — `value` defaults to the original text
 4. Updates `_base_original` on all existing entries to the current source text (for [stale detection](stale-translations.md))
 5. Removes keys that no longer exist in `base.json`
-6. Writes `{dest}/_rcc/locales.json` — a JSON array of locale codes the connector fetches at runtime
+6. Writes `{dest}/_rcc/locales.json` — a JSON manifest the connector fetches at runtime (see [Manifest format](#manifest-format))
 7. Validates that `cloudcannon.config.yml` has matching `data_config` entries and warns about missing ones
 
 ## Auto-detection of locales
@@ -111,6 +111,20 @@ Rosey reads from a source directory and writes to a dest directory. Since both a
 
 Rosey's default exclusion regex (`\.(html?|json)$`) prevents JSON files from being copied through as assets. The override `\.(html?)$` lets JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through to the final output without manual `cp` steps.
 
+## Manifest format
+
+The manifest at `{dest}/_rcc/locales.json` is a JSON object:
+
+```json
+{
+  "locales": ["fr", "de"]
+}
+```
+
+| Key | Required | Description |
+| --- | --- | --- |
+| `locales` | Yes | Array of locale codes |
+
 ## Using your own script instead of `write-locales`
 
 `write-locales` is optional. Its job is to get data from Rosey's `base.json` into locale files that the connector can edit. You can replace it with your own script, use it alongside other tools (e.g. pulling translations from an external translation service), or run additional processing after it finishes.
@@ -122,7 +136,7 @@ If you roll your own workflow, here's what the connector expects:
 1. **A flat JSON object** for each locale, keyed by Rosey translation keys (matching the keys in `base.json`)
 2. **Each entry must have `original` and `value` fields** — these are standard Rosey locale fields (see the [Rosey docs](https://rosey.app/docs/))
 3. **Each entry should have a `_base_original` field** if you want [stale translation detection](stale-translations.md). This is the only field not native to Rosey — it stores the current source text so the connector can detect when the original has changed since the translation was last reviewed. Without it, stale detection is skipped for that entry.
-4. **A locale manifest** at `{dest}/_rcc/locales.json` — a JSON array of locale codes (e.g. `["fr","de"]`) so the connector knows which locales are available at runtime
+4. **A locale manifest** at `{dest}/_rcc/locales.json` — a JSON object with a `locales` array (see [Manifest format](#manifest-format) above): `{ "locales": ["fr", "de"] }`
 5. **Matching `data_config` entries** in `cloudcannon.config.yml` following the `locales_{code}` naming convention
 
 You could also use `write-locales` as your baseline and run your own middleware on top — for example, calling an external translation API to fill in empty `value` fields before handing off to Rosey.
