@@ -391,16 +391,52 @@ function teardownEditors() {
     );
     translationContainer.replaceWith(originalContainer);
     log("Restored original container");
-    const cc = window.CloudCannon;
-    if (typeof cc?.refreshInterface === "function") {
-      cc.refreshInterface();
-      log("Called CloudCannon.refreshInterface() to restore component panels");
-    }
+    stripCmsBindForRerender(originalContainer);
   } else {
     log("teardownEditors: no containers to swap");
   }
   translationContainer = null;
   originalContainer = null;
+}
+function stripCmsBindForRerender(container) {
+  const bound = container.querySelectorAll("[data-cms-bind]");
+  for (const el of bound) el.removeAttribute("data-cms-bind");
+  if (bound.length) {
+    log(`Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`);
+  }
+  forceBookshopRerender();
+}
+function forceBookshopRerender() {
+  const cc = window.CloudCannon;
+  const bsl = window.bookshopLive;
+  if (!bsl || typeof bsl.update !== "function") {
+    if (typeof cc?.refreshInterface === "function") {
+      requestAnimationFrame(() => {
+        cc.refreshInterface();
+        log("Called deferred CloudCannon.refreshInterface() (non-Bookshop site)");
+      });
+    }
+    return;
+  }
+  if (typeof cc?.value !== "function" || typeof cc?.refreshInterface !== "function") {
+    log("forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update");
+    return;
+  }
+  setTimeout(async () => {
+    try {
+      const data = await cc.value({ keepMarkdownAsHTML: false, preferBlobs: true });
+      const options = window.bookshopLiveOptions || {};
+      const rendered = await bsl.update(data, options);
+      if (rendered) {
+        cc.refreshInterface();
+        log("Forced Bookshop re-render + refreshInterface() to restore component panels");
+      } else {
+        log("Bookshop re-render was throttled, panels will restore on next update");
+      }
+    } catch (e) {
+      warn("Failed to force Bookshop re-render:", e);
+    }
+  }, 0);
 }
 var DATASET_TIMEOUT_MS = 5e3;
 async function resolveFile(dataset) {

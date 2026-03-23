@@ -56,37 +56,20 @@ A boolean guard that blocks button click handlers from calling `switchLocale()` 
 ### 5. Moved `pauseBookshop()` before DOM swap
 Bookshop is now paused BEFORE `container.replaceWith(clone)` to prevent Bookshop from reacting to the DOM mutation.
 
-## Current status — what's broken
+### 6. Strip `data-cms-bind` + force Bookshop re-render on restore (`stripCmsBindForRerender`)
+After swapping the original container back in, `data-cms-bind` attributes are stripped from all elements and a Bookshop re-render is forced. This is necessary because Bookshop's `graftTrees` preserves existing DOM element nodes when only text content changed (fine-grained diffing), and CC's overlay system tracks elements by reference — re-inserting the same element objects doesn't trigger overlay recreation even with `refreshInterface()`. Stripping `data-cms-bind` causes `graftTrees` to see a shallow-clone mismatch on the next render (virtual DOM has the attribute, real DOM doesn't), replacing the element with a fresh virtual DOM node that CC recognizes as new.
 
-Testing on the Venture Eleventy Bookshop template (`/Users/tomrichardson/Dev/work/multilingual/venture-rcc-v2-test/`) revealed:
+## Current status
 
-**The spurious `switchLocale(null)` problem**: During `switchLocale("fr")`, while awaiting `resolveFile(dataset)` (which calls `dataset.items()` — a CC API call), something triggers a click event on the "Original" button, calling `switchLocale(null)`. This immediately tears down the locale view before it finishes setting up.
+The original → locale → original flow works. The `switchInProgress` guard resolved the phantom click issue. The `data-cms-bind` stripping + forced re-render approach restores Bookshop component overlay buttons after locale view teardown.
 
-Console trace showed:
-```
-RCC: switchLocale("fr") — generation 1
-...
-RCC: switchLocale: requesting dataset "locales_fr"
-RCC: switchLocale("null") — generation 2          ← interrupts FR setup
-RCC: teardownEditors: translationContainer=true, originalContainer=true, tracked=46
-RCC: Resumed Bookshop live editing
-RCC: Restored original container
-RCC: Switched to Original
-```
+### graftTrees element preservation (resolved)
 
-Stack trace: the call comes from the "Original" button's click handler (`index.mjs:724`). This is NOT a user click — something triggers it programmatically during the async gap.
+Bookshop's `graftTrees` in `core.js` diffs the real DOM against the virtual DOM from the latest render. It uses `cloneNode(false).isEqualNode()` to compare elements without children. When only text content changes, the parent elements are preserved and only text nodes are replaced.
 
-**Latest fix (not yet tested)**: Added `switchInProgress` guard that blocks re-entrant click handlers, plus moved `pauseBookshop()` before the DOM swap. The user needs to rebuild, push, and test in CC to verify this blocks the spurious switch.
+`data-cms-bind` attributes sit on component wrapper elements (e.g., `<section data-cms-bind="#content_blocks.0">`). These are the elements `graftTrees` preserves. After swapping the original container back in, these are the same JS objects CC tracked before — but CC destroyed their overlay nodes on removal. CC won't recreate overlays for elements it already "knows." Even `refreshInterface()` doesn't help because CC thinks the binding is already handled.
 
-## What to investigate if the guard doesn't fully resolve it
-
-1. **What triggers the phantom click?** The button click log now includes `isTrusted` — if `false`, something in JS is calling `.click()` on the button. If `true`, CC's parent frame may be dispatching a real click event as part of its interface refresh.
-
-2. **Could `CloudCannon.refreshInterface()` be the cause?** Bookshop calls this after every render. Even though we pause Bookshop before the DOM swap, a Bookshop render that was already in-flight (started before pause) could complete and call `refreshInterface()` during the `await`. This might cause CC to re-scan the DOM and trigger unexpected events.
-
-3. **Could `dataset.items()` trigger CC-side processing** that indirectly causes a click or page event? The CC API communicates via postMessage with the parent frame — the response processing might have side effects.
-
-4. **Is the Bookshop connector's `cloudcannon:update` handler creating a cascade?** Even with `update()` returning `false`, the handler still calls `CloudCannon.value()` (which is async) before reaching `update()`. The `CloudCannon.value()` call might trigger CC-side events.
+The fix: `stripCmsBindForRerender()` removes `data-cms-bind` from the original after swap, then `forceBookshopRerender()` triggers a full Bookshop render cycle. `graftTrees` now sees a shallow mismatch (`<section>` vs `<section data-cms-bind="...">`), replaces the element with a fresh virtual DOM node, and `refreshInterface()` creates overlays on the new node.
 
 ## Key files
 

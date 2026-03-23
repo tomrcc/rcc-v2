@@ -544,16 +544,70 @@ function teardownEditors(): void {
 		translationContainer.replaceWith(originalContainer);
 		log("Restored original container");
 
-		const cc = (window as any).CloudCannon;
-		if (typeof cc?.refreshInterface === "function") {
-			cc.refreshInterface();
-			log("Called CloudCannon.refreshInterface() to restore component panels");
-		}
+		stripCmsBindForRerender(originalContainer);
 	} else {
 		log("teardownEditors: no containers to swap");
 	}
 	translationContainer = null;
 	originalContainer = null;
+}
+
+/**
+ * Bookshop's graftTrees does fine-grained DOM diffing: it preserves element
+ * nodes when only text content changed and replaces the minimal subtree.
+ * Because data-cms-bind sits on component wrapper elements that graftTrees
+ * keeps in place, the CC editor sees the *same* DOM references it already
+ * tracked — but the overlay nodes were destroyed during the swap-out. CC
+ * won't recreate overlays for elements it already "knows."
+ *
+ * Stripping data-cms-bind forces a shallow-clone mismatch in graftTrees on
+ * the next Bookshop render: the virtual DOM has the attribute, the real DOM
+ * doesn't → the element is replaced with a fresh node → CC sees a new
+ * element → refreshInterface() creates overlays.
+ */
+function stripCmsBindForRerender(container: HTMLElement): void {
+	const bound = container.querySelectorAll("[data-cms-bind]");
+	for (const el of bound) el.removeAttribute("data-cms-bind");
+	if (bound.length) {
+		log(`Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`);
+	}
+	forceBookshopRerender();
+}
+
+function forceBookshopRerender(): void {
+	const cc = (window as any).CloudCannon;
+	const bsl = (window as any).bookshopLive;
+
+	if (!bsl || typeof bsl.update !== "function") {
+		if (typeof cc?.refreshInterface === "function") {
+			requestAnimationFrame(() => {
+				cc.refreshInterface();
+				log("Called deferred CloudCannon.refreshInterface() (non-Bookshop site)");
+			});
+		}
+		return;
+	}
+
+	if (typeof cc?.value !== "function" || typeof cc?.refreshInterface !== "function") {
+		log("forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update");
+		return;
+	}
+
+	setTimeout(async () => {
+		try {
+			const data = await cc.value({ keepMarkdownAsHTML: false, preferBlobs: true });
+			const options = (window as any).bookshopLiveOptions || {};
+			const rendered = await bsl.update(data, options);
+			if (rendered) {
+				cc.refreshInterface();
+				log("Forced Bookshop re-render + refreshInterface() to restore component panels");
+			} else {
+				log("Bookshop re-render was throttled, panels will restore on next update");
+			}
+		} catch (e) {
+			warn("Failed to force Bookshop re-render:", e);
+		}
+	}, 0);
 }
 
 // ---------------------------------------------------------------------------
