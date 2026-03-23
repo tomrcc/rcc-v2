@@ -554,8 +554,21 @@ function teardownEditors(): void {
 // Locale switching
 // ---------------------------------------------------------------------------
 
+const DATASET_TIMEOUT_MS = 5000;
+
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
-	const result = await dataset.items();
+	const timeout = new Promise<null>((resolve) =>
+		setTimeout(() => resolve(null), DATASET_TIMEOUT_MS),
+	);
+	const result = await Promise.race([dataset.items(), timeout]);
+	if (result === null) {
+		warn(
+			`dataset.items() did not resolve within ${DATASET_TIMEOUT_MS / 1000}s. ` +
+				`This usually means CloudCannon cannot find the file configured in data_config. ` +
+				`Check that the path in data_config is correct relative to your source directory.`,
+		);
+		return null;
+	}
 	if (Array.isArray(result)) return result[0] ?? null;
 	return result ?? null;
 }

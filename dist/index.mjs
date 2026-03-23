@@ -395,8 +395,18 @@ function teardownEditors() {
   translationContainer = null;
   originalContainer = null;
 }
+var DATASET_TIMEOUT_MS = 5e3;
 async function resolveFile(dataset) {
-  const result = await dataset.items();
+  const timeout = new Promise(
+    (resolve) => setTimeout(() => resolve(null), DATASET_TIMEOUT_MS)
+  );
+  const result = await Promise.race([dataset.items(), timeout]);
+  if (result === null) {
+    warn(
+      `dataset.items() did not resolve within ${DATASET_TIMEOUT_MS / 1e3}s. This usually means CloudCannon cannot find the file configured in data_config. Check that the path in data_config is correct relative to your source directory.`
+    );
+    return null;
+  }
   if (Array.isArray(result)) return result[0] ?? null;
   return result ?? null;
 }

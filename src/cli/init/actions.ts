@@ -128,6 +128,176 @@ export function writeRoseyConfig(
 	console.log("✓  Created rosey.yml");
 }
 
+// ── Remove `source` key ─────────────────────────────────────────────
+
+function rewriteYamlSourcePaths(content: string, source: string): string {
+	const lines = content.split("\n");
+	const result: string[] = [];
+
+	let currentTopBlock: string | null = null;
+	let inSchemas = false;
+	let schemasBaseIndent = -1;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const trimmed = line.trimStart();
+		const indent = line.length - trimmed.length;
+
+		if (/^source:\s/.test(line)) {
+			if (i + 1 < lines.length && lines[i + 1].trim() === "") {
+				i++;
+			}
+			continue;
+		}
+
+		if (indent === 0 && trimmed.includes(":")) {
+			currentTopBlock = trimmed.split(":")[0];
+			inSchemas = false;
+			schemasBaseIndent = -1;
+			result.push(line);
+			continue;
+		}
+
+		if (currentTopBlock === "paths" && indent > 0) {
+			const m = trimmed.match(/^(\S+):\s*(.*)$/);
+			if (m) {
+				const key = m[1];
+				const rawValue = m[2].replace(/^['"]|['"]$/g, "").trim();
+				const newValue =
+					rawValue === "" ? source : `${source}/${rawValue}`;
+				result.push(`${line.substring(0, indent)}${key}: ${newValue}`);
+				continue;
+			}
+		}
+
+		if (currentTopBlock === "collections_config" && indent > 0) {
+			if (/^schemas:\s*$/.test(trimmed)) {
+				inSchemas = true;
+				schemasBaseIndent = indent;
+				result.push(line);
+				continue;
+			}
+
+			if (inSchemas && indent <= schemasBaseIndent) {
+				inSchemas = false;
+				schemasBaseIndent = -1;
+			}
+
+			if (!inSchemas) {
+				const m = trimmed.match(/^path:\s*(.+)$/);
+				if (m) {
+					result.push(
+						`${line.substring(0, indent)}path: ${source}/${m[1]}`,
+					);
+					continue;
+				}
+			}
+		}
+
+		if (currentTopBlock === "data_config" && indent > 0) {
+			const m = trimmed.match(/^path:\s*(.+)$/);
+			if (m) {
+				result.push(
+					`${line.substring(0, indent)}path: ${source}/${m[1]}`,
+				);
+				continue;
+			}
+		}
+
+		if (currentTopBlock === "file_config" && indent > 0) {
+			const globMatch = trimmed.match(/^(-\s+)?glob:\s*(.+)$/);
+			if (globMatch) {
+				const prefix = line.substring(0, indent);
+				const arrayMarker = globMatch[1] ?? "";
+				result.push(
+					`${prefix}${arrayMarker}glob: ${source}/${globMatch[2]}`,
+				);
+				continue;
+			}
+		}
+
+		result.push(line);
+	}
+
+	return result.join("\n");
+}
+
+function removeSourceFromJson(content: string, source: string): string {
+	const config = JSON.parse(content);
+	delete config.source;
+
+	if (config.paths) {
+		for (const key of Object.keys(config.paths)) {
+			const val = config.paths[key];
+			if (typeof val === "string") {
+				config.paths[key] =
+					val === "" ? source : `${source}/${val}`;
+			}
+		}
+	}
+
+	if (config.collections_config) {
+		for (const coll of Object.values(
+			config.collections_config as Record<string, Record<string, unknown>>,
+		)) {
+			if (coll && typeof coll.path === "string") {
+				coll.path = `${source}/${coll.path}`;
+			}
+		}
+	}
+
+	if (config.data_config) {
+		for (const entry of Object.values(
+			config.data_config as Record<string, Record<string, unknown>>,
+		)) {
+			if (entry && typeof entry.path === "string") {
+				entry.path = `${source}/${entry.path}`;
+			}
+		}
+	}
+
+	if (Array.isArray(config.file_config)) {
+		for (const entry of config.file_config) {
+			if (entry && typeof entry === "object" && typeof entry.glob === "string") {
+				entry.glob = `${source}/${entry.glob}`;
+			}
+		}
+	}
+
+	return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export function removeSourceKey(
+	ctx: ProjectContext,
+	_answers: WizardAnswers,
+): void {
+	if (!ctx.ccSource || ctx.ccSource === "." || ctx.ccSource === "/") return;
+	if (!ctx.ccConfigPath) return;
+
+	const source = ctx.ccSource.replace(/\/+$/, "");
+	const raw = fs.readFileSync(ctx.ccConfigPath, "utf-8");
+	let updated: string;
+
+	if (ctx.ccConfigFormat === "json") {
+		updated = removeSourceFromJson(raw, source);
+	} else if (ctx.ccConfigFormat === "yml" || ctx.ccConfigFormat === "yaml") {
+		updated = rewriteYamlSourcePaths(raw, source);
+	} else {
+		console.log(
+			`\n⚠  Cannot automatically remove \`source\` from ${path.basename(ctx.ccConfigPath)}.`,
+		);
+		console.log(
+			`   Remove \`source: ${ctx.ccSource}\` manually and prepend "${source}/" to all collection, data, and file_config paths.`,
+		);
+		return;
+	}
+
+	fs.writeFileSync(ctx.ccConfigPath, updated);
+	console.log(
+		`✓  Removed \`source: ${ctx.ccSource}\` and updated paths in ${path.basename(ctx.ccConfigPath)}`,
+	);
+}
+
 // ── CloudCannon config ──────────────────────────────────────────────
 
 function buildDataConfigYaml(answers: WizardAnswers, indent: string): string {

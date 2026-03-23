@@ -4,6 +4,7 @@ import path from "node:path";
 export interface ProjectContext {
 	ccConfigPath: string | null;
 	ccConfigFormat: "yml" | "yaml" | "json" | "cjs" | null;
+	ccSource: string | null;
 	buildDir: string | null;
 	packageManager: "npm" | "yarn" | "pnpm" | "bun";
 	hasPackageJson: boolean;
@@ -55,12 +56,28 @@ function dirExists(dirPath: string): boolean {
 export function detectProject(cwd: string = process.cwd()): ProjectContext {
 	let ccConfigPath: string | null = null;
 	let ccConfigFormat: ProjectContext["ccConfigFormat"] = null;
+	let ccSource: string | null = null;
 	for (const candidate of CC_CONFIG_CANDIDATES) {
 		const full = path.join(cwd, candidate.file);
 		if (fileExists(full)) {
 			ccConfigPath = full;
 			ccConfigFormat = candidate.format;
 			break;
+		}
+	}
+
+	if (ccConfigPath) {
+		try {
+			const raw = fs.readFileSync(ccConfigPath, "utf-8");
+			if (ccConfigFormat === "json") {
+				const parsed = JSON.parse(raw);
+				if (typeof parsed.source === "string") ccSource = parsed.source;
+			} else if (ccConfigFormat === "yml" || ccConfigFormat === "yaml") {
+				const match = /^source:\s*['"]?([^'"#\n]+)['"]?\s*$/m.exec(raw);
+				if (match) ccSource = match[1].trim();
+			}
+		} catch {
+			// unreadable config — leave ccSource as null
 		}
 	}
 
@@ -121,6 +138,7 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 	return {
 		ccConfigPath,
 		ccConfigFormat,
+		ccSource,
 		buildDir,
 		packageManager,
 		hasPackageJson,

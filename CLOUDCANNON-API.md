@@ -885,6 +885,7 @@ _structures:
 | **`dataset.items()` return type varies** | Can return a single `File` or `File[]`. Always handle both: `Array.isArray(result) ? result[0] : result` |
 | **`change` events are coarse** | The event doesn't indicate which key changed. Re-read all keys you care about on every `change` event. |
 | **`change` fires for own writes** | Setting a value via `file.data.set()` can trigger a `change` event on the same dataset. Guard against echo loops. |
+| **`dataset.items()` hangs for missing files** | If `data_config` points to a file CC cannot resolve, `items()` returns a promise that never settles — no rejection, no empty result. Always race with a timeout. The most common cause: a `source` key in `cloudcannon.config.yml` makes `data_config` paths resolve relative to the source directory. CC does not support `../` in paths, so the fix is to remove the `source` key and prepend its value to all affected paths. |
 
 ### DOM and Content
 

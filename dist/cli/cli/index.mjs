@@ -1,31 +1,9 @@
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
+#!/usr/bin/env node
 
 // src/cli/init/actions.ts
-var import_node_child_process = require("child_process");
-var import_node_fs = __toESM(require("fs"));
-var import_node_path = __toESM(require("path"));
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
 function installDependencies(ctx) {
   if (!ctx.hasPackageJson) {
     console.log(
@@ -54,7 +32,7 @@ function installDependencies(ctx) {
   console.log(`
 Installing ${pkgs.join(", ")}...`);
   try {
-    (0, import_node_child_process.execSync)(installCmd, { stdio: "inherit" });
+    execSync(installCmd, { stdio: "inherit" });
     console.log("\u2713  Dependencies installed.");
   } catch {
     console.error(`
@@ -95,8 +73,8 @@ function buildPostbuildBlock(answers) {
   return lines.join("\n");
 }
 function writePostbuild(ctx, answers) {
-  const dir = import_node_path.default.join(process.cwd(), ".cloudcannon");
-  const filePath = import_node_path.default.join(dir, "postbuild");
+  const dir = path.join(process.cwd(), ".cloudcannon");
+  const filePath = path.join(dir, "postbuild");
   const block = buildPostbuildBlock(answers);
   if (ctx.postbuildExists && ctx.postbuildContent != null) {
     const appended = `${ctx.postbuildContent.trimEnd()}
@@ -104,8 +82,8 @@ function writePostbuild(ctx, answers) {
 # Rosey
 ${block}
 `;
-    import_node_fs.default.mkdirSync(dir, { recursive: true });
-    import_node_fs.default.writeFileSync(filePath, appended);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, appended);
     console.log("\u2713  Appended Rosey commands to .cloudcannon/postbuild");
   } else {
     const content = `#!/usr/bin/env bash
@@ -113,8 +91,8 @@ ${block}
 # Rosey
 ${block}
 `;
-    import_node_fs.default.mkdirSync(dir, { recursive: true });
-    import_node_fs.default.writeFileSync(filePath, content, { mode: 493 });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, content, { mode: 493 });
     console.log("\u2713  Created .cloudcannon/postbuild");
   }
 }
@@ -128,7 +106,7 @@ function writeRoseyConfig(ctx, answers) {
     `default_language: ${answers.defaultLanguage}`,
     ""
   ].join("\n");
-  import_node_fs.default.writeFileSync(import_node_path.default.join(process.cwd(), "rosey.yml"), content);
+  fs.writeFileSync(path.join(process.cwd(), "rosey.yml"), content);
   console.log("\u2713  Created rosey.yml");
 }
 function rewriteYamlSourcePaths(content, source) {
@@ -252,7 +230,7 @@ function removeSourceKey(ctx, _answers) {
   if (!ctx.ccSource || ctx.ccSource === "." || ctx.ccSource === "/") return;
   if (!ctx.ccConfigPath) return;
   const source = ctx.ccSource.replace(/\/+$/, "");
-  const raw = import_node_fs.default.readFileSync(ctx.ccConfigPath, "utf-8");
+  const raw = fs.readFileSync(ctx.ccConfigPath, "utf-8");
   let updated;
   if (ctx.ccConfigFormat === "json") {
     updated = removeSourceFromJson(raw, source);
@@ -261,16 +239,16 @@ function removeSourceKey(ctx, _answers) {
   } else {
     console.log(
       `
-\u26A0  Cannot automatically remove \`source\` from ${import_node_path.default.basename(ctx.ccConfigPath)}.`
+\u26A0  Cannot automatically remove \`source\` from ${path.basename(ctx.ccConfigPath)}.`
     );
     console.log(
       `   Remove \`source: ${ctx.ccSource}\` manually and prepend "${source}/" to all collection, data, and file_config paths.`
     );
     return;
   }
-  import_node_fs.default.writeFileSync(ctx.ccConfigPath, updated);
+  fs.writeFileSync(ctx.ccConfigPath, updated);
   console.log(
-    `\u2713  Removed \`source: ${ctx.ccSource}\` and updated paths in ${import_node_path.default.basename(ctx.ccConfigPath)}`
+    `\u2713  Removed \`source: ${ctx.ccSource}\` and updated paths in ${path.basename(ctx.ccConfigPath)}`
   );
 }
 function buildDataConfigYaml(answers, indent) {
@@ -441,12 +419,12 @@ function updateCloudCannonConfig(ctx, answers) {
     return;
   }
   if (!ctx.ccConfigPath) {
-    const newPath = import_node_path.default.join(process.cwd(), "cloudcannon.config.yml");
-    import_node_fs.default.writeFileSync(newPath, buildFreshYamlConfig(answers));
+    const newPath = path.join(process.cwd(), "cloudcannon.config.yml");
+    fs.writeFileSync(newPath, buildFreshYamlConfig(answers));
     console.log("\u2713  Created cloudcannon.config.yml");
     return;
   }
-  const raw = import_node_fs.default.readFileSync(ctx.ccConfigPath, "utf-8");
+  const raw = fs.readFileSync(ctx.ccConfigPath, "utf-8");
   let updated;
   if (ctx.ccConfigFormat === "json") {
     updated = updateJsonConfig(raw, answers);
@@ -454,11 +432,11 @@ function updateCloudCannonConfig(ctx, answers) {
     updated = updateYamlConfig(raw, answers);
   }
   if (updated !== raw) {
-    import_node_fs.default.writeFileSync(ctx.ccConfigPath, updated);
-    console.log(`\u2713  Updated ${import_node_path.default.basename(ctx.ccConfigPath)}`);
+    fs.writeFileSync(ctx.ccConfigPath, updated);
+    console.log(`\u2713  Updated ${path.basename(ctx.ccConfigPath)}`);
   } else {
     console.log(
-      `\u2713  ${import_node_path.default.basename(ctx.ccConfigPath)} already has the required entries.`
+      `\u2713  ${path.basename(ctx.ccConfigPath)} already has the required entries.`
     );
   }
 }
@@ -497,8 +475,8 @@ function printInstructions(answers) {
 }
 
 // src/cli/init/detect.ts
-var import_node_fs2 = __toESM(require("fs"));
-var import_node_path2 = __toESM(require("path"));
+import fs2 from "fs";
+import path2 from "path";
 var CC_CONFIG_CANDIDATES = [
   { file: "cloudcannon.config.yml", format: "yml" },
   { file: "cloudcannon.config.yaml", format: "yaml" },
@@ -516,14 +494,14 @@ var LOCK_FILES = [
 var ROSEY_CONFIG_FILES = ["rosey.toml", "rosey.yml", "rosey.json"];
 function fileExists(filePath) {
   try {
-    return import_node_fs2.default.statSync(filePath).isFile();
+    return fs2.statSync(filePath).isFile();
   } catch {
     return false;
   }
 }
 function dirExists(dirPath) {
   try {
-    return import_node_fs2.default.statSync(dirPath).isDirectory();
+    return fs2.statSync(dirPath).isDirectory();
   } catch {
     return false;
   }
@@ -533,7 +511,7 @@ function detectProject(cwd = process.cwd()) {
   let ccConfigFormat = null;
   let ccSource = null;
   for (const candidate of CC_CONFIG_CANDIDATES) {
-    const full = import_node_path2.default.join(cwd, candidate.file);
+    const full = path2.join(cwd, candidate.file);
     if (fileExists(full)) {
       ccConfigPath = full;
       ccConfigFormat = candidate.format;
@@ -542,7 +520,7 @@ function detectProject(cwd = process.cwd()) {
   }
   if (ccConfigPath) {
     try {
-      const raw = import_node_fs2.default.readFileSync(ccConfigPath, "utf-8");
+      const raw = fs2.readFileSync(ccConfigPath, "utf-8");
       if (ccConfigFormat === "json") {
         const parsed = JSON.parse(raw);
         if (typeof parsed.source === "string") ccSource = parsed.source;
@@ -555,25 +533,25 @@ function detectProject(cwd = process.cwd()) {
   }
   let buildDir = null;
   for (const dir of BUILD_DIR_CANDIDATES) {
-    if (dirExists(import_node_path2.default.join(cwd, dir))) {
+    if (dirExists(path2.join(cwd, dir))) {
       buildDir = dir;
       break;
     }
   }
   let packageManager = "npm";
   for (const lock of LOCK_FILES) {
-    if (fileExists(import_node_path2.default.join(cwd, lock.file))) {
+    if (fileExists(path2.join(cwd, lock.file))) {
       packageManager = lock.pm;
       break;
     }
   }
-  const pkgPath = import_node_path2.default.join(cwd, "package.json");
+  const pkgPath = path2.join(cwd, "package.json");
   const hasPackageJson = fileExists(pkgPath);
   let roseyInstalled = false;
   let rccInstalled = false;
   if (hasPackageJson) {
     try {
-      const pkg = JSON.parse(import_node_fs2.default.readFileSync(pkgPath, "utf-8"));
+      const pkg = JSON.parse(fs2.readFileSync(pkgPath, "utf-8"));
       const allDeps = {
         ...pkg.dependencies,
         ...pkg.devDependencies
@@ -583,18 +561,18 @@ function detectProject(cwd = process.cwd()) {
     } catch {
     }
   }
-  const postbuildPath = import_node_path2.default.join(cwd, ".cloudcannon", "postbuild");
+  const postbuildPath = path2.join(cwd, ".cloudcannon", "postbuild");
   const postbuildExists = fileExists(postbuildPath);
   let postbuildContent = null;
   if (postbuildExists) {
     try {
-      postbuildContent = import_node_fs2.default.readFileSync(postbuildPath, "utf-8");
+      postbuildContent = fs2.readFileSync(postbuildPath, "utf-8");
     } catch {
     }
   }
   let roseyConfigExists = false;
   for (const f of ROSEY_CONFIG_FILES) {
-    if (fileExists(import_node_path2.default.join(cwd, f))) {
+    if (fileExists(path2.join(cwd, f))) {
       roseyConfigExists = true;
       break;
     }
@@ -615,11 +593,11 @@ function detectProject(cwd = process.cwd()) {
 }
 
 // src/cli/init/prompts.ts
-var import_node_readline = __toESM(require("readline"));
+import readline from "readline";
 var rl = null;
 function getRL() {
   if (!rl) {
-    rl = import_node_readline.default.createInterface({
+    rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
@@ -899,8 +877,8 @@ function buildPostbuildPreview(answers) {
 }
 
 // src/write-locales.ts
-var import_node_fs3 = __toESM(require("fs"));
-var import_node_path3 = __toESM(require("path"));
+import fs3 from "fs";
+import path3 from "path";
 function sortKeys(obj) {
   return Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
@@ -914,8 +892,8 @@ async function writeLocales(options) {
     process.exit(1);
   }
   let locales = options.locales;
-  const baseJsonPath = import_node_path3.default.join(roseyDir, "base.json");
-  const baseJsonRaw = await import_node_fs3.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
+  const baseJsonPath = path3.join(roseyDir, "base.json");
+  const baseJsonRaw = await fs3.promises.readFile(baseJsonPath, "utf-8").catch(() => {
     console.error(
       `RCC: Could not read ${baseJsonPath}. Run rosey generate first.`
     );
@@ -923,10 +901,10 @@ async function writeLocales(options) {
   });
   const baseJson = JSON.parse(baseJsonRaw);
   const keys = baseJson.keys;
-  const localesDir = import_node_path3.default.join(roseyDir, "locales");
-  await import_node_fs3.default.promises.mkdir(localesDir, { recursive: true });
+  const localesDir = path3.join(roseyDir, "locales");
+  await fs3.promises.mkdir(localesDir, { recursive: true });
   if (!locales || locales.length === 0) {
-    const files = await import_node_fs3.default.promises.readdir(localesDir);
+    const files = await fs3.promises.readdir(localesDir);
     locales = files.filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, ""));
     if (locales.length === 0) {
       console.warn(
@@ -936,10 +914,10 @@ async function writeLocales(options) {
     }
   }
   for (const locale of locales) {
-    const localePath = import_node_path3.default.join(localesDir, `${locale}.json`);
+    const localePath = path3.join(localesDir, `${locale}.json`);
     let existing = {};
     try {
-      const raw = await import_node_fs3.default.promises.readFile(localePath, "utf-8");
+      const raw = await fs3.promises.readFile(localePath, "utf-8");
       existing = JSON.parse(raw);
     } catch {
     }
@@ -960,7 +938,7 @@ async function writeLocales(options) {
         existing[key]._base_original = entry.original;
       }
     }
-    await import_node_fs3.default.promises.writeFile(
+    await fs3.promises.writeFile(
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
@@ -968,10 +946,10 @@ async function writeLocales(options) {
       `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
     );
   }
-  const rccDir = import_node_path3.default.join(dest, "_rcc");
-  await import_node_fs3.default.promises.mkdir(rccDir, { recursive: true });
-  const manifestPath = import_node_path3.default.join(rccDir, "locales.json");
-  await import_node_fs3.default.promises.writeFile(manifestPath, JSON.stringify(locales));
+  const rccDir = path3.join(dest, "_rcc");
+  await fs3.promises.mkdir(rccDir, { recursive: true });
+  const manifestPath = path3.join(rccDir, "locales.json");
+  await fs3.promises.writeFile(manifestPath, JSON.stringify(locales));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
   await validateDataConfig(locales);
 }
@@ -986,7 +964,7 @@ async function validateDataConfig(locales) {
   let configPath = null;
   for (const p of configPaths) {
     try {
-      configRaw = await import_node_fs3.default.promises.readFile(p, "utf-8");
+      configRaw = await fs3.promises.readFile(p, "utf-8");
       configPath = p;
       break;
     } catch {

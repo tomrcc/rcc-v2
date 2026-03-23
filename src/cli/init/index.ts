@@ -1,6 +1,7 @@
 import {
 	installDependencies,
 	printInstructions,
+	removeSourceKey,
 	updateCloudCannonConfig,
 	writePostbuild,
 	writeRoseyConfig,
@@ -16,6 +17,7 @@ export interface WizardAnswers {
 	exposeAsCollection: boolean;
 	buildDir: string;
 	roseyDir: string;
+	ccSource: string | null;
 }
 
 interface InitFlags {
@@ -140,12 +142,14 @@ export async function run(argv: string[]): Promise<void> {
 			exposeAsCollection: flags.exposeAsCollection ?? true,
 			buildDir: flags.buildDir ?? ctx.buildDir ?? "dist",
 			roseyDir: flags.roseyDir ?? "rosey",
+			ccSource: ctx.ccSource,
 		};
 
 		console.log(`  Locales: ${answers.locales.join(", ")}`);
 		console.log(`  Default language: ${answers.defaultLanguage}`);
 		console.log(`  Build dir: ${answers.buildDir}`);
 		console.log(`  Rosey dir: ${answers.roseyDir}`);
+		if (ctx.ccSource) console.log(`  CC source: ${ctx.ccSource}`);
 		console.log(`  Write-locales: ${answers.useBuiltinWriteLocales ? "built-in" : "custom"}`);
 		console.log(`  Content at root: ${answers.contentAtRoot}`);
 		console.log(`  Expose as collection: ${answers.exposeAsCollection}`);
@@ -154,6 +158,7 @@ export async function run(argv: string[]): Promise<void> {
 		installDependencies(ctx);
 		writePostbuild(ctx, answers);
 		writeRoseyConfig(ctx, answers);
+		removeSourceKey(ctx, answers);
 		updateCloudCannonConfig(ctx, answers);
 		printInstructions(answers);
 		return;
@@ -248,6 +253,7 @@ export async function run(argv: string[]): Promise<void> {
 		exposeAsCollection,
 		buildDir,
 		roseyDir,
+		ccSource: ctx.ccSource,
 	};
 
 	// ── Postbuild confirmation (before closing prompts) ──────────────
@@ -262,6 +268,14 @@ export async function run(argv: string[]): Promise<void> {
 		}
 		console.log("");
 		writePostbuildFile = await askConfirm("Append these commands?", true);
+	}
+
+	let shouldRemoveSource = false;
+	if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+		shouldRemoveSource = await askConfirm(
+			`Your config has \`source: ${ctx.ccSource}\`. This must be removed for locale files to work. Remove it and update all affected paths?`,
+			true,
+		);
 	}
 
 	closePrompts();
@@ -279,6 +293,14 @@ export async function run(argv: string[]): Promise<void> {
 	}
 
 	writeRoseyConfig(ctx, answers);
+
+	if (shouldRemoveSource) {
+		removeSourceKey(ctx, answers);
+	} else if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+		console.log(
+			"\n⚠  `source` key was not removed. Locale editing may not work until it is removed manually.",
+		);
+	}
 
 	updateCloudCannonConfig(ctx, answers);
 

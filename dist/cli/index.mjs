@@ -1,4 +1,4 @@
-"use strict";
+#!/usr/bin/env node
 
 // src/logger.ts
 var verbose = null;
@@ -1062,3 +1062,22 @@ if (window.inEditorMode && window.CloudCannonAPI) {
 } else {
   document.addEventListener("cloudcannon:load", init);
 }
+rintUsage() {
+  console.log(
+    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
+  );
+}
+var args = process.argv.slice(2);
+var subcommand = args[0];
+if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+  printUsage();
+  process.exit(0);
+}
+var handler = COMMANDS[subcommand];
+if (!handler) {
+  console.error(`Unknown command: ${subcommand}
+`);
+  printUsage();
+  process.exit(1);
+}
+handler(args.slice(1));
