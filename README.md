@@ -11,7 +11,7 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 - Translatable elements tagged with `data-rosey` attributes
 - CloudCannon Visual Editor enabled
 
-> **No existing editing setup required.** The connector does not depend on editable regions, Bookshop, or `data-prop` / `data-editable` attributes. It creates its own inline editors on every `data-rosey` element — sites with no editing infrastructure still get full visual translation editing. Editable regions and Bookshop are compatible enhancements (the connector handles them automatically), not prerequisites.
+> **No existing editing setup required.** The connector does not depend on editable regions, or Bookshop. It creates its own inline editors on every `data-rosey` element — sites with no editing infrastructure still get full visual translation editing. Editable regions and Bookshop are compatible enhancements (the connector handles them automatically), not prerequisites.
 
 ## Install
 
@@ -43,7 +43,7 @@ After running `init`, you still need to:
 <h1 data-rosey="hero:title">Welcome to my site</h1>
 ```
 
-2. **Import the script** in your layout (Astro example):
+1. **Import the script** in your layout (Astro example):
 
 ```astro
 <script>
@@ -85,15 +85,17 @@ The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JS
 
 ## Data Attributes
 
-| Attribute | Where | Purpose |
-| --- | --- | --- |
-| `data-rosey="{key}"` | Translatable elements | Rosey translation key |
-| `data-rcc-ignore` | Translatable elements | Opt out of locale switching |
-| `data-rosey-root="{prefix}"` | Parent elements | Root namespace prefix (stops upward traversal) |
-| `data-rosey-ns="{segment}"` | Parent elements | Namespace segment for child keys |
-| `data-rcc` | Container element | Set the snapshot boundary — use to include nav/footer in locale switching (defaults to `<main>`) |
-| `data-rcc-exclude="de,es"` | Container element | Hide locales from the switcher on this page |
-| `data-rcc-verbose` | Any element | Enable verbose console logging |
+
+| Attribute                    | Where                 | Purpose                                                                                          |
+| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| `data-rosey="{key}"`         | Translatable elements | Rosey translation key                                                                            |
+| `data-rcc-ignore`            | Translatable elements | Opt out of locale switching                                                                      |
+| `data-rosey-root="{prefix}"` | Parent elements       | Root namespace prefix (stops upward traversal)                                                   |
+| `data-rosey-ns="{segment}"`  | Parent elements       | Namespace segment for child keys                                                                 |
+| `data-rcc`                   | Container element     | Set the snapshot boundary — use to include nav/footer in locale switching (defaults to `<main>`) |
+| `data-rcc-exclude="de,es"`   | Container element     | Hide locales from the switcher on this page                                                      |
+| `data-rcc-verbose`           | Any element           | Enable verbose console logging                                                                   |
+
 
 ## Bookshop Compatibility
 
@@ -112,6 +114,7 @@ Accurate stale detection and element activation depend on each element having a 
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
+- **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
 - **[Known Issues & Troubleshooting](docs/known-issues.md)** — Common issues and workarounds
 - **[Migrating from v1](docs/migration-from-v1.md)** — Step-by-step guide for upgrading from RCC v1
 

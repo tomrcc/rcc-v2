@@ -122,10 +122,10 @@ When the page loads in CloudCannon's Visual Editor:
 7. Injects a draggable locale switcher FAB (floating action button) in the bottom-right corner
 8. Clicking the FAB opens a popover listing all available locales plus "Original"
 9. Selecting a locale:
-   - Clones the snapshot boundary and strips all CloudCannon editing infrastructure from the clone
-   - Swaps the original container out, the clean clone in
-   - Fetches locale data and creates inline ProseMirror editors on each translatable element
-   - Edits are pushed directly to the locale JSON file via CloudCannon's data API
+  - Clones the snapshot boundary and strips all CloudCannon editing infrastructure from the clone
+  - Swaps the original container out, the clean clone in
+  - Fetches locale data and creates inline ProseMirror editors on each translatable element
+  - Edits are pushed directly to the locale JSON file via CloudCannon's data API
 10. Selecting "Original" swaps the original container back in — CloudCannon's editing automatically reconnects
 
 The FAB can be dragged anywhere on the page; its position persists across reloads via `sessionStorage`.
@@ -139,7 +139,7 @@ The FAB can be dragged anywhere on the page; its position persists across reload
   "dependencies": {
     "astro": "^5.0.0",
     "rosey": "^2.3.10",
-    "rosey-cloudcannon-connector": "latest"
+    "rosey-cloudcannon-connector": "2.0.0"
   }
 }
 ```

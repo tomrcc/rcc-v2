@@ -4,26 +4,28 @@ This guide covers upgrading from RCC v1 (form-based YAML editing in CloudCannon'
 
 ## What changed
 
-| Aspect | v1 | v2 |
-| --- | --- | --- |
-| **Editing interface** | Form-based Data Editor (YAML files) | Inline Visual Editor with locale switcher |
-| **Translation format** | YAML files in `rosey/translations/` | JSON files in `rosey/locales/` |
-| **Configuration** | `rosey/rcc.yaml` | `data_config` entries in `cloudcannon.config.yml` |
-| **Locale discovery** | `locales` array in `rcc.yaml` | `/_rcc/locales.json` manifest (auto-generated) |
-| **Stale detection** | None | Built-in (amber indicators, resolve panel) |
-| **Client-side script** | None | Injector with floating locale switcher |
-| **Auto-tagger** | `data-rosey-tagger` attribute + `tag` CLI command | Removed |
-| **`generateRoseyId` utility** | Exported from `rosey-cloudcannon-connector/utils` | Removed |
-| **Smartling integration** | Built-in | Removed (planned as separate package) |
-| **Postbuild commands** | `tag` + `generate` + `rosey build` | `rosey generate` + `write-locales` + `rosey build` |
-| **CloudCannon collection** | `translations` collection with YAML files | `data_config` entries for locale JSON files |
+
+| Aspect                        | v1                                                | v2                                                 |
+| ----------------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| **Editing interface**         | Form-based Data Editor (YAML files)               | Inline Visual Editor with locale switcher          |
+| **Translation format**        | YAML files in `rosey/translations/`               | JSON files in `rosey/locales/`                     |
+| **Configuration**             | `rosey/rcc.yaml`                                  | `data_config` entries in `cloudcannon.config.yml`  |
+| **Locale discovery**          | `locales` array in `rcc.yaml`                     | `/_rcc/locales.json` manifest (auto-generated)     |
+| **Stale detection**           | None                                              | Built-in (amber indicators, resolve panel)         |
+| **Client-side script**        | None                                              | Injector with floating locale switcher             |
+| **Auto-tagger**               | `data-rosey-tagger` attribute + `tag` CLI command | Removed                                            |
+| `**generateRoseyId` utility** | Exported from `rosey-cloudcannon-connector/utils` | Removed                                            |
+| **Smartling integration**     | Built-in                                          | Removed (planned as separate package)              |
+| **Postbuild commands**        | `tag` + `generate` + `rosey build`                | `rosey generate` + `write-locales` + `rosey build` |
+| **CloudCannon collection**    | `translations` collection with YAML files         | `data_config` entries for locale JSON files        |
+
 
 ### Removed features
 
 - **Auto-tagger (`data-rosey-tagger`):** The `tag` CLI command and `data-rosey-tagger` attribute are gone. Add `data-rosey` attributes manually to your templates. See [Tagging Content](tagging-content.md#automatic-tagging) for alternatives.
-- **`generateRoseyId` utility:** The `/utils` export no longer exists. Use static, descriptive keys instead — v2's stale detection makes content-derived keys unnecessary.
+- `**generateRoseyId` utility:** The `/utils` export no longer exists. Use static, descriptive keys instead — v2's stale detection makes content-derived keys unnecessary.
 - **Smartling integration:** Not included in v2. If you need machine translations, you can run your own middleware after `write-locales` — see [write-locales: Using your own script](write-locales.md#using-your-own-script-instead-of-write-locales).
-- **`rcc.yaml` config file:** All configuration now lives in `cloudcannon.config.yml` (`data_config` entries) and HTML attributes (`data-rcc-*`).
+- `**rcc.yaml` config file:** All configuration now lives in `cloudcannon.config.yml` (`data_config` entries) and HTML attributes (`data-rcc-*`).
 - **Namespace pages:** The `namespace_pages` config option is gone. In v2, shared translations are simply handled through consistent `data-rosey-root` / `data-rosey-ns` attributes and live in the same locale file as everything else.
 - **Staging-to-production workflow:** v2 doesn't require a separate staging site. The single-site setup works for all cases (including with a root redirect page if desired).
 
@@ -32,10 +34,10 @@ This guide covers upgrading from RCC v1 (form-based YAML editing in CloudCannon'
 - **Inline Visual Editor editing** — edit translations directly on the page
 - **Floating locale switcher** — draggable FAB with popover menu
 - **Stale translation detection** — amber indicators when source text has changed
-- **`_base_original` field** — powers stale detection in locale files
-- **`write-locales` CLI** — replaces the `generate` command with a simpler, JSON-only workflow
-- **`data-rcc-ignore`** — opt individual elements out of locale switching
-- **`data-rcc-exclude`** — hide specific locales per page
+- `**_base_original` field** — powers stale detection in locale files
+- `**write-locales` CLI** — replaces the `generate` command with a simpler, JSON-only workflow
+- `**data-rcc-ignore`** — opt individual elements out of locale switching
+- `**data-rcc-exclude**` — hide specific locales per page
 
 ## Migration steps
 
@@ -45,7 +47,7 @@ Before migrating, make sure all translations are saved and up to date. Run a fin
 
 ### 2. Update the postbuild script
 
-Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, and a `cp` step for the `_rcc` manifest.
+Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, and an `--exclusions` override so JSON assets (like the `_rcc` manifest and `_cloudcannon/info.json`) pass through the Rosey build.
 
 **v1:**
 
@@ -152,17 +154,13 @@ Remove files and config that v2 doesn't use:
 - **Delete `rosey/translations/`** — the YAML translation files are replaced by locale JSON files
 - **Delete Smartling config and files** if you used the Smartling integration (`smartling-translations/`, `outgoing-smartling-translations.json`)
 - **Keep `*.urls.json` files** (`base.urls.json`, `locales/*.urls.json`) — these are native Rosey URL translation files, not RCC artifacts. Rosey uses them at build time to generate translated URL paths. v1 exposed them for editing through the `translations` collection; v2 does not provide a UI for editing URL translations, but the files are still consumed by `rosey build` and should not be deleted if they contain translated URLs.
-- **Remove `data-rosey-tagger`** attributes from your HTML templates
-- **Remove `generateRoseyId` imports** — replace with static key strings
+- **Remove** `data-rosey-tagger` attributes from your HTML templates (or replace with your own script, if needed)
+- **Remove** `generateRoseyId` **imports** — replace with static key strings (or replace with your own helper function, if needed)
 - **Remove the `declare module 'rosey-cloudcannon-connector/utils'`** line from your TypeScript declarations (e.g. `env.d.ts`)
 
-### 7. Update `CLOUDCANNON_SYNC_PATHS`
+### 7. Replace content-derived keys with static keys
 
-If you set `CLOUDCANNON_SYNC_PATHS=/rosey/` as an environment variable in CloudCannon, verify it still covers the files you need synced. The locale files are still in `rosey/locales/`, so the path should still work. Remove it if it's no longer needed.
-
-### 8. Replace content-derived keys with static keys
-
-v1 recommended using `generateRoseyId()` to slugify element text as the Rosey key. v2 recommends **static, descriptive keys** that don't change when content changes. This works better with stale translation detection — when the source text changes, the key stays stable and the connector flags the translation as stale.
+v1 recommended using `generateRoseyId()` to slugify element text as the Rosey key. v2 recommends **static, descriptive keys** that don't change when content changes. This works better with stale translation detection — when the source text changes, the key stays stable and the connector flags the translation as stale. You can however stick with the content-as-key approach if it suits your usecase, and you don't mind not getting stale translation detection. Whichever approach you decide to use for constructing Rosey keys is ultimately up to you.
 
 **v1 (Astro example):**
 
@@ -193,13 +191,13 @@ import { generateRoseyId } from "rosey-cloudcannon-connector/utils";
 <div class="markdown-text" data-rosey="markdown" set:html={markdownContent} />
 ```
 
-This translates the full block as one unit, which pairs well with the split-by-directory approach for large body content.
+This translates the full block as one unit, which pairs well with the [split-by-directory](split-by-directory.md) approach for large body content.
 
 #### Locale picker links
 
 If your site has a visitor-facing locale picker, add `data-rosey-ignore` to the picker's `<a>` tags. Rosey rewrites internal links to add locale prefixes — without `data-rosey-ignore`, the "switch to English" link on a French page would be rewritten to point to the French version.
 
-### 9. Remap existing translations
+### 8. Remap existing translations
 
 > **Important:** Changing Rosey keys means existing translations won't match the new keys. After updating keys, run a build so `write-locales` creates new entries.
 
@@ -211,7 +209,7 @@ After the first v2 build, both old (orphaned) and new (empty) keys will coexist 
 
 A sample migration script is included in the [rosey-astro-starter migration](https://github.com/CloudCannon/rosey-astro-starter) as `scripts/remap-locale-keys.mjs`.
 
-### 10. Verify
+### 9. Verify
 
 After completing the migration:
 

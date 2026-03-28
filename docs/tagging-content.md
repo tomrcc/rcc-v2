@@ -13,15 +13,82 @@ Add `data-rosey` to any element that contains translatable text. The attribute v
 
 ### Choosing good keys
 
-Use **static, descriptive keys** that don't change when the content changes. This is a departure from v1, which recommended slugifying the element's text content as the key. Static keys work better with v2's [stale translation detection](stale-translations.md) — when the source text changes, the key stays stable and the connector flags the translation as stale rather than creating a new entry.
+The key you put in `data-rosey` determines how translations are tracked across builds. There are three common strategies — pick the one that fits your workflow.
+
+#### Static descriptive keys (recommended)
+
+Use **static, descriptive keys** that don't change when the content changes. When the source text changes, the key stays stable and the connector flags the translation as [stale](stale-translations.md) rather than creating a new entry. This gives translators a clear signal that a specific translation needs updating, along with a diff of what changed.
 
 ```html
-<!-- Recommended: static, descriptive keys -->
 <h1 data-rosey="homepage:hero-title">Welcome to Sendit</h1>
-
-<!-- Avoid: content-derived keys that change when text changes -->
-<h1 data-rosey="welcome-to-sendit">Welcome to Sendit</h1>
+<p data-rosey="homepage:hero-subtitle">Email marketing made easy</p>
 ```
+
+This is the recommended default for most sites. Keys are readable in the locale file, stale detection works fully, and keys survive content edits.
+
+#### Content as the key
+
+You can use the element's text content (or a slugified version) as the key. This was v1's default approach via `generateRoseyId()` and remains valid in v2.
+
+```astro
+<h1 data-rosey={heading.text.toLowerCase().replace(/\s+/g, "-")}>
+  {heading.text}
+</h1>
+<!-- If heading.text is "Welcome to Sendit", key is "welcome-to-sendit" -->
+```
+
+The trade-off is that **stale translation detection won't trigger**. When the source text changes, the key changes too — the old key is orphaned (and cleaned up by the next `write-locales` run) and a brand-new entry appears with no translation. Since the new entry's `original` and `_base_original` are always identical, the connector never sees a mismatch to flag as stale.
+
+However, this gives you a different kind of protection: changed content always shows up as untranslated, forcing a fresh translation. Nothing is silently outdated — it's just a clean-slate approach rather than a diff-based one.
+
+You can safely leave stale detection enabled while using content-derived keys. Nothing breaks — `_base_original` is still written, it just never diverges from `original` for any living key. No false positives, no errors, no wasted work.
+
+#### UUIDs as keys
+
+UUIDs provide maximum key stability — content changes, reordering, and insertions never affect the key. Stale detection works perfectly and there's zero collision risk, which neatly solves the [array/index problem](#key-uniqueness-and-stability).
+
+The critical requirement is that **UUIDs must come from stored data, not build-time generation**. If you generate a UUID in your template (e.g. `crypto.randomUUID()`), every build produces new UUIDs and all translations are orphaned.
+
+CloudCannon's [`instance_value`](https://cloudcannon.com/documentation/developer-reference/configuration-file/types/_inputs/*/instance_value/) feature is designed for exactly this. Configure a hidden text input with `instance_value: UUID` on your structure, and CloudCannon auto-populates a UUIDv4 when an array item is created. The UUID persists in the content file across rebuilds:
+
+```yaml
+# cloudcannon.config.yml
+_inputs:
+  _uuid:
+    type: text
+    hidden: true
+    instance_value: UUID
+```
+
+The best pattern is to use the UUID as a **namespace segment** (via `data-rosey-ns`) while keeping the leaf key descriptive. This way the key is stable AND the leaf tells you what the field is:
+
+```astro
+<div data-rosey-ns="features">
+  {features.map((feature) => (
+    <div data-rosey-ns={feature._uuid}>
+      <h3 data-rosey="title">{feature.title}</h3>
+      <p data-rosey="description">{feature.description}</p>
+    </div>
+  ))}
+</div>
+<!-- key: features:6ec0bd7f-11c0-43da-...:title -->
+```
+
+The trade-off is readability — locale files contain opaque UUIDs, so debugging requires cross-referencing with the source content. Using UUID-as-namespace with descriptive leaf keys mitigates this (you can see the field name, just not which array item).
+
+If an item is deleted and re-added in CloudCannon, it gets a new UUID and the old translation is orphaned — a fresh translation is needed for the new item.
+
+UUIDs shine for dynamic, CMS-managed arrays. For hand-authored templates without CMS-managed data, static descriptive keys are simpler and equally stable.
+
+#### Summary
+
+| Strategy | Stale detection | Readability | Best for |
+| --- | --- | --- | --- |
+| Static descriptive | Full | High | Most sites, hand-authored templates |
+| Content as key | None (forces re-translation instead) | High | Simple sites, short stable text |
+| UUID (via `instance_value`) | Full | Low (mitigated with descriptive leaves) | CMS-managed arrays and structures |
+
+All three are valid — the connector and Rosey use whatever keys the HTML provides. Choose based on your content management workflow.
 
 ### Key uniqueness and stability
 
@@ -176,6 +243,6 @@ For content coming from markdown that you can't tag at the source level, conside
 
 - Adding `data-rosey` to the wrapper element in your layout that receives the rendered markdown
 - Writing a build-step script that walks the built HTML and tags elements (similar to what v1's tagger did)
-- Using Rosey's own tagging features if available in your version
+- Translating large sections of text (like the body content of a page) via a [split-by-directory](split-by-directory.md) approach instead of using Rosey
 
 See [Migrating from v1](migration-from-v1.md) if you're upgrading from RCC v1 and used the auto-tagger.
