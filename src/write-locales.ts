@@ -6,6 +6,8 @@ export interface WriteLocalesOptions {
 	locales?: string[];
 	/** Build output directory. Writes a locale manifest to {dest}/_rcc/locales.json for runtime locale discovery. */
 	dest: string;
+	/** When true, keys in the locale file that are not in base.json are preserved instead of deleted. Useful during migration to remap translations before cleanup. */
+	keepUnused?: boolean;
 }
 
 interface BaseJsonKey {
@@ -88,8 +90,10 @@ export async function writeLocales(
 		}
 
 		const unusedKeys = Object.keys(existing).filter((key) => !(key in keys));
-		for (const key of unusedKeys) {
-			delete existing[key];
+		if (!options.keepUnused) {
+			for (const key of unusedKeys) {
+				delete existing[key];
+			}
 		}
 
 		let addedCount = 0;
@@ -110,8 +114,11 @@ export async function writeLocales(
 			localePath,
 			JSON.stringify(sortKeys(existing), null, 2),
 		);
+		const removedMsg = options.keepUnused
+			? `${unusedKeys.length} unused kept`
+			: `${unusedKeys.length} removed`;
 		console.log(
-			`RCC: Wrote ${localePath} — ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`,
+			`RCC: Wrote ${localePath} — ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg})`,
 		);
 	}
 

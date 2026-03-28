@@ -4,6 +4,7 @@ export function run(argv: string[]): void {
 	let source = "rosey";
 	let locales: string[] | undefined;
 	let dest: string | undefined;
+	let keepUnused = false;
 
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
@@ -16,6 +17,8 @@ export function run(argv: string[]): void {
 				.filter(Boolean);
 		} else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
 			dest = argv[++i];
+		} else if (arg === "--keep-unused") {
+			keepUnused = true;
 		} else if (arg === "--help" || arg === "-h") {
 			console.log(
 				"Usage: rcc-v2 write-locales [options]\n\n" +
@@ -23,6 +26,7 @@ export function run(argv: string[]): void {
 					"  -s, --source <dir>     Rosey directory (default: rosey)\n" +
 					"  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n" +
 					"  -d, --dest <dir>       (required) Build output dir; writes locale manifest to {dest}/_rcc/locales.json\n" +
+					"  --keep-unused          Preserve locale keys not in base.json (useful during migration)\n" +
 					"  -h, --help             Show this help message\n",
 			);
 			process.exit(0);
@@ -36,5 +40,5 @@ export function run(argv: string[]): void {
 		process.exit(1);
 	}
 
-	writeLocales({ roseyDir: source, locales, dest });
+	writeLocales({ roseyDir: source, locales, dest, keepUnused });
 }

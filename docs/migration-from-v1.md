@@ -119,7 +119,26 @@ Import the connector in your site's layout file. This is new in v2 — v1 had no
 </script>
 ```
 
-Place this inside the `<body>`, before or after your `<main>` element. See [Getting Started: Step 2](getting-started.md#step-2-import-the-script-in-your-layout) for framework-specific examples.
+Place this inside the `<body>`, before or after your `<main>` element. See [Getting Started: Step 2](getting-started.md#step-2-import-the-script-in-your-layout) for more detail.
+
+**Framework note:** The import above works in Astro and other Vite-based frameworks because Vite bundles `node_modules` imports automatically. In **11ty** (and other non-bundled SSGs), you need a passthrough copy since the browser can't resolve `node_modules` paths:
+
+```js
+// eleventy.config.js
+eleventyConfig.addPassthroughCopy({
+  "./node_modules/rosey-cloudcannon-connector/dist/index.mjs": "/_rcc/injector.mjs"
+});
+```
+
+Then import from the copied path in your layout:
+
+```html
+<script>
+  if (window?.inEditorMode) {
+    import("/_rcc/injector.mjs");
+  }
+</script>
+```
 
 ### 5. Set the snapshot boundary
 
@@ -191,7 +210,7 @@ import { generateRoseyId } from "rosey-cloudcannon-connector/utils";
 <div class="markdown-text" data-rosey="markdown" set:html={markdownContent} />
 ```
 
-This translates the full block as one unit, which pairs well with the [split-by-directory](split-by-directory.md) approach for large body content.
+This translates the full block as one unit, which works for shorter content. For pages with large body content (blog posts, documentation), consider the split-by-directory approach instead — where body content lives in per-locale content collections and Rosey handles only shared UI strings (nav, footer, breadcrumbs). You can use both on the same site (split-by-directory for blog posts, Rosey for everything else), but they are alternatives for any given piece of content.
 
 #### Locale picker links
 
@@ -199,13 +218,32 @@ If your site has a visitor-facing locale picker, add `data-rosey-ignore` to the 
 
 ### 8. Remap existing translations
 
-> **Important:** Changing Rosey keys means existing translations won't match the new keys. After updating keys, run a build so `write-locales` creates new entries.
+> **Important:** Changing Rosey keys means existing translations won't match the new keys. You need to remap translations from old keys to new ones before the old keys are cleaned up.
 
-After the first v2 build, both old (orphaned) and new (empty) keys will coexist in the locale files. You can remap translations with a script that matches entries by `original` text:
+By default, `write-locales` removes keys that are no longer in `base.json`. To preserve old keys long enough to remap their translations, use the `--keep-unused` flag:
 
-1. For each new key with an empty `value`, find an old key with the same `original`
-2. Copy the `value` to the new key
-3. Remove orphaned old keys (those without `_base_original`, which `write-locales` adds to live keys)
+1. Build the site with your new v2 keys in place
+2. Run `rosey generate` to produce a `base.json` with the new keys
+3. Run `write-locales --keep-unused` — this adds new entries alongside the old translated entries without deleting anything
+
+```bash
+npx rosey generate --source dist
+npx rosey-cloudcannon-connector write-locales --keep-unused --source rosey --dest dist
+```
+
+4. Run your remap script — for each new key with an empty `value`, find an old key with the same `original` text and copy the `value` across
+
+```bash
+node scripts/remap-locale-keys.mjs
+```
+
+5. Run `write-locales` again **without** the flag to clean up orphaned old keys
+
+```bash
+npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+```
+
+Old keys can be identified because they won't have `_base_original` set (only keys present in `base.json` receive this field).
 
 A sample migration script is included in the [rosey-astro-starter migration](https://github.com/CloudCannon/rosey-astro-starter) as `scripts/remap-locale-keys.mjs`.
 

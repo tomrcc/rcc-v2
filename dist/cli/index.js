@@ -923,8 +923,10 @@ async function writeLocales(options) {
     } catch {
     }
     const unusedKeys = Object.keys(existing).filter((key) => !(key in keys));
-    for (const key of unusedKeys) {
-      delete existing[key];
+    if (!options.keepUnused) {
+      for (const key of unusedKeys) {
+        delete existing[key];
+      }
     }
     let addedCount = 0;
     for (const [key, entry] of Object.entries(keys)) {
@@ -943,8 +945,9 @@ async function writeLocales(options) {
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
+    const removedMsg = options.keepUnused ? `${unusedKeys.length} unused kept` : `${unusedKeys.length} removed`;
     console.log(
-      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
+      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg})`
     );
   }
   const manifest = { locales };
@@ -998,6 +1001,7 @@ function run2(argv) {
   let source = "rosey";
   let locales;
   let dest;
+  let keepUnused = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if ((arg === "--source" || arg === "-s") && argv[i + 1]) {
@@ -1006,9 +1010,11 @@ function run2(argv) {
       locales = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
     } else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
       dest = argv[++i];
+    } else if (arg === "--keep-unused") {
+      keepUnused = true;
     } else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: rcc-v2 write-locales [options]\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: rosey)\n  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n  -d, --dest <dir>       (required) Build output dir; writes locale manifest to {dest}/_rcc/locales.json\n  -h, --help             Show this help message\n"
+        "Usage: rcc-v2 write-locales [options]\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: rosey)\n  -l, --locales <codes>  Comma-separated locale codes (auto-detects if omitted)\n  -d, --dest <dir>       (required) Build output dir; writes locale manifest to {dest}/_rcc/locales.json\n  --keep-unused          Preserve locale keys not in base.json (useful during migration)\n  -h, --help             Show this help message\n"
       );
       process.exit(0);
     }
@@ -1019,7 +1025,7 @@ function run2(argv) {
     );
     process.exit(1);
   }
-  writeLocales({ roseyDir: source, locales, dest });
+  writeLocales({ roseyDir: source, locales, dest, keepUnused });
 }
 
 // src/cli/index.ts

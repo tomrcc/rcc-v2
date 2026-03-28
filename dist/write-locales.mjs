@@ -44,8 +44,10 @@ async function writeLocales(options) {
     } catch {
     }
     const unusedKeys = Object.keys(existing).filter((key) => !(key in keys));
-    for (const key of unusedKeys) {
-      delete existing[key];
+    if (!options.keepUnused) {
+      for (const key of unusedKeys) {
+        delete existing[key];
+      }
     }
     let addedCount = 0;
     for (const [key, entry] of Object.entries(keys)) {
@@ -64,8 +66,9 @@ async function writeLocales(options) {
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
+    const removedMsg = options.keepUnused ? `${unusedKeys.length} unused kept` : `${unusedKeys.length} removed`;
     console.log(
-      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${unusedKeys.length} removed)`
+      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg})`
     );
   }
   const manifest = { locales };
