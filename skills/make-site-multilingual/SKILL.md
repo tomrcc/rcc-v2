@@ -160,13 +160,58 @@ See `astro.md` in this directory for an Astro implementation example. The same c
 
 ### 3g. Content block namespacing
 
-For CMS page-builder pages that use `content_blocks` (or equivalent), add `data-rosey-ns` to each block wrapper using the block type name and a zero-based index. This prevents key collisions when a page has multiple blocks of the same type.
+For CMS page-builder pages that use `content_blocks` (or equivalent), each block wrapper needs a `data-rosey-ns` value that is **unique and stable** — it must not change when blocks are reordered, inserted, or deleted.
 
-**Target pattern:** `{block_type}-{index}`, e.g., `hero-0`, `feature-list-1`, `testimonial-2`.
+#### Recommended: UUIDs via `instance_value` (CloudCannon sites)
 
-**General pattern:** Use whatever identifier the CMS provides for each block (component name, type field, etc.) combined with a zero-based loop index. The shared page template that loops over blocks is the ideal single point to add this.
+Use CloudCannon's `instance_value: UUID` to auto-assign a stable UUIDv4 when an array item is created. Add a hidden `_uuid` input and include `_uuid:` in every structure value:
 
-For **repeating items within blocks** (testimonials, team members, FAQ entries, pricing features), add a nested `data-rosey-ns` with the item index on each array item wrapper. This produces keys like `index:testimonial-2:0:author` and prevents collisions within the same block.
+```yaml
+# cloudcannon.config.yml
+_inputs:
+  _uuid:
+    type: text
+    hidden: true
+    instance_value: UUID
+
+_structures:
+  content_blocks:
+    values:
+      - label: Hero
+        value:
+          _name: Hero
+          _uuid:
+          heading:
+```
+
+Then use the UUID as the namespace segment in the block loop:
+
+```html
+<!-- Stable: UUID survives reordering and insertions -->
+<div data-rosey-ns="{block._uuid}">
+  <BlockComponent />
+</div>
+<!-- key: index:3f43d721-9c23-...:heading -->
+```
+
+Existing content files need UUIDs seeded manually (CloudCannon only auto-populates on creation). Generate real UUIDs and add them to each array item in the frontmatter.
+
+For a working example, see the [Rosey Astro Starter](https://github.com/CloudCannon/rosey-astro-starter).
+
+#### Fallback: type + index (non-CloudCannon sites)
+
+For sites not using CloudCannon (or where `instance_value` isn't available), use the block type name combined with a zero-based index:
+
+```html
+<!-- Fragile: keys shift when items are reordered -->
+<div data-rosey-ns="{block_type}-{index}">
+```
+
+This produces keys like `index:hero-0:heading`, `index:feature-list-1:title`. Be aware that inserting or reordering blocks will shift keys after the change point, causing translations to map to the wrong content.
+
+#### Repeating items within blocks
+
+For repeating items within a block (testimonials, team members, FAQ entries), the same principle applies. With CloudCannon, add `_uuid` to the nested structure. Without CloudCannon, use a nested index: `data-rosey-ns="{item_index}"`, producing keys like `index:testimonial-2:0:author`.
 
 **Read the SSG-specific file** for code examples in your framework.
 
@@ -363,8 +408,8 @@ These apply regardless of the SSG or component system in use.
 - **Key collisions.** If two pages have the same `data-rosey-root` value and the same element keys, their translations will collide. Always use unique root values (typically the page slug).
 - **Empty `data-rosey-root`.** Setting `data-rosey-root=""` on an element resets the namespace -- child keys won't inherit anything above it. Useful for global components like navigation and footer.
 - **Nav/footer use `data-rosey-ns`, not `data-rosey-root`.** Navigation and footer sit outside `<main>` and have no `data-rosey-root` ancestor. Use `data-rosey-ns="nav"` / `data-rosey-ns="footer"` for organization. Rosey deduplicates identical keys across pages automatically, so no root is needed.
-- **Duplicate desktop/mobile nav elements share the same Rosey key.** When a nav has both desktop and mobile versions of the same links (common in responsive designs), both can use the same `data-rosey` key (e.g., `link-0`). Rosey records them as multiple occurrences of the same key on the page. Both instances get the same translated value, which is the desired behavior.
-- **Multi-level nav link keys need depth encoding.** For navigation with dropdowns and nested submenus, encode the nesting depth in the `data-rosey` key: `link-{topIndex}` for top-level, `link-{topIndex}-{childIndex}` for children, `link-{topIndex}-{childIndex}-{grandchildIndex}` for grandchildren. This prevents collisions between nav levels while keeping keys deterministic.
+- **Nav/footer links: use content-as-key.** For short link text, slugify the text itself as the `data-rosey` value (e.g., `data-rosey={link.text.toLowerCase().replace(/\s+/g, "-")}` producing keys like `nav:about`, `nav:blog`). This is simpler than UUIDs and stable across reordering. The trade-off: if an editor renames link text, the old key is orphaned and a new untranslated entry appears — forcing fresh translation rather than flagging stale. `write-locales` auto-cleans orphaned keys. For multi-level navs with dropdowns, use `data-rosey-ns` with the slugified parent text to prevent collisions between levels.
+- **Duplicate desktop/mobile nav elements share the same Rosey key.** When a nav has both desktop and mobile versions of the same links (common in responsive designs), both can use the same `data-rosey` key (e.g., `about`). Rosey records them as multiple occurrences of the same key on the page. Both instances get the same translated value, which is the desired behavior.
 - **Stale translation detection.** When `original` and `_base_original` differ in a locale file, the RCC shows an amber dashed border and warning badge in the Visual Editor. Editors can either update the translation or click "Mark as reviewed" to acknowledge the change.
 - **`write-locales` preserves existing translations but removes stale keys.** Running it again adds new keys and removes keys that no longer exist in `base.json`. It never overwrites existing `value` fields on keys that still exist.
 - **Snapshot boundary.** The RCC clones the boundary container (`<main>` by default, or `[data-rcc]`) when switching locales. Content outside the boundary is not affected by locale switching. Since navigation and footer text is commonly translated, most sites should add `data-rcc` to a wrapper element that encompasses nav, main, and footer — rather than relying on the `<main>` fallback. `<body>` cannot be used as the boundary because it hosts the RCC's own UI, CloudCannon's editing infrastructure, and `<script>` tags.

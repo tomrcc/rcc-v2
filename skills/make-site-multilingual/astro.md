@@ -14,15 +14,22 @@ Works for any page type and avoids threading a slug prop through the layout chai
 
 ## Content Block Namespacing
 
-For CMS page-builder pages using `content_blocks`, add `data-rosey-ns` using the block name and index:
+For CMS page-builder pages using `content_blocks`, use the block's `_uuid` field (populated by CloudCannon's `instance_value: UUID`) as the namespace segment. This produces stable keys that survive reordering and insertions:
 
 ```astro
-{blocks.map((block, i) => (
-  <div data-rosey-ns={`${block._bookshop_name ?? block._name}-${i}`}>
+{blocks.map((block) => (
+  <div data-rosey-ns={block._uuid}>
     <BlockComponent {...block} />
   </div>
 ))}
+<!-- key: index:3f43d721-...:heading -->
 ```
+
+This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every structure value — see section 3g of the main skill. Existing content files need UUIDs seeded manually.
+
+For a working example, see the [Rosey Astro Starter](https://github.com/CloudCannon/rosey-astro-starter) (`Page.astro` and `cloudcannon.config.yml`).
+
+**Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index: `data-rosey-ns={`${block._bookshop_name ?? block._name}-${i}`}`. Be aware that this is fragile — reordering shifts keys.
 
 ## Auto-Derive `data-rosey` from `data-prop`
 

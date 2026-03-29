@@ -80,6 +80,8 @@ If an item is deleted and re-added in CloudCannon, it gets a new UUID and the ol
 
 UUIDs shine for dynamic, CMS-managed arrays. For hand-authored templates without CMS-managed data, static descriptive keys are simpler and equally stable.
 
+For a working example of UUIDs on content blocks alongside content-as-key on nav/footer links, see the [Rosey Astro Starter](https://github.com/CloudCannon/rosey-astro-starter).
+
 #### Summary
 
 | Strategy | Stale detection | Readability | Best for |

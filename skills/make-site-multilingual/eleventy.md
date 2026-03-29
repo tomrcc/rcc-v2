@@ -18,18 +18,26 @@ In Eleventy, `page.url` gives the URL path (e.g., `/booking/`). For flat URL str
 
 ### Eleventy/Liquid (Bookshop)
 
-For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers:
+For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use the block's `_uuid` field (populated by CloudCannon's `instance_value: UUID`) for stable keys:
 
 ```liquid
 {% for block in content_blocks %}
-  {% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}
-  <div data-rosey-ns="{{ block_ns }}">
+  <div data-rosey-ns="{{ block._uuid }}">
     {% bookshop "{{ block._bookshop_name }}" bind: block %}
   </div>
 {% endfor %}
 ```
 
-This derives names like `left-right-simple-0`, `price-list-1`. One change covers all content blocks across all pages.
+This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every structure value — see section 3g of the main skill. One change covers all content blocks across all pages.
+
+**Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index:
+
+```liquid
+{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}
+<div data-rosey-ns="{{ block_ns }}">
+```
+
+This derives names like `left-right-simple-0`, `price-list-1` but is fragile — reordering shifts keys.
 
 ## Split-by-Directory for Body Content
 
@@ -55,5 +63,5 @@ The URL construction logic (parse path, detect locale prefix, strip/prepend) is 
 
 ### Bookshop
 
-- **`page.eleventy.liquid` is the ideal block namespacing point.** For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use `{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}` to derive names like `left-right-simple-0`, `price-list-1`. One change covers all content blocks across all pages.
+- **`page.eleventy.liquid` is the ideal block namespacing point.** For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use `{{ block._uuid }}` (from CloudCannon's `instance_value: UUID`) for stable keys. If `instance_value` isn't available, fall back to `{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}` (but be aware this is fragile). One change covers all content blocks across all pages.
 - **Button `data-rosey` captures SVG icon markup.** When `data-rosey` is placed on an `<a>` or `<button>` that contains both text and a Bookshop icon component (e.g., arrow icons), Rosey captures the full `innerHTML` including the rendered SVG and Bookshop live-edit comments. The translation `value` must preserve the icon markup; only the text portion should change. For cleaner translations, wrap the button text in a `<span data-rosey="button_text">` and leave the icon outside, but this requires restructuring the button component. For Bookshop sites, the trade-off is acceptable since editors use the RCC Visual Editor rather than editing raw JSON.
