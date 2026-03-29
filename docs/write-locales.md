@@ -140,3 +140,5 @@ If you roll your own workflow, here's what the connector expects:
 5. **Matching `data_config` entries** in `cloudcannon.config.yml` following the `locales_{code}` naming convention
 
 You could also use `write-locales` as your baseline and run your own middleware on top — for example, calling an external translation API to fill in empty `value` fields before handing off to Rosey.
+
+For AI-powered translation of locale files (using an AI coding agent or custom script), see [AI-Powered Translation](ai-translation.md).

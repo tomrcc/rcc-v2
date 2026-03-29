@@ -23,6 +23,71 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/cli/add-skills.ts
+var import_fs = require("fs");
+var import_path = require("path");
+var SKILLS_SOURCE = (0, import_path.resolve)(__dirname, "../../skills");
+function collectFiles(dir, base) {
+  const files = [];
+  for (const entry of (0, import_fs.readdirSync)(dir)) {
+    const full = (0, import_path.join)(dir, entry);
+    const rel = (0, import_path.join)(base, entry);
+    if ((0, import_fs.statSync)(full).isDirectory()) {
+      files.push(...collectFiles(full, rel));
+    } else {
+      files.push(rel);
+    }
+  }
+  return files;
+}
+function run(argv) {
+  let dest = (0, import_path.join)(".cursor", "skills");
+  let force = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
+      dest = argv[++i];
+    } else if (arg === "--force" || arg === "-f") {
+      force = true;
+    } else if (arg === "--help" || arg === "-h") {
+      console.log(
+        "Usage: rosey-cloudcannon-connector add-skills [options]\n\nCopy agent skill files into your project.\n\nOptions:\n  -d, --dest <dir>  Destination directory (default: .cursor/skills)\n  -f, --force       Overwrite existing files\n  -h, --help        Show this help message\n"
+      );
+      process.exit(0);
+    }
+  }
+  if (!(0, import_fs.existsSync)(SKILLS_SOURCE)) {
+    console.error(
+      "Error: Skills directory not found in the installed package. This may indicate a broken installation \u2014 try reinstalling rosey-cloudcannon-connector."
+    );
+    process.exit(1);
+  }
+  const files = collectFiles(SKILLS_SOURCE, "");
+  let copied = 0;
+  let skipped = 0;
+  for (const relPath of files) {
+    const src = (0, import_path.join)(SKILLS_SOURCE, relPath);
+    const target = (0, import_path.join)(dest, relPath);
+    if ((0, import_fs.existsSync)(target) && !force) {
+      console.log(`  skip  ${relPath} (already exists, use --force to overwrite)`);
+      skipped++;
+      continue;
+    }
+    (0, import_fs.cpSync)(src, target, { recursive: true });
+    console.log(`  copy  ${relPath}`);
+    copied++;
+  }
+  console.log(
+    `
+Copied ${copied} file${copied !== 1 ? "s" : ""} to ${dest}/${skipped > 0 ? ` (${skipped} skipped)` : ""}`
+  );
+  if (copied > 0) {
+    console.log(
+      "\nSkills available:\n  translate-locale-files  \u2014 Translate untranslated/stale entries in locale files\n  make-site-multilingual  \u2014 Set up Rosey/RCC/CloudCannon from scratch\n  migrate-i18n-to-rosey   \u2014 Replace an existing i18n system with Rosey\n  migrate-rcc-v1-to-v2    \u2014 Upgrade from RCC v1 to v2\n"
+    );
+  }
+}
+
 // src/cli/init/actions.ts
 var import_node_child_process = require("child_process");
 var import_node_fs = __toESM(require("fs"));
@@ -616,8 +681,8 @@ function closePrompts() {
   }
 }
 function question(prompt) {
-  return new Promise((resolve) => {
-    getRL().question(prompt, (answer) => resolve(answer));
+  return new Promise((resolve2) => {
+    getRL().question(prompt, (answer) => resolve2(answer));
   });
 }
 async function askText(prompt, defaultValue) {
@@ -688,7 +753,7 @@ function parseFlags(argv) {
   return flags;
 }
 var HELP_TEXT = "Usage: rosey-cloudcannon-connector init [options]\n\nSetup wizard for Rosey + CloudCannon. Runs interactively by default;\npass --yes to run headless (useful for CI and agent automation).\n\nOptions:\n  -y, --yes                  Skip all prompts, use flags/defaults\n  -l, --locales <codes>      Comma-separated locale codes (e.g. fr,de,es)\n                             Required in --yes mode\n      --default-language <c> Default/source language (default: en)\n  -b, --build-dir <dir>      Build output directory (default: auto-detect or dist)\n      --rosey-dir <dir>      Rosey source directory (default: rosey)\n      --write-locales        Use built-in write-locales (default)\n      --no-write-locales     Use a custom locale generation script\n      --content-at-root      Serve default language at root URLs (default)\n      --no-content-at-root   Serve default language under a locale prefix\n      --collection           Expose locales as a CloudCannon collection (default)\n      --no-collection        Don't create a locales collection\n  -h, --help                 Show this help message\n";
-async function run(argv) {
+async function run2(argv) {
   if (argv.includes("--help") || argv.includes("-h")) {
     console.log(HELP_TEXT);
     process.exit(0);
@@ -997,7 +1062,7 @@ async function validateDataConfig(locales) {
 }
 
 // src/cli/write-locales.ts
-function run2(argv) {
+function run3(argv) {
   let source = "rosey";
   let locales;
   let dest;
@@ -1030,12 +1095,13 @@ function run2(argv) {
 
 // src/cli/index.ts
 var COMMANDS = {
-  "write-locales": run2,
-  init: run
+  "add-skills": run,
+  "write-locales": run3,
+  init: run2
 };
 function printUsage() {
   console.log(
-    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n  write-locales   Write/update locale files from Rosey base.json\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
+    "Usage: rosey-cloudcannon-connector <command> [options]\n\nCommands:\n  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n  write-locales   Write/update locale files from Rosey base.json\n  add-skills      Copy agent skill files into your project\n\nRun rosey-cloudcannon-connector <command> --help for command-specific options.\n"
   );
 }
 var args = process.argv.slice(2);

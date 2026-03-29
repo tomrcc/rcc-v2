@@ -19,7 +19,7 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 npm install rosey-cloudcannon-connector
 ```
 
-The package ships a **client-side injector** (auto-runs in the Visual Editor) and two **CLI tools**: `init` (setup wizard) and `write-locales` (build-time locale file management).
+The package ships a **client-side injector** (auto-runs in the Visual Editor), three **CLI tools** (`init`, `write-locales`, `add-skills`), and **agent skills** for AI-assisted translation and setup.
 
 ## Quick Start
 
@@ -101,6 +101,18 @@ The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JS
 
 Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-based live editing work out of the box. The connector automatically detects Bookshop's live-editing markers and pauses its re-rendering cycle during locale view, preventing conflicts between Bookshop's component rendering and the connector's inline translation editors. Switching back to "Original" fully restores Bookshop live editing.
 
+## AI-Powered Translation
+
+Rosey locale files are flat JSON with a predictable three-field structure per entry (`original`, `value`, `_base_original`). This makes them ideal for AI translation — untranslated entries are instantly detectable (`value === original`), stale entries are flagged (`original !== _base_original`), and already-translated content is left untouched. No wasted tokens, reviewable diffs, idempotent runs.
+
+The package includes agent skills that guide AI coding assistants through translation and setup workflows. Add them to your project:
+
+```bash
+npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
+```
+
+See [AI-Powered Translation](docs/ai-translation.md) for the full guide.
+
 ## Stale Translation Detection
 
 When the source text of an element changes after it was last translated, the connector flags the translation as stale. In the Visual Editor, stale elements get an amber dashed border, and the locale switcher FAB shows a count badge. Clicking a locale button reveals a panel where editors can resolve stale items individually or all at once. Editing a translation auto-resolves its stale flag. See [Stale Translation Detection](docs/stale-translations.md) for details.
@@ -113,8 +125,10 @@ Accurate stale detection and element activation depend on each element having a 
 - **[Tagging Content](docs/tagging-content.md)** — How to tag elements and use namespacing
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
+- **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, agent skills, and the `add-skills` CLI
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
+- **[Incremental Translation](docs/incremental-translation.md)** — Strategies for translating your site progressively (fallback content, branching workflows)
 - **[Known Issues & Troubleshooting](docs/known-issues.md)** — Common issues and workarounds
 - **[Migrating from v1](docs/migration-from-v1.md)** — Step-by-step guide for upgrading from RCC v1
 

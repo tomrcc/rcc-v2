@@ -19,7 +19,8 @@ alwaysApply: true
 |------|------|
 | `src/injector.ts` | Core logic: element tracking, CloudCannon API integration, locale switcher UI, Rosey key resolution |
 | `src/write-locales.ts` | Node API for generating/updating locale JSON from Rosey `base.json` |
-| `src/cli/` | CLI wrappers for `write-locales` |
+| `src/cli/` | CLI wrappers for `write-locales`, `init`, and `add-skills` |
+| `skills/` | Agent skills shipped with the package — `translate-locale-files`, `make-site-multilingual`, `migrate-i18n-to-rosey`, `migrate-rcc-v1-to-v2`. Copied into user projects via `npx rosey-cloudcannon-connector add-skills` |
 | `CLOUDCANNON-API.md` | Comprehensive reference for the CloudCannon live editing API (JS API, HTML attributes, data flow, integrations, quirks) |
 
 ## Key Files — testing-rcc-v2
@@ -46,3 +47,18 @@ data_config:
 ## Build-Time CLI
 
 `rosey-cloudcannon-connector write-locales` reads Rosey's `base.json` and creates/updates locale JSON files, adding new keys while preserving existing translations. With `--dest <dir>`, it also writes a locale manifest to `{dest}/_rcc/locales.json` that the injector fetches at runtime for locale discovery.
+
+## Agent Skills
+
+The `skills/` directory contains structured markdown instructions for AI coding agents. Users add them to their project via:
+
+```bash
+npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
+```
+
+| Skill | Purpose |
+|-------|---------|
+| `translate-locale-files` | Translate untranslated and stale entries in locale files |
+| `make-site-multilingual` | Set up Rosey/RCC/CloudCannon from scratch (with SSG-specific supplements) |
+| `migrate-i18n-to-rosey` | Replace an existing i18n system with Rosey |
+| `migrate-rcc-v1-to-v2` | Upgrade from RCC v1 to v2 |

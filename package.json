@@ -31,7 +31,8 @@
     "rosey-cloudcannon-connector": "./dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
     "build": "rm -rf dist && tsup",

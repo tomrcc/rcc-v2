@@ -102,9 +102,16 @@ At build time:
 
 For pages with large body content (blog posts, documentation), a hybrid approach is recommended: body content is translated via per-locale content collections (split-by-directory), while shared UI strings (nav, footer, breadcrumbs, sidebar headings) continue using Rosey. The SSG builds locale pages natively, and Rosey merges with them in postbuild -- it respects existing content and only translates `data-rosey` elements. The RCC works identically on both pure-Rosey pages and hybrid pages; no changes to the injector are needed.
 
+## AI-Powered Translation
+
+The locale file format (`{ original, value, _base_original }`) is designed to be AI-friendly. Untranslated entries have `value === original` (set by `write-locales`), stale entries have `original !== _base_original`, and already-translated entries are trivially identifiable. This enables incremental, deterministic AI translation — no re-translation of existing work, reviewable JSON diffs, and idempotent runs.
+
+The package ships agent skills in the `skills/` directory that guide AI coding assistants through translation and setup workflows. Users add them to their project via `npx rosey-cloudcannon-connector add-skills`. See `docs/ai-translation.md` for the full guide.
+
 ## CLI Tooling
 
 - **`write-locales`**: Node CLI that reads Rosey's `base.json` and creates/updates locale JSON files + the `_rcc/locales.json` manifest. When `--locales` is not passed, auto-detects locales from existing files in `rosey/locales/`, filtering out `*.urls.json` (native Rosey URL translation files). Also reads `cloudcannon.config.yml` to validate that `data_config` entries exist for each locale. The `--keep-unused` flag preserves locale keys not present in `base.json` (useful during v1→v2 migration to remap translations before cleanup). See codebase map for details.
 - **`init`**: Setup wizard that configures the entire Rosey + RCC stack (deps, postbuild, CC config). Supports both interactive mode (prompts for all options) and headless mode (`--yes --locales fr,de`) for agent/CI automation. In headless mode, `--locales` is the only required flag; everything else has sensible defaults. The `--collection` flag (or interactive prompt) optionally adds a `collections_config` entry so locale files are browsable and editable in CloudCannon's sidebar — independent of the RCC's visual editing.
+- **`add-skills`**: Copies agent skill files from the installed package into the user's project. Default destination is `.cursor/skills/`; override with `--dest`. Includes skills for AI translation, site setup, i18n migration, and v1→v2 migration. Uses `--force` to overwrite existing files.
 
 For deep reference on how CloudCannon's editable regions work internally, see `.cursor/docs/editable-regions-*.md`.
