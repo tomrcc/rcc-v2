@@ -20,7 +20,7 @@ alwaysApply: true
 | `src/injector.ts` | Core logic: element tracking, CloudCannon API integration, locale switcher UI, Rosey key resolution |
 | `src/write-locales.ts` | Node API for generating/updating locale JSON from Rosey `base.json` |
 | `src/cli/` | CLI wrappers for `write-locales`, `init`, and `add-skills` |
-| `skills/` | Agent skills shipped with the package — `translate-locale-files`, `make-site-multilingual`, `migrate-i18n-to-rosey`, `migrate-rcc-v1-to-v2`. Copied into user projects via `npx rosey-cloudcannon-connector add-skills` |
+| `skills/` | Agent skills shipped with the package — `translate-locale-files`, `translate-content-collections`, `make-site-multilingual`, `migrate-i18n-to-rosey`, `migrate-rcc-v1-to-v2`. Translation skills include helper scripts (`scripts/*.mjs`) for classification, deduplication, merging, and validation. Copied into user projects via `npx rosey-cloudcannon-connector add-skills` |
 | `CLOUDCANNON-API.md` | Comprehensive reference for the CloudCannon live editing API (JS API, HTML attributes, data flow, integrations, quirks) |
 
 ## Key Files — testing-rcc-v2
@@ -58,7 +58,8 @@ npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
 
 | Skill | Purpose |
 |-------|---------|
-| `translate-locale-files` | Translate untranslated and stale entries in locale files |
+| `translate-locale-files` | Translate untranslated and stale entries in locale files. Includes `scripts/prepare-translation.mjs` (classify, dedup, extract task file) and `scripts/merge-translation.mjs` (merge, validate HTML, clean up) |
+| `translate-content-collections` | Translate split-by-directory content collection files. Includes `scripts/prepare-content-translation.mjs` (diff source vs locale, extract translatable fields) and `scripts/merge-content-translation.mjs` (patch translations back into MDX/MD) |
 | `make-site-multilingual` | Set up Rosey/RCC/CloudCannon from scratch (with SSG-specific supplements) |
 | `migrate-i18n-to-rosey` | Replace an existing i18n system with Rosey |
 | `migrate-rcc-v1-to-v2` | Upgrade from RCC v1 to v2 |

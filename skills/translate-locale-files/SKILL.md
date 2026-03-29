@@ -53,42 +53,48 @@ Each file is a flat JSON object keyed by Rosey translation keys:
 | `value` | The translation (or the English original if untranslated) |
 | `_base_original` | Current source text from `base.json`, updated by `write-locales` each build |
 
-## Phase 1: Read and Classify Entries
+## Workflow Overview
 
-Read the locale file and classify every entry into one of three categories:
+This skill ships with helper scripts that handle the mechanical work (classification, deduplication, merging, validation), leaving only the actual translation to the AI. The workflow has three phases:
 
-### Untranslated (needs full translation)
+1. **Prepare** -- run a script to classify entries and extract a slim task file
+2. **Translate** -- AI reads the task file and fills in translations
+3. **Merge** -- run a script to merge translations back into the full locale file
 
-The entry has never been translated. `write-locales` initializes new entries with `value` set to the English original.
+If the scripts are not available (e.g. they weren't copied via `add-skills`), skip to the **Manual Fallback** section at the bottom.
 
-**Detection:** `value` is identical to `original` AND `original` is identical to `_base_original`.
+## Phase 1: Prepare
 
-In practice, the simplest check is: does `value` look like it's still in the source language? Since `write-locales` sets `value = original` for new entries, string equality is a reliable signal. But be aware of intentional non-translations (see Edge Cases below).
+Run the prepare script to classify entries, apply translation memory, and produce a task file:
 
-### Stale (needs re-translation)
+```bash
+node .cursor/skills/translate-locale-files/scripts/prepare-translation.mjs --locale fr
+```
 
-The source text has changed since the translation was last reviewed. The existing translation may be partially correct but is based on outdated source text.
+The script will:
+- Classify every entry as **untranslated**, **stale**, or **current** (skip)
+- Build a **translation memory** from already-translated entries and auto-apply exact matches (e.g. "Recent Posts" appearing 4 times -- translated once, applied everywhere)
+- Pick tone/register examples from existing translations
+- Write a slim task file to `rosey/locales/.translation-task-{code}.json`
+- Report counts (total keys, auto-applied, needs AI, stale)
 
-**Detection:** `original !== _base_original`. The `_base_original` field reflects the current source; `original` reflects what the source said when the translation was last touched.
-
-When re-translating stale entries:
-- Use `_base_original` as the source text (it's current)
-- The old `original` and `value` provide context for what changed
-- After translating, set both `value` to the new translation AND `original` to match `_base_original` (this clears the stale flag)
-
-### Current (skip)
-
-The entry is already translated and the source hasn't changed.
-
-**Detection:** `original === _base_original` AND `value !== original` (meaning someone has already provided a translation different from the source text).
-
-**Do not modify these entries.**
+**Flags:**
+- `--locale <code>` (required) -- locale code
+- `--source <dir>` -- rosey directory (default: `rosey`)
+- `--output <path>` -- task file output path (default: `rosey/locales/.translation-task-{code}.json`)
+- `--examples <n>` -- number of tone examples (default: 5)
 
 ## Phase 2: Translate
 
-Work through the untranslated and stale entries. The key principles:
+Read the task file. It contains:
 
-### Use key namespaces for context
+- `_meta.tone_examples` -- already-translated entries showing the project's tone and register. Match this style.
+- `untranslated` -- entries that need full translation. Each has `original` (the source text). Add a `value` field with the translation.
+- `stale` -- entries where the source changed. Each has `old_original`, `new_original`, and `old_value`. Add a `value` field with the updated translation based on `new_original`.
+
+### Translation rules
+
+#### Use key namespaces for context
 
 Rosey keys encode page and section context. Use this to disambiguate:
 
@@ -99,7 +105,7 @@ Rosey keys encode page and section context. Use this to disambiguate:
 
 When a string is short or ambiguous (e.g., "More", "Back", "Home"), the key namespace tells you where it appears and how it should read in context.
 
-### Preserve HTML structure
+#### Preserve HTML structure
 
 Locale values are **always HTML** (the SSG has already converted Markdown to HTML at build time). Translation must preserve all HTML tags, attributes, and structure. Only translate the text content within tags.
 
@@ -117,91 +123,96 @@ Rules:
 - Maintain the same nesting structure
 - Keep `&nbsp;` and other HTML entities where they appear
 
-### Translate in batches with context
+#### Translate in batches with context
 
 Don't translate entries one at a time in isolation. Group entries by their key namespace prefix (e.g., all `nav:*` entries together, all `index:hero:*` entries together). This gives the AI natural context about how strings relate to each other, producing more consistent translations.
 
-### Match tone and register
+#### Match tone and register
 
-If the file already has translated entries, match their style. Check existing translations for:
+Use the `_meta.tone_examples` from the task file to match existing style. Check for:
 - Formal vs informal address (vous vs tu, Sie vs du, usted vs tú)
 - Terminology consistency (if "Sign up" is already translated as "S'inscrire", don't switch to "Créer un compte")
 
-## Phase 3: Write Back
+#### Intentional non-translations
 
-After translating, write the updated locale file:
+Some entries should remain identical across locales: brand names ("CloudCannon"), product names ("Rosey"), proper nouns, technical terms, code snippets. If the content is clearly a name or brand, set `value` to the same as `original`.
 
-### For untranslated entries
+Signals that a value is intentionally untranslated:
+- The key contains words like `brand`, `name`, `logo`, `copyright`
+- The value is a single proper noun or trademark
+- The value is a URL, email address, or code snippet
 
-Set only the `value` field to the translation. Leave `original` and `_base_original` unchanged:
+When in doubt, translate it. A human reviewer can revert specific entries more easily than they can spot missing translations.
 
-```json
-{
-  "hero:title": {
-    "original": "Welcome to Sendit",
-    "value": "Bienvenue chez Sendit",
-    "_base_original": "Welcome to Sendit"
-  }
-}
+#### Whitespace in originals
+
+`write-locales` preserves whitespace from the HTML source. Entries may have leading/trailing spaces (e.g., `" Blog "`). Preserve this whitespace pattern in the translation -- Rosey substitutes the value directly into the HTML, and altered whitespace can break rendering.
+
+### Write the task file
+
+After translating all entries, write the task file back to the same path. The merge script expects the same JSON structure with `value` fields added.
+
+## Phase 3: Merge
+
+Run the merge script to apply translations back to the full locale file:
+
+```bash
+node .cursor/skills/translate-locale-files/scripts/merge-translation.mjs --locale fr
 ```
 
-### For stale entries
+The script will:
+- Merge `value` fields from the task file into the full locale file
+- For stale entries, set `original = _base_original` (clears the stale flag)
+- **Validate HTML structure** -- checks that tag names and counts match, that `<a>` href values are preserved. Logs warnings for mismatches but still writes.
+- Sort keys alphabetically, format with 2-space indent, trailing newline
+- Delete the task file after successful merge
 
-Set `value` to the new translation AND set `original` to match `_base_original` (this resolves the stale flag):
+**Flags:**
+- `--locale <code>` (required) -- locale code
+- `--source <dir>` -- rosey directory (default: `rosey`)
+- `--input <path>` -- task file path (default: `rosey/locales/.translation-task-{code}.json`)
+- `--dry-run` -- print the merged output without writing
 
-```json
-{
-  "hero:title": {
-    "original": "Welcome to Sendit — The Email Platform",
-    "value": "Bienvenue chez Sendit — La plateforme email",
-    "_base_original": "Welcome to Sendit — The Email Platform"
-  }
-}
-```
+If the script reports HTML warnings, review those entries and fix any broken tags before committing.
 
-### Output format
+## Checklist
+
+- [ ] Run `prepare-translation.mjs` and review the counts
+- [ ] Read the task file and check the tone examples
+- [ ] Translate all `untranslated` entries (add `value` field)
+- [ ] Translate all `stale` entries (add `value` field based on `new_original`)
+- [ ] Preserve HTML tags, attributes, whitespace
+- [ ] Match tone/register of existing translations
+- [ ] Write the task file back
+- [ ] Run `merge-translation.mjs` and check for warnings
+- [ ] Review the git diff of the locale file
+
+---
+
+## Manual Fallback
+
+If the helper scripts are not available, follow this manual workflow. This is equivalent to the scripted workflow but the AI reads and writes the full locale file directly.
+
+### Step 1: Read and Classify Entries
+
+Read the locale file and classify every entry into one of three categories:
+
+**Untranslated:** `value` is identical to `original` AND `original` is identical to `_base_original`. Needs full translation.
+
+**Stale:** `original !== _base_original`. The source text changed since the translation was last reviewed. Use `_base_original` as the source text. After translating, set both `value` to the new translation AND `original` to match `_base_original`.
+
+**Current:** `original === _base_original` AND `value !== original`. Already translated. Do not modify.
+
+Report counts to the user (e.g., "42 untranslated, 3 stale, 107 current -- translating 45 entries to French").
+
+### Step 2: Translate
+
+Apply the same translation rules as Phase 2 above. Match tone/register of existing translations in the file. Translate in namespace-grouped batches.
+
+### Step 3: Write Back
 
 - Use `JSON.stringify(data, null, 2)` formatting (2-space indent)
 - Keep keys sorted alphabetically (matching `write-locales` output)
 - Preserve all three fields on every entry -- never drop `_base_original`
 - Do not add or remove keys -- only modify `value` (and `original` for stale entries)
 - End the file with a trailing newline
-
-## Edge Cases
-
-### Intentional non-translations
-
-Some entries should remain identical across locales: brand names ("CloudCannon"), product names ("Rosey"), proper nouns, technical terms, code snippets. If `value === original` but the content is clearly a name or brand, leave it as-is.
-
-Signals that a value is intentionally untranslated:
-- The key contains words like `brand`, `name`, `logo`, `copyright`
-- The value is a single proper noun or trademark
-- The value is a URL, email address, or code snippet
-- The value is identical across multiple locale files that already have other entries translated
-
-When in doubt, translate it. A human reviewer can revert specific entries more easily than they can spot missing translations.
-
-### Whitespace in originals
-
-`write-locales` preserves whitespace from the HTML source. Entries may have leading/trailing spaces (e.g., `" Blog "`). Preserve this whitespace pattern in the translation -- Rosey substitutes the value directly into the HTML, and altered whitespace can break rendering.
-
-### Very short strings
-
-Single words or very short phrases ("More", "All", "Back", "Next") are ambiguous without context. Always check the key namespace. `blog:more` is likely "Read more" in a blog context. `pagination:next` is a pagination button. Translate accordingly.
-
-### Entries without `_base_original`
-
-If an entry lacks `_base_original`, it was created outside of `write-locales` (e.g., manually or by an older tool version). Treat it as untranslated if `value === original`, or as current if `value !== original`. Stale detection is not possible without `_base_original`.
-
-## Checklist
-
-- [ ] Read the locale file and identify the target language from the filename/locale code
-- [ ] Classify all entries as untranslated, stale, or current
-- [ ] Report counts to the user (e.g., "42 untranslated, 3 stale, 107 current — translating 45 entries to French")
-- [ ] Translate entries in namespace-grouped batches
-- [ ] Preserve all HTML tags, attributes, and structure
-- [ ] Match tone/register of existing translations in the file
-- [ ] For stale entries, update both `value` and `original`
-- [ ] Write the file with sorted keys, 2-space indent, trailing newline
-- [ ] Verify the JSON is valid after writing
-
