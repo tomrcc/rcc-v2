@@ -88,6 +88,18 @@ let switchInProgress = false;
 const originalInputConfigs = new Map<string, Record<string, unknown>>();
 
 // ---------------------------------------------------------------------------
+// RTL locale detection
+// ---------------------------------------------------------------------------
+
+const RTL_LOCALES = new Set([
+	"ar", "he", "fa", "ur", "ps", "sd", "yi", "ku", "ckb", "dv", "ug",
+]);
+
+function isRtlLocale(locale: string): boolean {
+	return RTL_LOCALES.has(locale.split("-")[0].toLowerCase());
+}
+
+// ---------------------------------------------------------------------------
 // Rosey key resolution
 // ---------------------------------------------------------------------------
 
@@ -688,9 +700,13 @@ async function switchLocaleInner(
 
 	const clone = container.cloneNode(true) as HTMLElement;
 	cleanClone(clone);
+
+	const rtl = isRtlLocale(locale);
+	if (rtl) clone.dir = "rtl";
+
 	container.replaceWith(clone);
 	translationContainer = clone;
-	log("Swapped in clean translation container");
+	log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
 
 	// --- Track elements in the clone and set up editors ---------------------
 

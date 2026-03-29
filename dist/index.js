@@ -29,6 +29,22 @@ var activeFile = null;
 var switchGeneration = 0;
 var switchInProgress = false;
 var originalInputConfigs = /* @__PURE__ */ new Map();
+var RTL_LOCALES = /* @__PURE__ */ new Set([
+  "ar",
+  "he",
+  "fa",
+  "ur",
+  "ps",
+  "sd",
+  "yi",
+  "ku",
+  "ckb",
+  "dv",
+  "ug"
+]);
+function isRtlLocale(locale) {
+  return RTL_LOCALES.has(locale.split("-")[0].toLowerCase());
+}
 function resolveRoseyKey(el) {
   const localKey = el.getAttribute("data-rosey");
   if (!localKey) return null;
@@ -487,9 +503,11 @@ async function switchLocaleInner(locale, myGeneration) {
   log(`switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ${container.children.length} child element(s)`);
   const clone = container.cloneNode(true);
   cleanClone(clone);
+  const rtl = isRtlLocale(locale);
+  if (rtl) clone.dir = "rtl";
   container.replaceWith(clone);
   translationContainer = clone;
-  log("Swapped in clean translation container");
+  log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
   trackElements(clone);
   if (tracked.length === 0) {
     warn(

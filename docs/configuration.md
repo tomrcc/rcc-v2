@@ -101,6 +101,14 @@ Add `data-rcc-verbose` to any element to enable detailed console logging:
 
 Without this attribute, only warnings are logged. With it, the connector outputs detailed information about initialization, element tracking, locale switching, and data operations — all prefixed with `RCC:`.
 
+## RTL languages
+
+When you switch to a right-to-left locale (Arabic, Hebrew, Farsi, etc.), the connector automatically sets `dir="rtl"` on the clone container. Text alignment, inline flow, and ProseMirror editor direction all flip automatically within the snapshot boundary.
+
+The connector recognises these base codes as RTL: `ar`, `he`, `fa`, `ur`, `ps`, `sd`, `yi`, `ku`, `ckb`, `dv`, `ug`.
+
+For production RTL setup (the `dir` script, CSS logical properties, and common overrides), see [RTL Support](rtl-support.md).
+
 ## CloudCannon `data_config`
 
 Each locale needs a `data_config` entry so CloudCannon's data API can read and write the locale file. The key **must** follow the format `locales_{code}`:

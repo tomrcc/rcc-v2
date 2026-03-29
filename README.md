@@ -134,6 +134,7 @@ If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, o
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
 - **[Incremental Translation](docs/incremental-translation.md)** — Strategies for translating your site progressively (fallback content, branching workflows)
+- **[RTL Support](docs/rtl-support.md)** — Right-to-left language support (Arabic, Hebrew, Farsi, etc.)
 - **[Known Issues & Troubleshooting](docs/known-issues.md)** — Common issues and workarounds
 - **[Migrating from an Existing i18n System](docs/migrating-from-i18n.md)** — Migration guide for sites using Astro i18n, astro-i18next, or other translation systems
 - **[Migrating from v1](docs/migration-from-v1.md)** — Step-by-step guide for upgrading from RCC v1

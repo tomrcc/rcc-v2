@@ -64,6 +64,12 @@ The RCC handles this with two layers:
 
 On restore, the original container (with real Bookshop comments) returns to the DOM. `teardownEditors()` then strips all `data-cms-bind` attributes from the original and forces a Bookshop re-render via `forceBookshopRerender()`. Stripping `data-cms-bind` is necessary because Bookshop's `graftTrees` preserves element nodes when only text content changed — and CC's overlay system tracks elements by reference, refusing to recreate overlays for re-inserted elements it already "knows." With `data-cms-bind` stripped, the next Bookshop render sees a shallow-clone mismatch in `graftTrees`, replaces the element with a fresh virtual DOM node, and `refreshInterface()` creates overlays on the new node. Bookshop's `cloudcannon:update` listener resumes finding comments and re-rendering normally.
 
+## RTL Language Support
+
+The injector automatically sets `dir="rtl"` on the clone container when switching to an RTL locale. RTL detection uses a built-in `RTL_LOCALES` set (`ar`, `he`, `fa`, `ur`, `ps`, `sd`, `yi`, `ku`, `ckb`, `dv`, `ug`) and matches on the base code before any `-` separator. ProseMirror editors inherit directionality via `contenteditable`, so text input, cursor behaviour, and alignment all flip correctly within the snapshot boundary.
+
+For production, the site needs its own `dir` setup since Rosey sets `<html lang>` but not `dir`. The recommended approach is an inline `<script>` at the top of `<head>` that reads `lang` and sets `dir="rtl"` for RTL codes. See `docs/rtl-support.md` for the full guide.
+
 ## Stale Translation Detection
 
 Locale entries store three fields: `original` (the source text when the translation was last acknowledged), `value` (the translation), and `_base_original` (the current source text from `base.json`, updated by `write-locales` on every run). When `original !== _base_original`, the translation is flagged as stale.

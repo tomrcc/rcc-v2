@@ -322,7 +322,46 @@ This makes locale files browsable in the CloudCannon sidebar. The `_inputs` conf
    ```
    Verify the translated site output in `dist/` and confirm `dist/_rcc/locales.json` exists.
 
-## Phase 7: Split-by-Directory for Body Content (Optional)
+## Phase 7: RTL Language Support (If Applicable)
+
+If any target locale is a right-to-left language (Arabic, Hebrew, Farsi, Urdu, etc.), add RTL support now. The RCC automatically sets `dir="rtl"` on the clone container in the Visual Editor for RTL locales, but production needs its own setup.
+
+### 7a. Add the `dir` detection script
+
+Add an inline `<script>` at the top of `<head>` in the root layout. It must run before the first paint to prevent a flash of LTR content:
+
+```html
+<script>
+  const rtl = new Set(['ar','he','fa','ur','ps','sd','yi','ku','ckb','dv','ug']);
+  const lang = document.documentElement.lang?.split('-')[0];
+  if (rtl.has(lang)) document.documentElement.dir = 'rtl';
+</script>
+```
+
+This script is ~3 lines with a single `Set` lookup and one attribute assignment, executing in microseconds. It uses the same well-established pattern as dark mode detection scripts — the performance impact is negligible.
+
+### 7b. Audit CSS for physical properties
+
+Search the site's CSS for physical direction properties and replace them with logical equivalents:
+
+- `margin-left` / `margin-right` -> `margin-inline-start` / `margin-inline-end`
+- `padding-left` / `padding-right` -> `padding-inline-start` / `padding-inline-end`
+- `border-left` / `border-right` -> `border-inline-start` / `border-inline-end`
+- `text-align: left` / `right` -> `text-align: start` / `end`
+- `float: left` / `right` -> `float: inline-start` / `inline-end`
+- `left` / `right` (positioning) -> `inset-inline-start` / `inset-inline-end`
+
+For Tailwind CSS, use logical utilities: `ms-*`/`me-*` instead of `ml-*`/`mr-*`, `ps-*`/`pe-*` instead of `pl-*`/`pr-*`, `text-start`/`text-end` instead of `text-left`/`text-right`.
+
+### 7c. Handle directional icons
+
+Icons with directional meaning (arrows, back/forward chevrons, reply icons) need mirroring:
+
+```css
+[dir="rtl"] .icon-arrow { transform: scaleX(-1); }
+```
+
+## Phase 8: Split-by-Directory for Body Content (Optional)
 
 For pages with large body content (blog posts, articles, documentation pages), Rosey's single-key approach is impractical -- the entire body becomes one massive translation key. A better approach is **split-by-directory**: create a separate content collection per locale and let the SSG build those pages natively to the correct locale URLs.
 
@@ -363,7 +402,7 @@ The postbuild script is unchanged. When Rosey encounters an existing page at a l
 - Shared UI strings (breadcrumbs, "Share this article:", "Latest News") get translated from the Rosey locale files
 - Non-blog pages continue using Rosey for full translation as before
 
-## Phase 8: Visitor-Facing Locale Picker (Optional)
+## Phase 9: Visitor-Facing Locale Picker (Optional)
 
 **Ask the user first:** "Would you like a visitor-facing locale picker (language switcher) added to the site, or do you already have one / prefer to bring your own?"
 
