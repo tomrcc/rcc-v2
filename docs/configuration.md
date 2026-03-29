@@ -118,6 +118,87 @@ The connector discovers datasets by calling `api.dataset("locales_fr")`, so the 
 
 The `write-locales` CLI validates your config and warns about missing entries — see [write-locales](write-locales.md) for details.
 
+> **`data_config` vs `collections_config`:** The `data_config` entries are required for the connector's JS API. They also expose the data for use elsewhere in CloudCannon — for example, referencing locale data in a [select input](https://cloudcannon.com/documentation/articles/using-select-inputs-to-edit-your-data/) via `values: data.locales_fr`. But `data_config` alone does not create a browsable, editable collection in the sidebar. For that, see [Editing locale files as a collection](#editing-locale-files-as-a-collection) below.
+
+## Editing locale files as a collection
+
+Locale files are standard JSON files. Independent of the connector, you can expose them as a CloudCannon collection so editors can browse and edit them directly in the sidebar — the same way any other data file on the site is managed.
+
+This is useful when:
+
+- A translation doesn't appear visually on the page (HTML attributes, `<head>` values, alt text, meta descriptions)
+- An element is difficult to select or edit in the Visual Editor
+- An editor prefers a form-based interface for bulk translation work
+
+### Configuration
+
+Add a `collections_config` entry pointing at your locales directory:
+
+```yaml
+# cloudcannon.config.yml
+collections_config:
+  locales:
+    path: rosey/locales
+    name: Locales
+    icon: translate
+    disable_add: true
+    disable_add_folder: true
+    disable_file_actions: true
+    _inputs:
+      value:
+        type: html
+        label: Translation
+        cascade: true
+      original:
+        hidden: true
+        cascade: true
+      _base_original:
+        disabled: true
+        hidden: false
+        label: Original Text
+        cascade: true
+```
+
+The `_inputs` settings control how each field appears in the editing interface:
+
+- **`value`** — typed as `html` because Rosey translations are always HTML. This is the field editors fill in.
+- **`original`** — hidden because editors don't need to see or modify it (it's updated automatically when a translation is edited).
+- **`_base_original`** — disabled (read-only) but visible, so editors can see the current source text for reference when translating.
+
+These are standard CloudCannon [`_inputs` options](https://cloudcannon.com/documentation/articles/how-to-choose-what-input-is-used-for-a-data-field/) and can be customized further to suit your workflow. The locale file is configured like any other data file in CloudCannon.
+
+> **Tip:** The `init` wizard offers to generate this config automatically. Pass `--collection` (or answer "yes" to the prompt in interactive mode) and it will add this `collections_config` entry for you.
+
+### URL translation files
+
+Rosey generates `base.urls.json` and per-locale `*.urls.json` files for translating URL paths (e.g. `/about/` to `/a-propos/`). These are native [Rosey URL translation files](https://rosey.app/docs/), not connector files — the connector does not provide a visual UI for editing them.
+
+However, you can expose them for editing in CloudCannon the same way as regular locale files. Add a separate collection, or use a `glob` filter on an existing one:
+
+```yaml
+collections_config:
+  url_locales:
+    path: rosey/locales
+    name: URL Translations
+    icon: link
+    glob:
+      - "*.urls.json"
+    disable_add: true
+    disable_add_folder: true
+    disable_file_actions: true
+```
+
+If you have both regular locale files and URL locale files in the same directory, add a glob exclusion to the `locales` collection so they don't overlap:
+
+```yaml
+collections_config:
+  locales:
+    path: rosey/locales
+    glob:
+      - "!*.urls.json"
+    # ... rest of config as above
+```
+
 ## Toolbar configuration
 
 The connector resolves toolbar configuration for each translation editor in priority order:

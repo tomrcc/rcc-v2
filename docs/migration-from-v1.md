@@ -172,7 +172,7 @@ Remove files and config that v2 doesn't use:
 - **Delete `rosey/rcc.yaml`** — configuration now lives in `cloudcannon.config.yml`
 - **Delete `rosey/translations/`** — the YAML translation files are replaced by locale JSON files
 - **Delete Smartling config and files** if you used the Smartling integration (`smartling-translations/`, `outgoing-smartling-translations.json`)
-- **Keep `*.urls.json` files** (`base.urls.json`, `locales/*.urls.json`) — these are native Rosey URL translation files, not RCC artifacts. Rosey uses them at build time to generate translated URL paths. v1 exposed them for editing through the `translations` collection; v2 does not provide a UI for editing URL translations, but the files are still consumed by `rosey build` and should not be deleted if they contain translated URLs.
+- **Keep `*.urls.json` files** (`base.urls.json`, `locales/*.urls.json`) — these are native Rosey URL translation files, not RCC artifacts. Rosey uses them at build time to generate translated URL paths. v1 exposed them for editing through the `translations` collection; the connector does not provide a visual UI for URL translations, but you can expose them as a CloudCannon collection for form-based editing — see [Configuration: URL translation files](configuration.md#url-translation-files). Do not delete these files if they contain translated URLs.
 - **Remove** `data-rosey-tagger` attributes from your HTML templates (or replace with your own script, if needed)
 - **Remove** `generateRoseyId` **imports** — replace with static key strings (or replace with your own helper function, if needed)
 - **Remove the `declare module 'rosey-cloudcannon-connector/utils'`** line from your TypeScript declarations (e.g. `env.d.ts`)
