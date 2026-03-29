@@ -126,6 +126,7 @@ Accurate stale detection and element activation depend on each element having a 
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
 - **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, agent skills, and the `add-skills` CLI
+- **[External Integrations](docs/integrations.md)** — Machine translation APIs, TMS platforms, CI-driven translation, and custom middleware
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
 - **[Incremental Translation](docs/incremental-translation.md)** — Strategies for translating your site progressively (fallback content, branching workflows)

@@ -215,9 +215,11 @@ npx rosey build --source _untranslated_site --dest dist --default-language en --
 
 This script:
 1. Generates `rosey/base.json` from the built HTML
-2. Creates/updates locale JSON files (preserving existing translations, removing stale keys) and writes the locale manifest to `dist/_rcc/locales.json`
+2. Creates/updates locale JSON files (preserving existing translations, removing keys no longer in `base.json`) and writes the locale manifest to `dist/_rcc/locales.json`
 3. Moves the original build aside
 4. Rebuilds the site with Rosey translations injected; the `--exclusions` override lets JSON files (like `_rcc/locales.json` and `_cloudcannon/info.json`) flow through instead of being excluded by Rosey's default regex
+
+`write-locales` also accepts `--keep-unused` to preserve locale keys that are no longer in `base.json`. This is useful during migration (e.g. remapping translations from old keys to new keys before cleanup) but is not needed for normal greenfield setup.
 
 ### 5c. (Optional) Expose locales as a browsable collection
 

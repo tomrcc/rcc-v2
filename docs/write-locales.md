@@ -141,4 +141,6 @@ If you roll your own workflow, here's what the connector expects:
 
 You could also use `write-locales` as your baseline and run your own middleware on top — for example, calling an external translation API to fill in empty `value` fields before handing off to Rosey.
 
+For detailed integration patterns — pipeline insertion points, machine translation examples, TMS sync, CI-driven workflows — see [External Integrations](integrations.md).
+
 For AI-powered translation of locale files (using an AI coding agent or custom script), see [AI-Powered Translation](ai-translation.md).

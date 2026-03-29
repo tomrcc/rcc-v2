@@ -87,7 +87,7 @@ const sorted = Object.fromEntries(
 writeFileSync(localePath, JSON.stringify(sorted, null, 2) + "\n");
 ```
 
-This can run in a postbuild hook, a CI step, or a standalone script.
+This can run in a postbuild hook, a CI step, or a standalone script. For non-AI external services (machine translation APIs, TMS platforms) and CI automation patterns, see [External Integrations](integrations.md).
 
 ### 3. Manual LLM workflow
 

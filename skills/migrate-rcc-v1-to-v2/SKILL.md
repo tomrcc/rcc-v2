@@ -84,6 +84,8 @@ Key changes:
 - Add `--default-language en` (or the site's source language)
 - Underscore-prefix the untranslated dir name
 
+> **Important:** For the first build during migration, add `--keep-unused` to the `write-locales` command so old translation keys survive long enough to remap (see Phase 8). Remove the flag after remapping is complete.
+
 Keep any non-RCC commands (Bookshop generate, Pagefind, etc.) in their original positions.
 
 ## Phase 3: Update CloudCannon Config
@@ -240,7 +242,9 @@ Update `src/env.d.ts` — remove `declare module 'rosey-cloudcannon-connector/ut
 
 ## Phase 8: Remap Existing Translation Keys
 
-Since keys changed, existing translations won't match new keys. After the first v2 build (which runs `write-locales` and populates `_base_original` on new keys), run a remapping script:
+Since keys changed, existing translations won't match new keys. The first v2 build must use `write-locales --keep-unused` (see Phase 2 note) so that old translated entries are preserved alongside the new keys. Without `--keep-unused`, `write-locales` deletes keys not present in `base.json` — destroying old translations before you can remap them.
+
+After the first v2 build (which runs `write-locales --keep-unused` and populates `_base_original` on new keys), run a remapping script:
 
 1. For each new key with an empty `value`, find an old key with the same `original` text
 2. Copy the `value` from the old key to the new key
@@ -275,6 +279,8 @@ for (const key of Object.keys(locale)) {
 }
 ```
 
+After remapping is complete, remove `--keep-unused` from the postbuild `write-locales` command so that future builds clean up stale keys normally.
+
 ## Phase 9: Verify
 
 1. Build the site locally and check `rosey/base.json` for correct keys
@@ -302,6 +308,7 @@ for (const key of Object.keys(locale)) {
 ## Gotchas
 
 - **Key remapping is the biggest risk.** When switching from content-derived to static keys, existing translations become orphaned. Always back up locale files before migrating and use a remapping script after the first v2 build. Matching by `original` text works for most entries, but fails when multiple old keys share the same original (e.g. `common:Blog` and `blog:Blog` both have `"original": "Blog"`). Manual review is needed for collisions.
+- **`--keep-unused` is required for the first build.** By default, `write-locales` removes locale keys not present in `base.json`. During migration, old keys (with their translations) must survive long enough for the remapping script to copy values to new keys. Add `--keep-unused` to the `write-locales` command in the postbuild for the first v2 build, then remove it after remapping is complete.
 - **`data-rosey-tagger` removal is a trade-off.** v1 auto-tagged individual elements inside rendered markdown. v2 wraps the whole block in one `data-rosey` tag instead. This means the markdown is translated as one unit rather than per-element. For large body content, the recommended v2 approach is split-by-directory (per-locale content collections) rather than Rosey — Rosey handles shared UI strings.
 - **Nav/footer links need `data-rosey-ns`.** The v1 starter uses `data-rosey-ns="common"` on header and footer elements, giving nav link keys the `common:` prefix. Make sure this namespace is preserved when replacing `generateRoseyId` — otherwise keys won't be namespaced and may collide with other pages.
 - **Locale picker links need `data-rosey-ignore`.** Without it, Rosey rewrites the locale picker's URLs and breaks the "switch to default language" link on translated pages. v1 didn't have this issue because it had no client-side URL rewriting concern.
