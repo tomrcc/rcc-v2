@@ -119,6 +119,10 @@ When the source text of an element changes after it was last translated, the con
 
 Accurate stale detection and element activation depend on each element having a unique, stable Rosey key — see [Tagging Content: Key uniqueness and stability](docs/tagging-content.md#key-uniqueness-and-stability) for guidance on avoiding key collisions in repeating structures. Elements whose key has no entry in the locale file (e.g. newly added content before a build has run) appear at reduced opacity and are non-editable until the next build populates the locale files.
 
+## Already Using an i18n System?
+
+If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. The package also includes an agent skill (`migrate-i18n-to-rosey`) with detailed step-by-step instructions — run `npx rosey-cloudcannon-connector add-skills` to add it to your project.
+
 ## Documentation
 
 - **[Getting Started](docs/getting-started.md)** — Full setup guide with complete examples
@@ -131,6 +135,7 @@ Accurate stale detection and element activation depend on each element having a 
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
 - **[Incremental Translation](docs/incremental-translation.md)** — Strategies for translating your site progressively (fallback content, branching workflows)
 - **[Known Issues & Troubleshooting](docs/known-issues.md)** — Common issues and workarounds
+- **[Migrating from an Existing i18n System](docs/migrating-from-i18n.md)** — Migration guide for sites using Astro i18n, astro-i18next, or other translation systems
 - **[Migrating from v1](docs/migration-from-v1.md)** — Step-by-step guide for upgrading from RCC v1
 
 ## Development

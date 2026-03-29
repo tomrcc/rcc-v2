@@ -11,6 +11,16 @@ description: >-
 
 Step-by-step workflow for replacing an existing internationalization system with the Rosey/RCC/CloudCannon stack. This skill assumes you are familiar with the `make-site-multilingual` skill -- read it first if you haven't.
 
+## SSG-Specific Guidance
+
+After identifying the i18n method (Phase 1), read the matching file in this directory for framework-specific removal steps, extraction patterns, and gotchas:
+
+| SSG | File to read |
+|-----|---|
+| Astro (built-in i18n or recipe pattern) | `astro.md` in this skill directory |
+
+These supplements contain concrete before/after code for replacing `t()` calls, removing config, triaging duplicated pages, and handling framework-specific APIs like `Astro.currentLocale`.
+
 ## Phase 1: Identify the Current i18n Method
 
 Detect what system is in use before changing anything.
@@ -20,11 +30,12 @@ Detect what system is in use before changing anything.
 | Signal | What to look for |
 |---|---|
 | **package.json** | `astro-i18n`, `astro-i18next`, `next-intl`, `i18next`, `vue-i18n`, `react-intl`, `@nuxtjs/i18n` |
-| **Config files** | `astro.config.mjs` i18n config, `next.config.js` i18n settings, `nuxt.config.ts` i18n module |
+| **Framework config** | `astro.config.mjs` `i18n` block (Astro built-in — routing only, no translation runtime), `next.config.js` i18n settings, `nuxt.config.ts` i18n module |
+| **Recipe-pattern helpers** | `src/i18n/ui.ts` dictionary, `getLangFromUrl()`, `useTranslations()`, `getRelativeLocaleUrl()` (Astro docs recipe — no package, just copied code) |
 | **Folder structure** | Duplicate content folders per locale (`/en/`, `/fr/`), or `locales/` directories with JSON/YAML |
 | **Routing** | Locale prefixed routes (`/fr/about`), middleware that detects locale, `[locale]` dynamic segments |
 | **Translation files** | `.json`, `.yaml`, `.po` files with key-value translation pairs |
-| **Template usage** | `t("key")` function calls, `$t("key")`, `useTranslation()`, `<Trans>` components |
+| **Template usage** | `t("key")` function calls, `$t("key")`, `useTranslation()`, `<Trans>` components, `Astro.currentLocale` |
 
 ### Document your findings
 
