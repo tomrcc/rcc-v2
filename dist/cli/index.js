@@ -83,7 +83,7 @@ Copied ${copied} file${copied !== 1 ? "s" : ""} to ${dest}/${skipped > 0 ? ` (${
   );
   if (copied > 0) {
     console.log(
-      "\nSkills available:\n  translate-locale-files  \u2014 Translate untranslated/stale entries in locale files\n  make-site-multilingual  \u2014 Set up Rosey/RCC/CloudCannon from scratch\n  migrate-i18n-to-rosey   \u2014 Replace an existing i18n system with Rosey\n  migrate-rcc-v1-to-v2    \u2014 Upgrade from RCC v1 to v2\n"
+      "\nSkills available:\n  translate-locale-files          \u2014 Translate untranslated/stale entries in locale files\n  translate-content-collections   \u2014 Translate split-by-directory content collection files\n  make-site-multilingual          \u2014 Set up Rosey/RCC/CloudCannon from scratch\n  migrate-i18n-to-rosey           \u2014 Replace an existing i18n system with Rosey\n  migrate-rcc-v1-to-v2            \u2014 Upgrade from RCC v1 to v2\n"
     );
   }
 }
