@@ -51,7 +51,7 @@ interface CCApi {
 	createTextEditableRegion(
 		element: HTMLElement,
 		onChange: (content?: string | null) => void,
-		options?: { elementType?: string; inputConfig?: Record<string, unknown> },
+		options?: { elementType?: string; editableType?: string; inputConfig?: Record<string, unknown> },
 	): Promise<{ setContent: (content?: string | null) => void }>;
 }
 
@@ -86,6 +86,13 @@ let switchInProgress = false;
  * to createTextEditableRegion that CC uses for the original editors.
  */
 const originalInputConfigs = new Map<string, Record<string, unknown>>();
+
+/**
+ * Rosey keys whose original elements were source editables
+ * (`data-editable="source"` / `EDITABLE-SOURCE`). Used to pass
+ * `editableType: "content"` so CC applies the `_editables.content` toolbar.
+ */
+const originalIsSource = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // RTL locale detection
@@ -296,6 +303,10 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
+
+		if (el.dataset.editable === "source" || el.tagName === "EDITABLE-SOURCE") {
+			originalIsSource.add(roseyKey);
+		}
 
 		const config = await fetchInputConfig(el);
 		if (config != null) {
@@ -804,6 +815,8 @@ async function switchLocaleInner(
 				? { ...inputConfig, type: "html" }
 				: { type: "html" };
 
+			const isSource = originalIsSource.has(t.roseyKey);
+
 			const editor = await api!.createTextEditableRegion(
 				t.element,
 				(content) => {
@@ -818,6 +831,7 @@ async function switchLocaleInner(
 				},
 				{
 					elementType: t.inferredType,
+					...(isSource && { editableType: "content" }),
 					...(rccInputConfig != null && { inputConfig: rccInputConfig }),
 				},
 			);

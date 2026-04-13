@@ -27,6 +27,7 @@ var activeFile = null;
 var switchGeneration = 0;
 var switchInProgress = false;
 var originalInputConfigs = /* @__PURE__ */ new Map();
+var originalIsSource = /* @__PURE__ */ new Set();
 var RTL_LOCALES = /* @__PURE__ */ new Set([
   "ar",
   "he",
@@ -186,6 +187,9 @@ async function prescanOriginals(container) {
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
+    if (el.dataset.editable === "source" || el.tagName === "EDITABLE-SOURCE") {
+      originalIsSource.add(roseyKey);
+    }
     const config = await fetchInputConfig(el);
     if (config != null) {
       originalInputConfigs.set(roseyKey, config);
@@ -571,6 +575,7 @@ async function switchLocaleInner(locale, myGeneration) {
       const value = resolvedValues[i];
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
+      const isSource = originalIsSource.has(t.roseyKey);
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {
@@ -585,6 +590,7 @@ async function switchLocaleInner(locale, myGeneration) {
         },
         {
           elementType: t.inferredType,
+          ...isSource && { editableType: "content" },
           ...rccInputConfig != null && { inputConfig: rccInputConfig }
         }
       );
