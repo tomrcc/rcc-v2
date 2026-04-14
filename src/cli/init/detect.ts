@@ -12,6 +12,7 @@ export interface ProjectContext {
 	rccInstalled: boolean;
 	postbuildExists: boolean;
 	postbuildContent: string | null;
+	bookshopDetected: boolean;
 }
 
 const CC_CONFIG_CANDIDATES: {
@@ -124,6 +125,11 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 		}
 	}
 
+	const bookshopDetected =
+		fileExists(path.join(cwd, "bookshop.config.cjs")) ||
+		dirExists(path.join(cwd, "_bookshop")) ||
+		dirExists(path.join(cwd, "component-library", "bookshop"));
+
 	return {
 		ccConfigPath,
 		ccConfigFormat,
@@ -135,5 +141,6 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 		rccInstalled,
 		postbuildExists,
 		postbuildContent,
+		bookshopDetected,
 	};
 }

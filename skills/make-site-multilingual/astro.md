@@ -29,7 +29,7 @@ This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every 
 
 For a working example, see the [Rosey Astro Starter](https://github.com/CloudCannon/rosey-astro-starter) (`Page.astro` and `cloudcannon.config.yml`).
 
-**Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index: `data-rosey-ns={`${block._bookshop_name ?? block._name}-${i}`}`. Be aware that this is fragile — reordering shifts keys.
+**Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index: `data-rosey-ns={`${block._name}-${i}`}`. Be aware that this is fragile — reordering shifts keys.
 
 ## Auto-Derive `data-rosey` from `data-prop`
 

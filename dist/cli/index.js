@@ -517,7 +517,7 @@ function updateCloudCannonConfig(ctx, answers) {
     );
   }
 }
-function printInstructions(answers) {
+function printInstructions(answers, options) {
   const { buildDir, defaultLanguage, roseyDir } = answers;
   console.log("\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
   console.log("  Next steps");
@@ -549,6 +549,14 @@ function printInstructions(answers) {
   console.log(`     npx rosey generate --source ${buildDir}`);
   console.log("   to create the initial base.json. After that, the");
   console.log("   postbuild script handles everything automatically.\n");
+  if (options?.bookshopDetected) {
+    console.log("Note: Bookshop detected. Bookshop-related steps in");
+    console.log("   RCC skills apply to this site.\n");
+  } else {
+    console.log("Note: No Bookshop detected. This site uses editable");
+    console.log("   regions (the standard approach). Bookshop-related");
+    console.log("   steps in RCC skills can be skipped.\n");
+  }
 }
 
 // src/cli/init/detect.ts
@@ -646,6 +654,7 @@ function detectProject(cwd = process.cwd()) {
     } catch {
     }
   }
+  const bookshopDetected = fileExists(import_node_path2.default.join(cwd, "bookshop.config.cjs")) || dirExists(import_node_path2.default.join(cwd, "_bookshop")) || dirExists(import_node_path2.default.join(cwd, "component-library", "bookshop"));
   return {
     ccConfigPath,
     ccConfigFormat,
@@ -656,7 +665,8 @@ function detectProject(cwd = process.cwd()) {
     roseyInstalled,
     rccInstalled,
     postbuildExists,
-    postbuildContent
+    postbuildContent,
+    bookshopDetected
   };
 }
 
@@ -774,6 +784,9 @@ async function run2(argv) {
     ].filter(Boolean).join(", ");
     console.log(`  Already installed: ${installed}`);
   }
+  if (ctx.bookshopDetected) {
+    console.log("  Bookshop detected: yes");
+  }
   console.log("");
   if (flags.yes) {
     if (!flags.locales || flags.locales.length === 0) {
@@ -805,7 +818,7 @@ async function run2(argv) {
     writePostbuild(ctx, answers2);
     removeSourceKey(ctx, answers2);
     updateCloudCannonConfig(ctx, answers2);
-    printInstructions(answers2);
+    printInstructions(answers2, { bookshopDetected: ctx.bookshopDetected });
     return;
   }
   const localesRaw = await askText(
@@ -919,7 +932,7 @@ async function run2(argv) {
     );
   }
   updateCloudCannonConfig(ctx, answers);
-  printInstructions(answers);
+  printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
 }
 function buildPostbuildPreview(answers) {
   const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } = answers;

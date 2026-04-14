@@ -121,6 +121,9 @@ export async function run(argv: string[]): Promise<void> {
 			.join(", ");
 		console.log(`  Already installed: ${installed}`);
 	}
+	if (ctx.bookshopDetected) {
+		console.log("  Bookshop detected: yes");
+	}
 	console.log("");
 
 	// ── Headless mode (--yes) ───────────────────────────────────────
@@ -158,7 +161,7 @@ export async function run(argv: string[]): Promise<void> {
 		writePostbuild(ctx, answers);
 		removeSourceKey(ctx, answers);
 		updateCloudCannonConfig(ctx, answers);
-		printInstructions(answers);
+		printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
 		return;
 	}
 
@@ -300,7 +303,7 @@ export async function run(argv: string[]): Promise<void> {
 
 	updateCloudCannonConfig(ctx, answers);
 
-	printInstructions(answers);
+	printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
 }
 
 function buildPostbuildPreview(answers: WizardAnswers): string {

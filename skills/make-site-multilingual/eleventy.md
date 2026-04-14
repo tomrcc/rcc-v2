@@ -1,6 +1,6 @@
 # Eleventy-Specific Patterns
 
-Framework-specific implementation details for making an Eleventy (11ty) site multilingual with Rosey/RCC/CloudCannon. Includes Bookshop-specific patterns. Read alongside the main `SKILL.md` workflow.
+Framework-specific implementation details for making an Eleventy (11ty) site multilingual with Rosey/RCC/CloudCannon. Read alongside the main `SKILL.md` workflow.
 
 ## Slug Derivation
 
@@ -16,14 +16,14 @@ In Eleventy, `page.url` gives the URL path (e.g., `/booking/`). For flat URL str
 
 ## Content Block Namespacing
 
-### Eleventy/Liquid (Bookshop)
+### Eleventy/Liquid
 
-For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use the block's `_uuid` field (populated by CloudCannon's `instance_value: UUID`) for stable keys:
+For sites using `content_blocks`, the shared page template (which loops `content_blocks`) is the best place to add `data-rosey-ns` wrappers. Use the block's `_uuid` field (populated by CloudCannon's `instance_value: UUID`) for stable keys:
 
 ```liquid
 {% for block in content_blocks %}
   <div data-rosey-ns="{{ block._uuid }}">
-    {% bookshop "{{ block._bookshop_name }}" bind: block %}
+    {% include block._name %}
   </div>
 {% endfor %}
 ```
@@ -33,11 +33,32 @@ This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every 
 **Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index:
 
 ```liquid
-{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}
+{% assign block_ns = block._name | append: "-" | append: forloop.index0 %}
 <div data-rosey-ns="{{ block_ns }}">
 ```
 
-This derives names like `left-right-simple-0`, `price-list-1` but is fragile — reordering shifts keys.
+This derives names like `hero-0`, `price-list-1` but is fragile — reordering shifts keys.
+
+### If using Bookshop
+
+> **Skip this subsection if the site does not use Bookshop.** Most Eleventy sites do not use Bookshop — the patterns above work with any component system.
+
+For Bookshop sites, the shared `page.eleventy.liquid` template renders blocks via `{% bookshop %}`. The same UUID namespacing applies:
+
+```liquid
+{% for block in content_blocks %}
+  <div data-rosey-ns="{{ block._uuid }}">
+    {% bookshop "{{ block._bookshop_name }}" bind: block %}
+  </div>
+{% endfor %}
+```
+
+The fallback for Bookshop sites without `instance_value` uses `_bookshop_name`:
+
+```liquid
+{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}
+<div data-rosey-ns="{{ block_ns }}">
+```
 
 ## Split-by-Directory for Body Content
 
@@ -61,7 +82,9 @@ The URL construction logic (parse path, detect locale prefix, strip/prepend) is 
 - **Slug derivation via `page.url`.** In Eleventy, `page.url` gives the URL path (e.g., `/booking/`). For flat URL structures, derive a Rosey root slug with `{% assign rosey_slug = page.url | replace: '/', '' %}` and fall back for the index page: `{% if rosey_slug == '' %}{% assign rosey_slug = 'index' %}{% endif %}`. For nested paths (e.g., `/blog/my-post/`), use a split/join approach instead of a blanket replace.
 - **Locale picker path parsing.** In Eleventy, use `page.url | split: "/"` to parse the path and detect the current locale. The first meaningful segment is at index 1 (`path_segments[1]`) since index 0 is empty from the leading `/`.
 
-### Bookshop
+### Bookshop (skip if site does not use Bookshop)
+
+> Most Eleventy sites do not use Bookshop. If the audit in Phase 1 found no Bookshop infrastructure, skip this section entirely.
 
 - **`page.eleventy.liquid` is the ideal block namespacing point.** For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use `{{ block._uuid }}` (from CloudCannon's `instance_value: UUID`) for stable keys. If `instance_value` isn't available, fall back to `{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}` (but be aware this is fragile). One change covers all content blocks across all pages.
-- **Button `data-rosey` captures SVG icon markup.** When `data-rosey` is placed on an `<a>` or `<button>` that contains both text and a Bookshop icon component (e.g., arrow icons), Rosey captures the full `innerHTML` including the rendered SVG and Bookshop live-edit comments. The translation `value` must preserve the icon markup; only the text portion should change. For cleaner translations, wrap the button text in a `<span data-rosey="button_text">` and leave the icon outside, but this requires restructuring the button component. For Bookshop sites, the trade-off is acceptable since editors use the RCC Visual Editor rather than editing raw JSON.
+- **Button `data-rosey` captures SVG icon markup.** When `data-rosey` is placed on an `<a>` or `<button>` that contains both text and a Bookshop icon component (e.g., arrow icons), Rosey captures the full `innerHTML` including the rendered SVG and Bookshop live-edit comments. The translation `value` must preserve the icon markup; only the text portion should change. For cleaner translations, wrap the button text in a `<span data-rosey="button_text">` and leave the icon outside, but this requires restructuring the button component.

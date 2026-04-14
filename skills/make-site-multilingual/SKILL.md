@@ -13,7 +13,7 @@ Step-by-step workflow for converting a single-language site into a multilingual 
 ## Prerequisites
 
 - The site must build to static HTML (SSG). Rosey operates on built output, not source files.
-- CloudCannon must be the CMS (RCC depends on CloudCannon's JS API). The RCC does **not** require editable regions, Bookshop, or any existing inline editing setup — it creates its own ProseMirror editors on every `data-rosey` element. Sites with no editing infrastructure at all still get full visual translation editing. That said, the experience is best when paired with editable regions: the "Original" view gets full inline editing of source text, and the RCC can inherit toolbar/input config from existing editors.
+- CloudCannon must be the CMS (RCC depends on CloudCannon's JS API). The RCC does **not** require editable regions or any existing inline editing setup — it creates its own ProseMirror editors on every `data-rosey` element. Sites with no editing infrastructure at all still get full visual translation editing. That said, the experience is best when paired with editable regions: the "Original" view gets full inline editing of source text, and the RCC can inherit toolbar/input config from existing editors.
 - Confirm which locales the user wants to support (e.g., `fr,de,es`).
 
 ## SSG Detection and Framework-Specific Guidance
@@ -41,6 +41,8 @@ Before touching code, understand what needs to be translated.
 2. **Identify the build output directory.** Common values: `dist/`, `_site/`, `build/`, `out/`. Check the framework config (e.g., `astro.config.mjs`, `eleventy.js`).
 
 3. **Map out the page/content structure.** Understand how pages are generated -- dynamic routes, content collections, data-driven pages. This determines how to set `data-rosey-root` values.
+
+4. **Detect Bookshop (most sites don't use it).** Check whether the site uses Bookshop: look for `bookshop.config.cjs`, a `_bookshop/` or `component-library/bookshop/` directory, `{% bookshop %}` template tags, or `_bookshop_name` in content files. If none are found, **skip all Bookshop-specific steps and gotchas** throughout this skill. Bookshop is a legacy component framework — most CloudCannon sites use editable regions instead.
 
 ## Phase 2: Install Dependencies
 
@@ -144,9 +146,9 @@ The `data-rosey-root` value should be derived from the page's URL path at build 
 
 ### 3f. Component system integration (auto-derive `data-rosey`)
 
-> **This step is optional.** It applies only to sites that already have component-based inline editing (Bookshop, `data-prop`, etc.). Sites without editing infrastructure can skip this entirely — just add `data-rosey` directly to elements as shown in 3c.
+> **This step is optional.** It applies only to sites that already have component-based inline editing with `data-prop` (editable regions). Sites without editing infrastructure can skip this entirely — just add `data-rosey` directly to elements as shown in 3c.
 
-For sites that use reusable building-block components with an existing editing attribute (e.g., CloudCannon's `data-prop`, Bookshop's prop bindings), you can **auto-derive** `data-rosey` from that attribute instead of tagging every component instance manually.
+For sites that use reusable building-block components with an existing editing attribute (e.g., CloudCannon's `data-prop`), you can **auto-derive** `data-rosey` from that attribute instead of tagging every component instance manually.
 
 **Core rules (apply to any component system):**
 
@@ -154,7 +156,7 @@ For sites that use reusable building-block components with an existing editing a
 2. **Destructure `data-rosey` from component props.** If the component uses a rest-spread pattern (e.g., `...htmlAttributes` or `...rest`) on an outer wrapper, `data-rosey` must be explicitly destructured out. Otherwise it leaks onto the outer element instead of reaching the inner text element where Rosey needs it.
 3. **Support an opt-out mechanism.** Allow passing `data-rosey={false}` (or the template-language equivalent) to suppress auto-derivation on instances that should not be translated -- proper nouns, author names, identity values.
 4. **Handle non-editable components explicitly.** When a component has editing disabled (no `data-prop`), auto-derive has no source attribute. Hardcoded strings in these components (e.g., "Read more", "No results found") need an explicit `data-rosey="key"` passed in.
-5. **Place `data-rosey` on the innermost text element.** Rosey captures `innerHTML` of the tagged element. If `data-rosey` lands on an outer wrapper that contains custom elements (e.g., `<editable-text>`, Bookshop live-edit comments), those tags become part of the captured original. Always target the element that contains just the visible text.
+5. **Place `data-rosey` on the innermost text element.** Rosey captures `innerHTML` of the tagged element. If `data-rosey` lands on an outer wrapper that contains custom elements (e.g., `<editable-text>`), those tags become part of the captured original. Always target the element that contains just the visible text.
 
 See `astro.md` in this directory for an Astro implementation example. The same concept applies to any component system -- adapt the destructuring and conditional logic to your template language.
 
@@ -462,14 +464,12 @@ These apply regardless of the SSG or component system in use.
 - **Suppress `data-rosey` on frontmatter-driven fields in shared templates.** When a shared template is used for both default-language and locale pages (split-by-directory), frontmatter-driven fields (title, description, tags) must suppress `data-rosey`. Otherwise Rosey would overwrite the already-translated content from the locale collection with whatever is in the Rosey locale file. The suppression mechanism depends on the template language (e.g., `data-rosey={false}` in JSX, conditionally omitting the attribute in Liquid/Nunjucks).
 - **CloudCannon `source` key breaks locale file resolution.** When `cloudcannon.config.yml` has a `source` key (e.g., `source: src`), all `data_config` paths, `collections_config.*.path`, `paths.*`, and `file_config.*.glob` are resolved relative to that directory. Since locale files live at the project root (e.g., `rosey/locales/`), CC cannot find them. CC does not support `../` in config paths. The correct fix is to remove the `source` key entirely and prepend its value to all affected paths (e.g., `path: pages` becomes `path: src/pages`). Schema paths (`schemas.*.path`) are relative to the project root and must NOT be rewritten. The `init` CLI auto-detects `source` and performs this rewrite automatically.
 
-### CloudCannon inline editing integration
+### Editable regions / component inline editing
 
-> These gotchas apply only to sites that already use component-based inline editing (Bookshop, `data-prop`, editable regions). The RCC works without any of these — if your site doesn't have inline editing set up on the original text, skip this section.
-
-These apply to sites using component-based inline editing systems (Bookshop, Astro editable regions with `data-prop`, or any similar system where reusable building blocks have editing attributes).
+> These gotchas apply only to sites that already use editable regions (`data-prop`, `data-editable`) for inline editing. The RCC works without any of these — if your site doesn't have inline editing set up on the original text, skip this section.
 
 - **Shared components need explicit `data-rosey` passthrough.** Components that wrap content in an inner text element (e.g., `<editable-text>`, `<span class="inner-text">`) cannot rely on a rest-spread to forward `data-rosey` -- it would land on the outer tag, not the inner text element. Explicitly extract `data-rosey` from the component's incoming props/parameters and forward it to the inner element.
-- **Destructure `data-rosey` to prevent DOM leaking.** When a component uses rest-spread (e.g., `...htmlAttributes`) on an outer wrapper, any undeclared prop ends up in the spread. If `data-rosey` isn't explicitly destructured, it leaks onto the outer element. Always destructure it alongside the editing attribute (e.g., `data-prop`, `data-bookshop-prop`).
+- **Destructure `data-rosey` to prevent DOM leaking.** When a component uses rest-spread (e.g., `...htmlAttributes`) on an outer wrapper, any undeclared prop ends up in the spread. If `data-rosey` isn't explicitly destructured, it leaks onto the outer element. Always destructure it alongside `data-prop`.
 - **Per-instance opt-out.** When auto-deriving `data-rosey` from an editing attribute, provide a way to suppress it per-instance for values that should not be translated (proper nouns, identity values). In JSX-based SSGs, `data-rosey={false}` works well. In template languages, use a conditional (e.g., `{% unless skip_rosey %}data-rosey="..."{% endunless %}`).
 - **Non-editable components need explicit `data-rosey`.** When a component has editing disabled (no editing attribute to derive from), auto-derive produces nothing. Hardcoded strings in these components (e.g., "Read more", "All", "No results found") need an explicit `data-rosey="key"` passed in.
 - **Rich-text body content: target the inner text element.** For rich-text body content rendered through a custom element (e.g., `<editable-text data-prop="@content">`), place `data-rosey` directly on that inner element. Putting it on a parent wrapper causes Rosey to capture the custom element tags as part of the original, which corrupts the translation.

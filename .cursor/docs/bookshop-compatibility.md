@@ -1,5 +1,7 @@
 # Bookshop Compatibility — Handoff Doc
 
+> **Scope:** This document is only relevant for sites that use Bookshop. Check for `bookshop.config.cjs`, a `_bookshop/` or `component-library/bookshop/` directory, `{% bookshop %}` template tags, or `window.bookshopLive` in the project. **Most CloudCannon sites use editable regions, not Bookshop.** If the current site does not use Bookshop, this document can be ignored entirely.
+
 ## What is this?
 
 The RCC (Rosey CloudCannon Connector) v2 enables inline translation editing in CloudCannon's Visual Editor. When a user picks a locale (e.g. FR), the RCC:

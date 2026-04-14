@@ -518,7 +518,10 @@ export function updateCloudCannonConfig(
 
 // ── Follow-up instructions ──────────────────────────────────────────
 
-export function printInstructions(answers: WizardAnswers): void {
+export function printInstructions(
+	answers: WizardAnswers,
+	options?: { bookshopDetected?: boolean },
+): void {
 	const { buildDir, defaultLanguage, roseyDir } = answers;
 
 	console.log("\n────────────────────────────────────────────");
@@ -555,4 +558,13 @@ export function printInstructions(answers: WizardAnswers): void {
 	console.log(`     npx rosey generate --source ${buildDir}`);
 	console.log("   to create the initial base.json. After that, the");
 	console.log("   postbuild script handles everything automatically.\n");
+
+	if (options?.bookshopDetected) {
+		console.log("Note: Bookshop detected. Bookshop-related steps in");
+		console.log("   RCC skills apply to this site.\n");
+	} else {
+		console.log("Note: No Bookshop detected. This site uses editable");
+		console.log("   regions (the standard approach). Bookshop-related");
+		console.log("   steps in RCC skills can be skipped.\n");
+	}
 }

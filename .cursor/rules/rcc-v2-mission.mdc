@@ -27,7 +27,7 @@ rcc-v2 (Rosey CloudCannon Connector) is a client-side plugin that enables visual
 
 ## Editable Regions Independence
 
-The RCC does **not** require editable regions, Bookshop, or any existing inline editing infrastructure. It creates its own ProseMirror editors via `createTextEditableRegion()` on every `data-rosey` element — sites with no `data-editable`, no `data-prop`, and no Bookshop still get full visual translation editing in locale view. The Bookshop Compatibility and DOM Swap sections below describe how the RCC *handles* sites that do have editing infrastructure — these are compatibility features, not prerequisites. That said, the experience is best when paired with editable regions: the "Original" view gets full inline editing of source text, and the input config prescan can inherit toolbar settings from existing editors.
+The RCC does **not** require editable regions or any existing inline editing infrastructure. It creates its own ProseMirror editors via `createTextEditableRegion()` on every `data-rosey` element — sites with no `data-editable` and no `data-prop` still get full visual translation editing in locale view. The DOM Swap section below describes how the RCC handles sites that do have editing infrastructure — these are compatibility features, not prerequisites. That said, the experience is best when paired with editable regions: the "Original" view gets full inline editing of source text, and the input config prescan can inherit toolbar settings from existing editors.
 
 ## Key API Surface
 
@@ -54,15 +54,7 @@ The clone is processed while detached from the DOM, so there are no MutationObse
 
 ## Bookshop Compatibility
 
-Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-based live editing need additional sanitization. Bookshop's runtime uses `<!--bookshop-live name(...) params(...) -->` HTML comments as component markers and a global `window.bookshopLive` singleton that XPath-scans the entire document for these comments on every `cloudcannon:update` event, re-rendering component HTML between them.
-
-The RCC handles this with two layers:
-
-1. **Comment stripping**: `cleanClone()` removes all `<!--bookshop-live-->` comments from the clone via a `TreeWalker`. With no comment markers in the document, Bookshop's XPath scan finds nothing and produces zero component updates.
-2. **`data-cms-bind` stripping**: `stripCCAttributes()` also removes `data-cms-bind` (Bookshop's click-to-edit panel binding attribute) from clone elements.
-3. **Update cycle pausing**: `switchLocale()` monkey-patches `window.bookshopLive.update` to a no-op during locale view, preventing unnecessary XPath scans. `teardownEditors()` restores the original method before swapping the original container back in.
-
-On restore, the original container (with real Bookshop comments) returns to the DOM. `teardownEditors()` then strips all `data-cms-bind` attributes from the original and forces a Bookshop re-render via `forceBookshopRerender()`. Stripping `data-cms-bind` is necessary because Bookshop's `graftTrees` preserves element nodes when only text content changed — and CC's overlay system tracks elements by reference, refusing to recreate overlays for re-inserted elements it already "knows." With `data-cms-bind` stripped, the next Bookshop render sees a shallow-clone mismatch in `graftTrees`, replaces the element with a fresh virtual DOM node, and `refreshInterface()` creates overlays on the new node. Bookshop's `cloudcannon:update` listener resumes finding comments and re-rendering normally.
+The RCC includes a compatibility layer for sites that use Bookshop (comment stripping, update cycle pausing, `data-cms-bind` handling). Most sites do **not** use Bookshop — editable regions are the standard CloudCannon editing approach. See `.cursor/rules/bookshop-compat.mdc` for full details, only when working on a Bookshop site.
 
 ## RTL Language Support
 
@@ -101,7 +93,6 @@ At build time:
 - **Snapshot boundary**: The injector finds the boundary via `[data-rcc]` first, then `<main>`. To include nav/footer in locale switching, add `data-rcc` to a wrapper element that encompasses all translatable content. `<body>` cannot be used as the boundary because it hosts the RCC's own UI (FAB, popover, stale panel), CloudCannon's editing infrastructure, and `<script>` tags — swapping it would destroy all of those.
 - **Per-page locale exclusion**: `data-rcc-exclude="de"` on the boundary element filters locales from the FAB for that page only. Comma-separated for multiple codes.
 - **Elements without locale entries**: When a `[data-rosey]` element has no corresponding entry in the locale file (e.g. a component or array item added after the last `write-locales` run), the element is still shown in the locale view for layout integrity but rendered at 45% opacity with `pointer-events: none`. No inline editor is created, no stale detection runs, and no `onChange` writes can occur. A `write-locales` run is required to make the element translatable.
-- **`data-cms-bind` overlays require fresh elements**: CC's overlay system tracks `data-cms-bind` elements by DOM reference. Re-inserting the same element objects after a swap doesn't trigger overlay recreation, even with `refreshInterface()`. The fix is to strip `data-cms-bind` from the original after swap, then force a Bookshop re-render. Bookshop's `graftTrees` sees a shallow-clone mismatch (virtual DOM has the attribute, real DOM doesn't), replaces the element with a fresh node, and `refreshInterface()` creates overlays on it.
 - **`dataset.items()` hangs for missing files**: When `data_config` points to a file CC cannot find, `dataset.items()` returns a promise that **never settles** (no rejection, no null). The injector guards against this with a 5-second timeout. The most common cause is a `source` setting in `cloudcannon.config.yml` — `data_config` paths are resolved relative to `source`, so if `source: src` and the rosey directory is at the project root, the paths won't resolve. CC does not support `../` in config paths, so the fix is to remove the `source` key entirely and prepend its value to all affected paths (`collections_config.*.path`, `data_config.*.path`, `paths.*`, `file_config.*.glob`). The `init` CLI auto-detects `source` and performs this rewrite automatically.
 
 ## Hybrid Translation (Split-by-Directory + Rosey)
