@@ -47,8 +47,14 @@ export function installDependencies(ctx: ProjectContext): void {
 // ── Postbuild script ────────────────────────────────────────────────
 
 function buildPostbuildBlock(answers: WizardAnswers): string {
-	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } =
-		answers;
+	const {
+		buildDir,
+		roseyDir,
+		locales,
+		useBuiltinWriteLocales,
+		contentAtRoot,
+		defaultLanguage,
+	} = answers;
 	const langFlag = `--default-language ${defaultLanguage}`;
 	const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
 
@@ -142,8 +148,7 @@ function rewriteYamlSourcePaths(content: string, source: string): string {
 			if (m) {
 				const key = m[1];
 				const rawValue = m[2].replace(/^['"]|['"]$/g, "").trim();
-				const newValue =
-					rawValue === "" ? source : `${source}/${rawValue}`;
+				const newValue = rawValue === "" ? source : `${source}/${rawValue}`;
 				result.push(`${line.substring(0, indent)}${key}: ${newValue}`);
 				continue;
 			}
@@ -165,9 +170,7 @@ function rewriteYamlSourcePaths(content: string, source: string): string {
 			if (!inSchemas) {
 				const m = trimmed.match(/^path:\s*(.+)$/);
 				if (m) {
-					result.push(
-						`${line.substring(0, indent)}path: ${source}/${m[1]}`,
-					);
+					result.push(`${line.substring(0, indent)}path: ${source}/${m[1]}`);
 					continue;
 				}
 			}
@@ -176,9 +179,7 @@ function rewriteYamlSourcePaths(content: string, source: string): string {
 		if (currentTopBlock === "data_config" && indent > 0) {
 			const m = trimmed.match(/^path:\s*(.+)$/);
 			if (m) {
-				result.push(
-					`${line.substring(0, indent)}path: ${source}/${m[1]}`,
-				);
+				result.push(`${line.substring(0, indent)}path: ${source}/${m[1]}`);
 				continue;
 			}
 		}
@@ -188,9 +189,7 @@ function rewriteYamlSourcePaths(content: string, source: string): string {
 			if (globMatch) {
 				const prefix = line.substring(0, indent);
 				const arrayMarker = globMatch[1] ?? "";
-				result.push(
-					`${prefix}${arrayMarker}glob: ${source}/${globMatch[2]}`,
-				);
+				result.push(`${prefix}${arrayMarker}glob: ${source}/${globMatch[2]}`);
 				continue;
 			}
 		}
@@ -209,8 +208,7 @@ function removeSourceFromJson(content: string, source: string): string {
 		for (const key of Object.keys(config.paths)) {
 			const val = config.paths[key];
 			if (typeof val === "string") {
-				config.paths[key] =
-					val === "" ? source : `${source}/${val}`;
+				config.paths[key] = val === "" ? source : `${source}/${val}`;
 			}
 		}
 	}
@@ -237,7 +235,11 @@ function removeSourceFromJson(content: string, source: string): string {
 
 	if (Array.isArray(config.file_config)) {
 		for (const entry of config.file_config) {
-			if (entry && typeof entry === "object" && typeof entry.glob === "string") {
+			if (
+				entry &&
+				typeof entry === "object" &&
+				typeof entry.glob === "string"
+			) {
 				entry.glob = `${source}/${entry.glob}`;
 			}
 		}
@@ -530,8 +532,12 @@ export function printInstructions(
 
 	console.log("1. Sync paths");
 	console.log("   Set the CLOUDCANNON_SYNC_PATHS environment variable in your");
-	console.log("   CloudCannon site settings so that files generated during the");
-	console.log("   build (base.json + locale files) are synced back to your repo:");
+	console.log(
+		"   CloudCannon site settings so that files generated during the",
+	);
+	console.log(
+		"   build (base.json + locale files) are synced back to your repo:",
+	);
 	console.log(`     CLOUDCANNON_SYNC_PATHS=/${roseyDir}/\n`);
 
 	console.log("2. HTML lang attribute");

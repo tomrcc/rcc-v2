@@ -1,62 +1,62 @@
 {
-  "name": "rosey-cloudcannon-connector",
-  "version": "0.0.1",
-  "description": "Client-side locale switching for Rosey translations in CloudCannon's Visual Editor",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      },
-      "require": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    },
-    "./write-locales": {
-      "import": {
-        "types": "./dist/write-locales.d.mts",
-        "default": "./dist/write-locales.mjs"
-      },
-      "require": {
-        "types": "./dist/write-locales.d.ts",
-        "default": "./dist/write-locales.js"
-      }
-    }
-  },
-  "bin": {
-    "rosey-cloudcannon-connector": "./dist/cli/index.js"
-  },
-  "files": [
-    "dist",
-    "skills"
-  ],
-  "scripts": {
-    "build": "rm -rf dist && tsup",
-    "dev": "tsup --watch",
-    "biome": "biome check --write"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.4.4",
-    "@types/node": "^25.3.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
-  },
-  "license": "MIT",
-  "sideEffects": true,
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/tomrcc/rcc-v2.git"
-  },
-  "keywords": [
-    "rosey",
-    "cloudcannon",
-    "i18n",
-    "localization",
-    "visual-editor",
-    "translations"
-  ]
+	"name": "rosey-cloudcannon-connector",
+	"version": "0.0.1",
+	"description": "Client-side locale switching for Rosey translations in CloudCannon's Visual Editor",
+	"main": "./dist/index.js",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"require": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		},
+		"./write-locales": {
+			"import": {
+				"types": "./dist/write-locales.d.mts",
+				"default": "./dist/write-locales.mjs"
+			},
+			"require": {
+				"types": "./dist/write-locales.d.ts",
+				"default": "./dist/write-locales.js"
+			}
+		}
+	},
+	"bin": {
+		"rosey-cloudcannon-connector": "./dist/cli/index.js"
+	},
+	"files": [
+		"dist",
+		"skills"
+	],
+	"scripts": {
+		"build": "rm -rf dist && tsup",
+		"dev": "tsup --watch",
+		"biome": "biome check --write"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.4",
+		"@types/node": "^25.3.0",
+		"tsup": "^8.0.0",
+		"typescript": "^5.0.0"
+	},
+	"license": "MIT",
+	"sideEffects": true,
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/tomrcc/rcc-v2.git"
+	},
+	"keywords": [
+		"rosey",
+		"cloudcannon",
+		"i18n",
+		"localization",
+		"visual-editor",
+		"translations"
+	]
 }

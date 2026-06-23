@@ -117,7 +117,7 @@ See [AI-Powered Translation](docs/ai-translation.md) for the full guide.
 
 When the source text of an element changes after it was last translated, the connector flags the translation as stale. In the Visual Editor, stale elements get an amber dashed border, and the locale switcher FAB shows a count badge. Clicking a locale button reveals a panel where editors can resolve stale items individually or all at once. Editing a translation auto-resolves its stale flag. See [Stale Translation Detection](docs/stale-translations.md) for details.
 
-Accurate stale detection and element activation depend on each element having a unique, stable Rosey key — see [Tagging Content: Key uniqueness and stability](docs/tagging-content.md#key-uniqueness-and-stability) for guidance on avoiding key collisions in repeating structures. Elements whose key has no entry in the locale file (e.g. newly added content before a build has run) appear at reduced opacity and are non-editable until the next build populates the locale files.
+Accurate stale detection and element activation depend on each element having a unique, stable Rosey key — see [Tagging Content: Key uniqueness and stability](docs/tagging-content.md#key-uniqueness-and-stability) for guidance on avoiding key collisions in repeating structures. Elements whose key has no entry in the locale file yet (e.g. newly added content before a build has run) are still editable — they show the source text as a fallback, and the first edit creates a new locale entry for that key. See [Tagging Content: Elements with no locale entry yet](docs/tagging-content.md#elements-with-no-locale-entry-yet).
 
 ## Already Using an i18n System?
 

@@ -31,11 +31,10 @@ interface TrackedElement {
 	baseOriginal: string | null;
 	localeOriginal: string | null;
 	/**
-	 * Whether the element's Rosey key has an entry in the current locale file.
-	 * Doubles as the enabled/disabled signal: a missing entry means the element
-	 * is dimmed and its onChange is a no-op (so an editor created before the key
-	 * resolved to a missing entry is inert — createTextEditableRegion has no
-	 * destroy()).
+	 * Whether the element's Rosey key already has an entry in the current locale
+	 * file. Both states are editable; this only selects the write path on edit:
+	 * a missing entry creates a full {original, value, _base_original} object on
+	 * first edit, a present entry patches just `.value`.
 	 */
 	hasLocaleEntry: boolean;
 }
@@ -58,7 +57,11 @@ interface CCApi {
 	createTextEditableRegion(
 		element: HTMLElement,
 		onChange: (content?: string | null) => void,
-		options?: { elementType?: string; editableType?: string; inputConfig?: Record<string, unknown> },
+		options?: {
+			elementType?: string;
+			editableType?: string;
+			inputConfig?: Record<string, unknown>;
+		},
 	): Promise<{ setContent: (content?: string | null) => void }>;
 }
 
@@ -81,8 +84,8 @@ let activeFile: CCFile | null = null;
  * Watches the active translation container for [data-rosey] elements that CC
  * adds or re-keys after the initial switch pass (e.g. a newly inserted array
  * item, or an element whose data-rosey-ns is stamped from instance_value:UUID
- * a tick after insertion). Without this, the disable decision would only ever
- * run once during switchLocaleInner and miss those elements.
+ * a tick after insertion). Without this, editor setup would only ever run once
+ * during switchLocaleInner and miss those elements.
  */
 let reconcileObserver: MutationObserver | null = null;
 let reconcileScheduled = false;
@@ -116,7 +119,17 @@ const originalIsSource = new Set<string>();
 // ---------------------------------------------------------------------------
 
 const RTL_LOCALES = new Set([
-	"ar", "he", "fa", "ur", "ps", "sd", "yi", "ku", "ckb", "dv", "ug",
+	"ar",
+	"he",
+	"fa",
+	"ur",
+	"ps",
+	"sd",
+	"yi",
+	"ku",
+	"ckb",
+	"dv",
+	"ug",
 ]);
 
 function isRtlLocale(locale: string): boolean {
@@ -242,12 +255,12 @@ function replaceCustomElements(root: HTMLElement): void {
 				const isBlockType = dataType === "block" || dataType === "text";
 				const hasBlockChildren =
 					el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-				replacementTag =
-					isBlockType || hasBlockChildren ? "div" : "span";
+				replacementTag = isBlockType || hasBlockChildren ? "div" : "span";
 			}
 			const replacement = document.createElement(replacementTag);
 			for (const attr of Array.from(el.attributes)) {
-				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-")) continue;
+				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-"))
+					continue;
 				if (attr.name === "data-editable") continue;
 				replacement.setAttribute(attr.name, attr.value);
 			}
@@ -261,7 +274,10 @@ function replaceCustomElements(root: HTMLElement): void {
 // Element tracking
 // ---------------------------------------------------------------------------
 
-function newTrackedEntry(element: HTMLElement, roseyKey: string): TrackedElement {
+function newTrackedEntry(
+	element: HTMLElement,
+	roseyKey: string,
+): TrackedElement {
 	return {
 		element,
 		roseyKey,
@@ -292,35 +308,17 @@ function trackElements(scope: Element): void {
 }
 
 // ---------------------------------------------------------------------------
-// Missing-entry state (element has no entry in the current locale file)
-// ---------------------------------------------------------------------------
-
-/**
- * Mark an element as having no locale entry: dim it and make it
- * non-interactive. hasLocaleEntry=false also makes any existing editor's
- * onChange a no-op (createTextEditableRegion has no destroy()).
- */
-function applyMissingState(t: TrackedElement): void {
-	t.hasLocaleEntry = false;
-	t.element.style.opacity = "0.45";
-	t.element.style.pointerEvents = "none";
-}
-
-function clearMissingState(t: TrackedElement): void {
-	t.hasLocaleEntry = true;
-	t.element.style.opacity = "";
-	t.element.style.pointerEvents = "";
-}
-
-// ---------------------------------------------------------------------------
 // Input config prescan
 // ---------------------------------------------------------------------------
 
 const CONFIG_TIMEOUT_MS = 200;
 
-async function fetchInputConfig(el: HTMLElement): Promise<Record<string, unknown> | null> {
+async function fetchInputConfig(
+	el: HTMLElement,
+): Promise<Record<string, unknown> | null> {
 	const prop = el.dataset.prop;
-	const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
+	const isEditable =
+		el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
 	if (!prop || !isEditable) return null;
 
 	const configPromise = new Promise<any>((resolve) => {
@@ -357,7 +355,9 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 		}
 	}
 
-	log(`Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`);
+	log(
+		`Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +393,9 @@ function truncateText(text: string, max: number): string {
 function updateStaleList(): void {
 	const panel = document.getElementById("rcc-stale-panel");
 
-	const allSubmenus = document.querySelectorAll<HTMLElement>("[data-rcc-stale-submenu]");
+	const allSubmenus = document.querySelectorAll<HTMLElement>(
+		"[data-rcc-stale-submenu]",
+	);
 	for (const sub of allSubmenus) {
 		if (sub.dataset.rccStaleSubmenu !== currentLocale) {
 			sub.style.display = "none";
@@ -424,7 +426,9 @@ function updateStaleList(): void {
 
 	if (submenu) {
 		submenu.style.display = "flex";
-		const countEl = submenu.querySelector<HTMLElement>("[data-rcc-stale-count]");
+		const countEl = submenu.querySelector<HTMLElement>(
+			"[data-rcc-stale-count]",
+		);
 		if (countEl) countEl.textContent = `${staleItems.length} out of date`;
 	}
 
@@ -450,8 +454,12 @@ function updateStaleList(): void {
 			borderRadius: "4px",
 			transition: "background 0.15s",
 		});
-		row.addEventListener("mouseenter", () => { row.style.background = "#fef3c7"; });
-		row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
+		row.addEventListener("mouseenter", () => {
+			row.style.background = "#fef3c7";
+		});
+		row.addEventListener("mouseleave", () => {
+			row.style.background = "transparent";
+		});
 
 		const scrollBtn = document.createElement("button");
 		Object.assign(scrollBtn.style, {
@@ -501,10 +509,15 @@ function updateStaleList(): void {
 			transition: "color 0.15s",
 			flexShrink: "0",
 		});
-		resolveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+		resolveBtn.innerHTML =
+			'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
 		resolveBtn.title = "Mark as reviewed";
-		resolveBtn.addEventListener("mouseenter", () => { resolveBtn.style.color = STALE_AMBER; });
-		resolveBtn.addEventListener("mouseleave", () => { resolveBtn.style.color = "#d1d5db"; });
+		resolveBtn.addEventListener("mouseenter", () => {
+			resolveBtn.style.color = STALE_AMBER;
+		});
+		resolveBtn.addEventListener("mouseleave", () => {
+			resolveBtn.style.color = "#d1d5db";
+		});
 		resolveBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (activeFile) resolveStale(t, activeFile);
@@ -515,8 +528,11 @@ function updateStaleList(): void {
 		list.appendChild(row);
 	}
 
-	const resolveAllBtn = panel.querySelector<HTMLElement>("[data-rcc-resolve-all]");
-	if (resolveAllBtn) resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
+	const resolveAllBtn = panel.querySelector<HTMLElement>(
+		"[data-rcc-resolve-all]",
+	);
+	if (resolveAllBtn)
+		resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
 }
 
 function markStaleElement(t: TrackedElement): void {
@@ -550,7 +566,9 @@ let originalBookshopUpdate: ((...args: any[]) => Promise<boolean>) | null =
 function pauseBookshop(): void {
 	const bsl = (window as any).bookshopLive;
 	if (!bsl) {
-		log("pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)");
+		log(
+			"pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)",
+		);
 		return;
 	}
 	if (typeof bsl.update !== "function") {
@@ -649,7 +667,9 @@ function stripCmsBindForRerender(container: HTMLElement): void {
 	const bound = container.querySelectorAll("[data-cms-bind]");
 	for (const el of bound) el.removeAttribute("data-cms-bind");
 	if (bound.length) {
-		log(`Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`);
+		log(
+			`Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`,
+		);
 	}
 	forceBookshopRerender();
 }
@@ -662,27 +682,41 @@ function forceBookshopRerender(): void {
 		if (typeof cc?.refreshInterface === "function") {
 			requestAnimationFrame(() => {
 				cc.refreshInterface();
-				log("Called deferred CloudCannon.refreshInterface() (non-Bookshop site)");
+				log(
+					"Called deferred CloudCannon.refreshInterface() (non-Bookshop site)",
+				);
 			});
 		}
 		return;
 	}
 
-	if (typeof cc?.value !== "function" || typeof cc?.refreshInterface !== "function") {
-		log("forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update");
+	if (
+		typeof cc?.value !== "function" ||
+		typeof cc?.refreshInterface !== "function"
+	) {
+		log(
+			"forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update",
+		);
 		return;
 	}
 
 	setTimeout(async () => {
 		try {
-			const data = await cc.value({ keepMarkdownAsHTML: false, preferBlobs: true });
+			const data = await cc.value({
+				keepMarkdownAsHTML: false,
+				preferBlobs: true,
+			});
 			const options = (window as any).bookshopLiveOptions || {};
 			const rendered = await bsl.update(data, options);
 			if (rendered) {
 				cc.refreshInterface();
-				log("Forced Bookshop re-render + refreshInterface() to restore component panels");
+				log(
+					"Forced Bookshop re-render + refreshInterface() to restore component panels",
+				);
 			} else {
-				log("Bookshop re-render was throttled, panels will restore on next update");
+				log(
+					"Bookshop re-render was throttled, panels will restore on next update",
+				);
 			}
 		} catch (e) {
 			warn("Failed to force Bookshop re-render:", e);
@@ -755,8 +789,10 @@ async function switchLocaleInner(
 	}
 
 	originalContainer = container;
-	log(`switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ` +
-		`${container.children.length} child element(s)`);
+	log(
+		`switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ` +
+			`${container.children.length} child element(s)`,
+	);
 
 	const clone = container.cloneNode(true) as HTMLElement;
 	cleanClone(clone);
@@ -803,9 +839,7 @@ async function switchLocaleInner(
 	// instead of trickling in one-by-one during sequential editor creation.
 
 	const dataResults = await Promise.all(
-		tracked.map((t) =>
-			file.data.get({ slug: t.roseyKey }).catch(() => null),
-		),
+		tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null)),
 	);
 
 	if (myGeneration !== switchGeneration) {
@@ -821,19 +855,16 @@ async function switchLocaleInner(
 		const value = data?.value ?? data?.original ?? t.originalContent;
 		resolvedValues[i] = value;
 
-		const isStale = t.hasLocaleEntry
-			&& data?._base_original != null
-			&& data?.original != null
-			&& data._base_original !== data.original;
+		const isStale =
+			t.hasLocaleEntry &&
+			data?._base_original != null &&
+			data?.original != null &&
+			data._base_original !== data.original;
 		t.stale = isStale;
 		t.baseOriginal = data?._base_original ?? null;
 		t.localeOriginal = data?.original ?? null;
 
 		t.element.innerHTML = value;
-
-		if (!t.hasLocaleEntry) {
-			applyMissingState(t);
-		}
 
 		if (isStale) {
 			markStaleElement(t);
@@ -842,10 +873,16 @@ async function switchLocaleInner(
 	}
 	updateStaleBadge();
 	updateStaleList();
-	const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
-	log(`Data loaded — ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`);
+	const missingKeys = tracked
+		.filter((t) => !t.hasLocaleEntry)
+		.map((t) => t.roseyKey);
+	log(
+		`Data loaded — ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`,
+	);
 	if (missingKeys.length > 0) {
-		log(`Missing-entry keys (disabled, no editor): ${missingKeys.join(", ")}`);
+		log(
+			`Missing-entry keys (editable, new entry written on first edit): ${missingKeys.join(", ")}`,
+		);
 	}
 
 	// --- Phase 2: Sequential editor creation --------------------------------
@@ -853,7 +890,10 @@ async function switchLocaleInner(
 	// setupEditor is reused by the reconcile pass below, so an element CC adds
 	// or re-keys after this initial pass gets wired up the same way.
 
-	const setupEditor = async (t: TrackedElement, value: string): Promise<boolean> => {
+	const setupEditor = async (
+		t: TrackedElement,
+		value: string,
+	): Promise<boolean> => {
 		try {
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
@@ -871,8 +911,30 @@ async function switchLocaleInner(
 				(content) => {
 					if (myGeneration !== switchGeneration) return;
 					if (!setupComplete || applying) return;
-					if (!t.hasLocaleEntry) return;
 					if (content == null) return;
+
+					// No entry in the locale file yet — create a full one. We have
+					// everything needed: the resolved Rosey key, the original text
+					// captured from the page, and the typed translation. Seeding
+					// _base_original with the original makes stale detection work from
+					// this first save (it flips the moment the source text later
+					// changes), before write-locales has ever run for this key.
+					if (!t.hasLocaleEntry) {
+						log(`[${t.roseyKey}] onChange → creating new locale entry`);
+						file.data.set({
+							slug: t.roseyKey,
+							value: {
+								original: t.originalContent,
+								value: content,
+								_base_original: t.originalContent,
+							},
+						});
+						t.hasLocaleEntry = true;
+						t.baseOriginal = t.originalContent;
+						t.localeOriginal = t.originalContent;
+						return;
+					}
+
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
 					if (t.stale && t.baseOriginal) {
@@ -889,8 +951,12 @@ async function switchLocaleInner(
 			editor.setContent(value);
 			applying = false;
 
-			t.element.addEventListener("focus", () => { t.focused = true; });
-			t.element.addEventListener("blur", () => { t.focused = false; });
+			t.element.addEventListener("focus", () => {
+				t.focused = true;
+			});
+			t.element.addEventListener("blur", () => {
+				t.focused = false;
+			});
 			return true;
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
@@ -905,7 +971,6 @@ async function switchLocaleInner(
 			log(`Generation changed, aborting "${locale}" editor setup`);
 			return;
 		}
-		if (!t.hasLocaleEntry) continue;
 		if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
 	}
 	log(`Created ${editorsCreated} editors`);
@@ -927,7 +992,6 @@ async function switchLocaleInner(
 		let updated = 0;
 		let skipped = 0;
 		for (const t of tracked) {
-			if (!t.hasLocaleEntry) continue;
 			if (!t.editor) continue;
 			if (t.focused) {
 				skipped++;
@@ -935,6 +999,7 @@ async function switchLocaleInner(
 			}
 			try {
 				const data = await freshFile.data.get({ slug: t.roseyKey });
+				t.hasLocaleEntry = data != null;
 				const value = data?.value ?? data?.original ?? t.originalContent;
 				t.editor.setContent(value);
 				updated++;
@@ -942,16 +1007,19 @@ async function switchLocaleInner(
 				/* key may not exist in this locale yet */
 			}
 		}
-		log(`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`);
+		log(
+			`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`,
+		);
 	};
 	dataset.addEventListener("change", activeDatasetListener);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (a new array item) or stamp its
 	// data-rosey-ns from instance_value:UUID a tick after the switch pass. The
-	// initial gate above runs once, so re-run it on DOM changes: disable
-	// elements whose (possibly newly-stamped) key has no locale entry, and wire
-	// editors for elements that turn out to have one.
+	// initial gate above runs once, so re-run it on DOM changes: wire an editor
+	// for any element that doesn't have one yet, whether or not its
+	// (possibly newly-stamped) key already has a locale entry — the editor's
+	// onChange creates the entry on first edit.
 
 	const reconcileElement = async (el: HTMLElement): Promise<void> => {
 		if (myGeneration !== switchGeneration) return;
@@ -959,8 +1027,9 @@ async function switchLocaleInner(
 		if (!key) return;
 
 		let t = tracked.find((x) => x.element === el);
-		// Already settled and unchanged — nothing to do.
-		if (t && t.roseyKey === key && t.editor && t.hasLocaleEntry) return;
+		// Already wired and unchanged — nothing to do. An element with an editor
+		// is fully set up regardless of whether its key has a locale entry yet.
+		if (t && t.roseyKey === key && t.editor) return;
 
 		if (!t) {
 			t = newTrackedEntry(el, key);
@@ -972,16 +1041,12 @@ async function switchLocaleInner(
 		const data = await file.data.get({ slug: key }).catch(() => null);
 		if (myGeneration !== switchGeneration) return;
 
-		if (data == null) {
-			if (t.hasLocaleEntry) log(`reconcile: "${key}" has no locale entry → disabling`);
-			applyMissingState(t);
-			return;
-		}
-
-		if (!t.hasLocaleEntry) clearMissingState(t);
+		t.hasLocaleEntry = data != null;
 		if (!t.editor) {
-			log(`reconcile: "${key}" now present → creating editor`);
-			await setupEditor(t, data.value ?? data.original ?? t.originalContent);
+			log(
+				`reconcile: wiring editor for "${key}"${data == null ? " (no entry yet — created on first edit)" : ""}`,
+			);
+			await setupEditor(t, data?.value ?? data?.original ?? t.originalContent);
 		}
 	};
 
@@ -1172,7 +1237,10 @@ function injectSwitcher(locales: string[]): void {
 	header.textContent = "Locale";
 	popover.appendChild(header);
 
-	function makeLocaleButton(label: string, locale: string | null): HTMLButtonElement {
+	function makeLocaleButton(
+		label: string,
+		locale: string | null,
+	): HTMLButtonElement {
 		const btn = document.createElement("button");
 		btn.textContent = label;
 		btn.dataset.locale = locale ?? "";
@@ -1241,7 +1309,8 @@ function injectSwitcher(locales: string[]): void {
 			fontSize: "10px",
 			lineHeight: "1",
 		});
-		chevron.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+		chevron.innerHTML =
+			'<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
 
 		const countLabel = document.createElement("span");
 		countLabel.dataset.rccStaleCount = "";
@@ -1254,7 +1323,9 @@ function injectSwitcher(locales: string[]): void {
 
 		submenu.appendChild(chevron);
 		submenu.appendChild(countLabel);
-		submenu.addEventListener("click", () => { toggleStalePanel(); });
+		submenu.addEventListener("click", () => {
+			toggleStalePanel();
+		});
 
 		wrapper.appendChild(submenu);
 		popover.appendChild(wrapper);
@@ -1322,8 +1393,12 @@ function injectSwitcher(locales: string[]): void {
 		fontFamily: "system-ui, sans-serif",
 	});
 	resolveAllBtn.textContent = "Resolve all";
-	resolveAllBtn.addEventListener("mouseenter", () => { resolveAllBtn.style.background = "#d97706"; });
-	resolveAllBtn.addEventListener("mouseleave", () => { resolveAllBtn.style.background = STALE_AMBER; });
+	resolveAllBtn.addEventListener("mouseenter", () => {
+		resolveAllBtn.style.background = "#d97706";
+	});
+	resolveAllBtn.addEventListener("mouseleave", () => {
+		resolveAllBtn.style.background = STALE_AMBER;
+	});
 	resolveAllBtn.addEventListener("click", () => {
 		const stale = tracked.filter((t) => t.stale);
 		for (const t of stale) {
@@ -1393,7 +1468,10 @@ function injectSwitcher(locales: string[]): void {
 
 	function saveFabPosition() {
 		const r = fab.getBoundingClientRect();
-		localStorage.setItem(FAB_STORAGE_KEY, JSON.stringify({ top: r.top, left: r.left }));
+		localStorage.setItem(
+			FAB_STORAGE_KEY,
+			JSON.stringify({ top: r.top, left: r.left }),
+		);
 	}
 
 	fab.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -1406,7 +1484,8 @@ function injectSwitcher(locales: string[]): void {
 		fabStartY = r.top;
 		fab.setPointerCapture(e.pointerId);
 		fab.style.cursor = "grabbing";
-		fab.style.boxShadow = "0 4px 20px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.12)";
+		fab.style.boxShadow =
+			"0 4px 20px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.12)";
 	});
 
 	fab.addEventListener("pointermove", (e: PointerEvent) => {
@@ -1432,7 +1511,8 @@ function injectSwitcher(locales: string[]): void {
 		if (!isDragging) return;
 		isDragging = false;
 		fab.style.cursor = "grab";
-		fab.style.boxShadow = "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)";
+		fab.style.boxShadow =
+			"0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)";
 
 		if (hasDragged) {
 			saveFabPosition();
@@ -1471,13 +1551,15 @@ function injectSwitcher(locales: string[]): void {
 		const vh = window.innerHeight;
 		const gap = 8;
 
-		let top = fabRect.top - gap - popRect.height > 0
-			? fabRect.top - gap - popRect.height
-			: fabRect.bottom + gap;
+		let top =
+			fabRect.top - gap - popRect.height > 0
+				? fabRect.top - gap - popRect.height
+				: fabRect.bottom + gap;
 
-		let left = fabRect.right - popRect.width > 0
-			? fabRect.right - popRect.width
-			: fabRect.left;
+		let left =
+			fabRect.right - popRect.width > 0
+				? fabRect.right - popRect.width
+				: fabRect.left;
 
 		top = Math.max(4, Math.min(top, vh - popRect.height - 4));
 		left = Math.max(4, Math.min(left, vw - popRect.width - 4));
@@ -1507,7 +1589,12 @@ function injectSwitcher(locales: string[]): void {
 	document.addEventListener("pointerdown", (e: PointerEvent) => {
 		if (!popoverOpen) return;
 		const target = e.target as Node;
-		if (fab.contains(target) || popover.contains(target) || stalePanel.contains(target)) return;
+		if (
+			fab.contains(target) ||
+			popover.contains(target) ||
+			stalePanel.contains(target)
+		)
+			return;
 		closePopover();
 	});
 

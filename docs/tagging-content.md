@@ -97,7 +97,7 @@ All three are valid — the connector and Rosey use whatever keys the HTML provi
 Each Rosey key maps to exactly one entry in the locale file. The connector relies on this 1:1 mapping for two things:
 
 - **[Stale detection](stale-translations.md)** — compares `original` vs `_base_original` per key. If two elements share a key, a source-text change on either one flags both as stale.
-- **Disabled elements** — elements whose resolved key has no entry in the locale file appear grayed out and non-editable. This signals that `write-locales` needs to run before the element can be translated.
+- **Translation continuity** — when a key has no entry yet, editing the element creates a new entry at that key (see [Elements with no locale entry yet](#elements-with-no-locale-entry-yet)). If keys shift between builds, existing translations get stranded on the old keys and fresh, empty entries appear under the new ones.
 
 Both behaviours break when keys collide or shift unexpectedly.
 
@@ -115,8 +115,8 @@ Both behaviours break when keys collide or shift unexpectedly.
 If a new card is inserted between the two, every key after the insertion point shifts by one. The locale file still has entries for the old indexes, so:
 
 - Elements after the insertion map to the wrong locale entry — showing the wrong translation and potentially false stale flags
-- The newly inserted element has no matching locale entry and appears disabled
-- The last element in the original list loses its match and also appears disabled
+- The newly inserted element has no matching locale entry, so editing it creates a fresh entry under the shifted key instead of reusing an existing translation
+- The last element in the original list loses its match and is treated as a new, untranslated entry
 
 **Recommended: use stable identifiers.** Instead of indexes, derive namespace segments from something that won't change when items are reordered — a slug, a short descriptive name, or a UUID from your CMS data:
 
@@ -133,15 +133,15 @@ Now inserting a card between them doesn't affect existing keys — the new card 
 
 > **Note:** Key design is ultimately a decision for the site author. The connector and Rosey use whatever keys the HTML provides — they don't enforce a naming strategy. Choose an approach that keeps keys unique and stable across content changes.
 
-### Disabled elements (no locale entry)
+### Elements with no locale entry yet
 
-When switching to a locale in the Visual Editor, any `[data-rosey]` element whose resolved key has no matching entry in the locale file is rendered at reduced opacity and is non-interactive — no inline editor is created, and you can't click or type in it. The element is still visible so the page layout stays intact, but it is effectively read-only.
+When switching to a locale in the Visual Editor, a `[data-rosey]` element whose resolved key has no matching entry in the locale file is still fully editable. It displays the source text as a fallback, and the **first edit creates a new entry** in the locale file for that key. The connector writes `{ original, value, _base_original }`, where `original` and `_base_original` are seeded from the source text on the page and `value` is what you type. No build is required first.
 
-**Why it happens.** The most common cause is adding a new translatable element to your source and opening the Visual Editor before a build has run. The locale files are generated at build time by `write-locales`, which reads Rosey's `base.json`. Until a build runs, the new key doesn't exist in the locale files and the connector has nothing to connect it to.
+This means you can translate newly added content directly in the Visual Editor before `write-locales` has run for it. [Stale detection](stale-translations.md) also works immediately: because `_base_original` is seeded from the current source text, the entry flips to stale the moment the source text later changes (the next `write-locales` run updates `_base_original`, creating the mismatch with `original`).
 
-This also occurs when [index-based keys shift](#key-uniqueness-and-stability) — displaced elements lose their match and appear disabled even though they had translations before the reorder.
+The entry the connector writes is the same shape `write-locales` produces, so a later build reconciles cleanly — existing keys keep their `original` and `value`, and only get `_base_original` refreshed.
 
-**How to fix it.** Trigger a build (or run `write-locales` locally) so the new key is added to every locale file. After that, the element becomes editable in the next Visual Editor session.
+**A note on key stability.** Because a missing key is now created silently on edit rather than flagged, an unstable key (see [Key uniqueness and stability](#key-uniqueness-and-stability)) no longer surfaces as an obvious "this element is disabled" signal — a shifted key just produces a new entry. Keep keys stable so edits land on the intended entry rather than scattering translations across orphaned keys.
 
 ### Works with CloudCannon editable regions
 

@@ -152,7 +152,9 @@ export async function run(argv: string[]): Promise<void> {
 		console.log(`  Build dir: ${answers.buildDir}`);
 		console.log(`  Rosey dir: ${answers.roseyDir}`);
 		if (ctx.ccSource) console.log(`  CC source: ${ctx.ccSource}`);
-		console.log(`  Write-locales: ${answers.useBuiltinWriteLocales ? "built-in" : "custom"}`);
+		console.log(
+			`  Write-locales: ${answers.useBuiltinWriteLocales ? "built-in" : "custom"}`,
+		);
 		console.log(`  Content at root: ${answers.contentAtRoot}`);
 		console.log(`  Expose as collection: ${answers.exposeAsCollection}`);
 		console.log("");
@@ -199,7 +201,8 @@ export async function run(argv: string[]): Promise<void> {
 						value: "builtin",
 					},
 					{
-						label: "Write my own script (e.g. for external translation services)",
+						label:
+							"Write my own script (e.g. for external translation services)",
 						value: "custom",
 					},
 				],
@@ -307,8 +310,14 @@ export async function run(argv: string[]): Promise<void> {
 }
 
 function buildPostbuildPreview(answers: WizardAnswers): string {
-	const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } =
-		answers;
+	const {
+		buildDir,
+		roseyDir,
+		locales,
+		useBuiltinWriteLocales,
+		contentAtRoot,
+		defaultLanguage,
+	} = answers;
 	const langFlag = ` --default-language ${defaultLanguage}`;
 	const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
 

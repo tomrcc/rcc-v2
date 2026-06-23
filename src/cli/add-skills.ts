@@ -57,7 +57,9 @@ export function run(argv: string[]): void {
 		const target = join(dest, relPath);
 
 		if (existsSync(target) && !force) {
-			console.log(`  skip  ${relPath} (already exists, use --force to overwrite)`);
+			console.log(
+				`  skip  ${relPath} (already exists, use --force to overwrite)`,
+			);
 			skipped++;
 			continue;
 		}

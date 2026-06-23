@@ -91,7 +91,6 @@ async function readCCConfig() {
       const raw = await fs.promises.readFile(p, "utf-8");
       return { raw, path: p };
     } catch {
-      continue;
     }
   }
   return null;
@@ -109,10 +108,8 @@ async function validateDataConfig(locales) {
   if (missing.length > 0) {
     console.warn(
       `RCC: Missing data_config entries in ${config.path}. Add:
-` + missing.map(
-        (l) => `  locales_${l}:
-    path: rosey/locales/${l}.json`
-      ).join("\n")
+` + missing.map((l) => `  locales_${l}:
+    path: rosey/locales/${l}.json`).join("\n")
     );
   }
 }

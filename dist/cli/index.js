@@ -69,7 +69,9 @@ function run(argv) {
     const src = (0, import_path.join)(SKILLS_SOURCE, relPath);
     const target = (0, import_path.join)(dest, relPath);
     if ((0, import_fs.existsSync)(target) && !force) {
-      console.log(`  skip  ${relPath} (already exists, use --force to overwrite)`);
+      console.log(
+        `  skip  ${relPath} (already exists, use --force to overwrite)`
+      );
       skipped++;
       continue;
     }
@@ -128,7 +130,14 @@ Installing ${pkgs.join(", ")}...`);
   }
 }
 function buildPostbuildBlock(answers) {
-  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } = answers;
+  const {
+    buildDir,
+    roseyDir,
+    locales,
+    useBuiltinWriteLocales,
+    contentAtRoot,
+    defaultLanguage
+  } = answers;
   const langFlag = `--default-language ${defaultLanguage}`;
   const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
   const lines = [];
@@ -231,9 +240,7 @@ function rewriteYamlSourcePaths(content, source) {
       if (!inSchemas) {
         const m = trimmed.match(/^path:\s*(.+)$/);
         if (m) {
-          result.push(
-            `${line.substring(0, indent)}path: ${source}/${m[1]}`
-          );
+          result.push(`${line.substring(0, indent)}path: ${source}/${m[1]}`);
           continue;
         }
       }
@@ -241,9 +248,7 @@ function rewriteYamlSourcePaths(content, source) {
     if (currentTopBlock === "data_config" && indent > 0) {
       const m = trimmed.match(/^path:\s*(.+)$/);
       if (m) {
-        result.push(
-          `${line.substring(0, indent)}path: ${source}/${m[1]}`
-        );
+        result.push(`${line.substring(0, indent)}path: ${source}/${m[1]}`);
         continue;
       }
     }
@@ -252,9 +257,7 @@ function rewriteYamlSourcePaths(content, source) {
       if (globMatch) {
         const prefix = line.substring(0, indent);
         const arrayMarker = globMatch[1] ?? "";
-        result.push(
-          `${prefix}${arrayMarker}glob: ${source}/${globMatch[2]}`
-        );
+        result.push(`${prefix}${arrayMarker}glob: ${source}/${globMatch[2]}`);
         continue;
       }
     }
@@ -524,8 +527,12 @@ function printInstructions(answers, options) {
   console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n");
   console.log("1. Sync paths");
   console.log("   Set the CLOUDCANNON_SYNC_PATHS environment variable in your");
-  console.log("   CloudCannon site settings so that files generated during the");
-  console.log("   build (base.json + locale files) are synced back to your repo:");
+  console.log(
+    "   CloudCannon site settings so that files generated during the"
+  );
+  console.log(
+    "   build (base.json + locale files) are synced back to your repo:"
+  );
   console.log(`     CLOUDCANNON_SYNC_PATHS=/${roseyDir}/
 `);
   console.log("2. HTML lang attribute");
@@ -810,7 +817,9 @@ async function run2(argv) {
     console.log(`  Build dir: ${answers2.buildDir}`);
     console.log(`  Rosey dir: ${answers2.roseyDir}`);
     if (ctx.ccSource) console.log(`  CC source: ${ctx.ccSource}`);
-    console.log(`  Write-locales: ${answers2.useBuiltinWriteLocales ? "built-in" : "custom"}`);
+    console.log(
+      `  Write-locales: ${answers2.useBuiltinWriteLocales ? "built-in" : "custom"}`
+    );
     console.log(`  Content at root: ${answers2.contentAtRoot}`);
     console.log(`  Expose as collection: ${answers2.exposeAsCollection}`);
     console.log("");
@@ -935,7 +944,14 @@ async function run2(argv) {
   printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
 }
 function buildPostbuildPreview(answers) {
-  const { buildDir, roseyDir, locales, useBuiltinWriteLocales, contentAtRoot, defaultLanguage } = answers;
+  const {
+    buildDir,
+    roseyDir,
+    locales,
+    useBuiltinWriteLocales,
+    contentAtRoot,
+    defaultLanguage
+  } = answers;
   const langFlag = ` --default-language ${defaultLanguage}`;
   const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
   const lines = ["# Rosey"];
@@ -1048,7 +1064,6 @@ async function readCCConfig() {
       const raw = await import_node_fs3.default.promises.readFile(p, "utf-8");
       return { raw, path: p };
     } catch {
-      continue;
     }
   }
   return null;
@@ -1066,10 +1081,8 @@ async function validateDataConfig(locales) {
   if (missing.length > 0) {
     console.warn(
       `RCC: Missing data_config entries in ${config.path}. Add:
-` + missing.map(
-        (l) => `  locales_${l}:
-    path: rosey/locales/${l}.json`
-      ).join("\n")
+` + missing.map((l) => `  locales_${l}:
+    path: rosey/locales/${l}.json`).join("\n")
     );
   }
 }

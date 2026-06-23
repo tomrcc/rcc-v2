@@ -37,7 +37,7 @@ See [Migrating from v1](docs/migration-from-v1.md) for a step-by-step upgrade gu
 - **Bookshop compatibility** — automatically strips Bookshop live-editing comments from the locale clone, pauses Bookshop's update cycle during locale view, and recovers `data-cms-bind` overlays on restore.
 - **Editable regions compatibility** — prescans input config from existing CC editable regions and inherits toolbar settings for translation editors.
 - **Zero runtime dependencies** — no npm dependencies at runtime; devDependencies only.
-- **Missing-entry handling** — elements with no locale entry (e.g. added after the last build) render at reduced opacity and are non-editable until the next `write-locales` run populates the locale files.
+- **Missing-entry handling** — elements with no locale entry yet (e.g. added after the last build) stay editable, showing the source text as a fallback. The first edit writes a new `{ original, value, _base_original }` entry for that key, seeding `_base_original` from the source so stale detection works without waiting for a build.
 - **Comprehensive documentation** — getting started, tagging content, configuration, stale translations, split-by-directory, AI translation, incremental translation, known issues, and migration from v1.
 
 ### Removed
