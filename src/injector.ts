@@ -30,14 +30,14 @@ interface TrackedElement {
 	stale: boolean;
 	baseOriginal: string | null;
 	localeOriginal: string | null;
-	hasLocaleEntry: boolean;
 	/**
-	 * True when the element's Rosey key has no entry in the current locale file.
-	 * Set by applyMissingState; checked in the editor onChange to inert any
-	 * editor that was created before the element's key resolved to a missing
-	 * entry (createTextEditableRegion has no destroy()).
+	 * Whether the element's Rosey key has an entry in the current locale file.
+	 * Doubles as the enabled/disabled signal: a missing entry means the element
+	 * is dimmed and its onChange is a no-op (so an editor created before the key
+	 * resolved to a missing entry is inert — createTextEditableRegion has no
+	 * destroy()).
 	 */
-	disabled: boolean;
+	hasLocaleEntry: boolean;
 }
 
 interface CCFile {
@@ -261,6 +261,23 @@ function replaceCustomElements(root: HTMLElement): void {
 // Element tracking
 // ---------------------------------------------------------------------------
 
+function newTrackedEntry(element: HTMLElement, roseyKey: string): TrackedElement {
+	return {
+		element,
+		roseyKey,
+		originalContent: element.innerHTML,
+		inferredType:
+			element.dataset.type === "block" || element.dataset.type === "text"
+				? "block"
+				: inferElementType(element),
+		focused: false,
+		stale: false,
+		baseOriginal: null,
+		localeOriginal: null,
+		hasLocaleEntry: false,
+	};
+}
+
 function trackElements(scope: Element): void {
 	tracked.length = 0;
 	const elements = scope.querySelectorAll<HTMLElement>(
@@ -269,20 +286,7 @@ function trackElements(scope: Element): void {
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
-		tracked.push({
-			element: el,
-			roseyKey,
-			originalContent: el.innerHTML,
-			inferredType: el.dataset.type === "block" || el.dataset.type === "text"
-				? "block"
-				: inferElementType(el),
-			focused: false,
-			stale: false,
-			baseOriginal: null,
-			localeOriginal: null,
-			hasLocaleEntry: false,
-			disabled: false,
-		});
+		tracked.push(newTrackedEntry(el, roseyKey));
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
 }
@@ -292,21 +296,18 @@ function trackElements(scope: Element): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Mark an element as having no locale entry: dim it, make it non-interactive,
- * and set the disabled flag so any editor created for it before its key
- * resolved to a missing entry becomes a no-op (createTextEditableRegion has
- * no destroy()).
+ * Mark an element as having no locale entry: dim it and make it
+ * non-interactive. hasLocaleEntry=false also makes any existing editor's
+ * onChange a no-op (createTextEditableRegion has no destroy()).
  */
 function applyMissingState(t: TrackedElement): void {
 	t.hasLocaleEntry = false;
-	t.disabled = true;
 	t.element.style.opacity = "0.45";
 	t.element.style.pointerEvents = "none";
 }
 
 function clearMissingState(t: TrackedElement): void {
 	t.hasLocaleEntry = true;
-	t.disabled = false;
 	t.element.style.opacity = "";
 	t.element.style.pointerEvents = "";
 }
@@ -853,10 +854,6 @@ async function switchLocaleInner(
 	// or re-keys after this initial pass gets wired up the same way.
 
 	const setupEditor = async (t: TrackedElement, value: string): Promise<boolean> => {
-		if (t.editor) {
-			t.editor.setContent(value);
-			return true;
-		}
 		try {
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
@@ -874,7 +871,7 @@ async function switchLocaleInner(
 				(content) => {
 					if (myGeneration !== switchGeneration) return;
 					if (!setupComplete || applying) return;
-					if (t.disabled) return;
+					if (!t.hasLocaleEntry) return;
 					if (content == null) return;
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
@@ -963,24 +960,10 @@ async function switchLocaleInner(
 
 		let t = tracked.find((x) => x.element === el);
 		// Already settled and unchanged — nothing to do.
-		if (t && t.roseyKey === key && t.editor && !t.disabled) return;
+		if (t && t.roseyKey === key && t.editor && t.hasLocaleEntry) return;
 
 		if (!t) {
-			t = {
-				element: el,
-				roseyKey: key,
-				originalContent: el.innerHTML,
-				inferredType:
-					el.dataset.type === "block" || el.dataset.type === "text"
-						? "block"
-						: inferElementType(el),
-				focused: false,
-				stale: false,
-				baseOriginal: null,
-				localeOriginal: null,
-				hasLocaleEntry: false,
-				disabled: false,
-			};
+			t = newTrackedEntry(el, key);
 			tracked.push(t);
 		} else {
 			t.roseyKey = key;
@@ -990,12 +973,12 @@ async function switchLocaleInner(
 		if (myGeneration !== switchGeneration) return;
 
 		if (data == null) {
-			if (!t.disabled) log(`reconcile: "${key}" has no locale entry → disabling`);
+			if (t.hasLocaleEntry) log(`reconcile: "${key}" has no locale entry → disabling`);
 			applyMissingState(t);
 			return;
 		}
 
-		if (t.disabled || !t.hasLocaleEntry) clearMissingState(t);
+		if (!t.hasLocaleEntry) clearMissingState(t);
 		if (!t.editor) {
 			log(`reconcile: "${key}" now present → creating editor`);
 			await setupEditor(t, data.value ?? data.original ?? t.originalContent);

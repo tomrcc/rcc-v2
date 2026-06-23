@@ -142,6 +142,19 @@ function replaceCustomElements(root) {
     }
   }
 }
+function newTrackedEntry(element, roseyKey) {
+  return {
+    element,
+    roseyKey,
+    originalContent: element.innerHTML,
+    inferredType: element.dataset.type === "block" || element.dataset.type === "text" ? "block" : inferElementType(element),
+    focused: false,
+    stale: false,
+    baseOriginal: null,
+    localeOriginal: null,
+    hasLocaleEntry: false
+  };
+}
 function trackElements(scope) {
   tracked.length = 0;
   const elements = scope.querySelectorAll(
@@ -150,30 +163,17 @@ function trackElements(scope) {
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
-    tracked.push({
-      element: el,
-      roseyKey,
-      originalContent: el.innerHTML,
-      inferredType: el.dataset.type === "block" || el.dataset.type === "text" ? "block" : inferElementType(el),
-      focused: false,
-      stale: false,
-      baseOriginal: null,
-      localeOriginal: null,
-      hasLocaleEntry: false,
-      disabled: false
-    });
+    tracked.push(newTrackedEntry(el, roseyKey));
   }
   log(`Tracked ${tracked.length} translatable elements`);
 }
 function applyMissingState(t) {
   t.hasLocaleEntry = false;
-  t.disabled = true;
   t.element.style.opacity = "0.45";
   t.element.style.pointerEvents = "none";
 }
 function clearMissingState(t) {
   t.hasLocaleEntry = true;
-  t.disabled = false;
   t.element.style.opacity = "";
   t.element.style.pointerEvents = "";
 }
@@ -587,10 +587,6 @@ async function switchLocaleInner(locale, myGeneration) {
     log(`Missing-entry keys (disabled, no editor): ${missingKeys.join(", ")}`);
   }
   const setupEditor = async (t, value) => {
-    if (t.editor) {
-      t.editor.setContent(value);
-      return true;
-    }
     try {
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
@@ -601,7 +597,7 @@ async function switchLocaleInner(locale, myGeneration) {
         (content) => {
           if (myGeneration !== switchGeneration) return;
           if (!setupComplete || applying) return;
-          if (t.disabled) return;
+          if (!t.hasLocaleEntry) return;
           if (content == null) return;
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
@@ -675,20 +671,9 @@ async function switchLocaleInner(locale, myGeneration) {
     const key = resolveRoseyKey(el);
     if (!key) return;
     let t = tracked.find((x) => x.element === el);
-    if (t && t.roseyKey === key && t.editor && !t.disabled) return;
+    if (t && t.roseyKey === key && t.editor && t.hasLocaleEntry) return;
     if (!t) {
-      t = {
-        element: el,
-        roseyKey: key,
-        originalContent: el.innerHTML,
-        inferredType: el.dataset.type === "block" || el.dataset.type === "text" ? "block" : inferElementType(el),
-        focused: false,
-        stale: false,
-        baseOriginal: null,
-        localeOriginal: null,
-        hasLocaleEntry: false,
-        disabled: false
-      };
+      t = newTrackedEntry(el, key);
       tracked.push(t);
     } else {
       t.roseyKey = key;
@@ -696,11 +681,11 @@ async function switchLocaleInner(locale, myGeneration) {
     const data = await file.data.get({ slug: key }).catch(() => null);
     if (myGeneration !== switchGeneration) return;
     if (data == null) {
-      if (!t.disabled) log(`reconcile: "${key}" has no locale entry \u2192 disabling`);
+      if (t.hasLocaleEntry) log(`reconcile: "${key}" has no locale entry \u2192 disabling`);
       applyMissingState(t);
       return;
     }
-    if (t.disabled || !t.hasLocaleEntry) clearMissingState(t);
+    if (!t.hasLocaleEntry) clearMissingState(t);
     if (!t.editor) {
       log(`reconcile: "${key}" now present \u2192 creating editor`);
       await setupEditor(t, data.value ?? data.original ?? t.originalContent);
