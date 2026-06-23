@@ -24,6 +24,8 @@ var translationContainer = null;
 var activeDataset = null;
 var activeDatasetListener = null;
 var activeFile = null;
+var reconcileObserver = null;
+var reconcileScheduled = false;
 var switchGeneration = 0;
 var switchInProgress = false;
 var originalInputConfigs = /* @__PURE__ */ new Map();
@@ -157,10 +159,23 @@ function trackElements(scope) {
       stale: false,
       baseOriginal: null,
       localeOriginal: null,
-      hasLocaleEntry: false
+      hasLocaleEntry: false,
+      disabled: false
     });
   }
   log(`Tracked ${tracked.length} translatable elements`);
+}
+function applyMissingState(t) {
+  t.hasLocaleEntry = false;
+  t.disabled = true;
+  t.element.style.opacity = "0.45";
+  t.element.style.pointerEvents = "none";
+}
+function clearMissingState(t) {
+  t.hasLocaleEntry = true;
+  t.disabled = false;
+  t.element.style.opacity = "";
+  t.element.style.pointerEvents = "";
 }
 var CONFIG_TIMEOUT_MS = 200;
 async function fetchInputConfig(el) {
@@ -393,6 +408,11 @@ function teardownEditors() {
   log(
     `teardownEditors: translationContainer=${!!translationContainer}, originalContainer=${!!originalContainer}, tracked=${tracked.length}`
   );
+  if (reconcileObserver) {
+    reconcileObserver.disconnect();
+    reconcileObserver = null;
+  }
+  reconcileScheduled = false;
   if (activeDataset && activeDatasetListener) {
     activeDataset.removeEventListener("change", activeDatasetListener);
   }
@@ -552,8 +572,7 @@ async function switchLocaleInner(locale, myGeneration) {
     t.localeOriginal = data?.original ?? null;
     t.element.innerHTML = value;
     if (!t.hasLocaleEntry) {
-      t.element.style.opacity = "0.45";
-      t.element.style.pointerEvents = "none";
+      applyMissingState(t);
     }
     if (isStale) {
       markStaleElement(t);
@@ -562,25 +581,27 @@ async function switchLocaleInner(locale, myGeneration) {
   }
   updateStaleBadge();
   updateStaleList();
-  log(`Data loaded \u2014 ${staleCount} stale of ${tracked.length} elements`);
-  let editorsCreated = 0;
-  for (let i = 0; i < tracked.length; i++) {
-    const t = tracked[i];
-    if (myGeneration !== switchGeneration) {
-      log(`Generation changed, aborting "${locale}" editor setup`);
-      return;
+  const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
+  log(`Data loaded \u2014 ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`);
+  if (missingKeys.length > 0) {
+    log(`Missing-entry keys (disabled, no editor): ${missingKeys.join(", ")}`);
+  }
+  const setupEditor = async (t, value) => {
+    if (t.editor) {
+      t.editor.setContent(value);
+      return true;
     }
-    if (!t.hasLocaleEntry) continue;
     try {
-      const value = resolvedValues[i];
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
       const isSource = originalIsSource.has(t.roseyKey);
+      let applying = true;
       const editor = await api.createTextEditableRegion(
         t.element,
         (content) => {
           if (myGeneration !== switchGeneration) return;
-          if (!setupComplete) return;
+          if (!setupComplete || applying) return;
+          if (t.disabled) return;
           if (content == null) return;
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
@@ -596,16 +617,28 @@ async function switchLocaleInner(locale, myGeneration) {
       );
       t.editor = editor;
       editor.setContent(value);
+      applying = false;
       t.element.addEventListener("focus", () => {
         t.focused = true;
       });
       t.element.addEventListener("blur", () => {
         t.focused = false;
       });
-      editorsCreated++;
+      return true;
     } catch (err) {
       warn(`Failed to set up editor for "${t.roseyKey}":`, err);
+      return false;
     }
+  };
+  let editorsCreated = 0;
+  for (let i = 0; i < tracked.length; i++) {
+    const t = tracked[i];
+    if (myGeneration !== switchGeneration) {
+      log(`Generation changed, aborting "${locale}" editor setup`);
+      return;
+    }
+    if (!t.hasLocaleEntry) continue;
+    if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
   }
   log(`Created ${editorsCreated} editors`);
   if (myGeneration !== switchGeneration) return;
@@ -637,6 +670,63 @@ async function switchLocaleInner(locale, myGeneration) {
     log(`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`);
   };
   dataset.addEventListener("change", activeDatasetListener);
+  const reconcileElement = async (el) => {
+    if (myGeneration !== switchGeneration) return;
+    const key = resolveRoseyKey(el);
+    if (!key) return;
+    let t = tracked.find((x) => x.element === el);
+    if (t && t.roseyKey === key && t.editor && !t.disabled) return;
+    if (!t) {
+      t = {
+        element: el,
+        roseyKey: key,
+        originalContent: el.innerHTML,
+        inferredType: el.dataset.type === "block" || el.dataset.type === "text" ? "block" : inferElementType(el),
+        focused: false,
+        stale: false,
+        baseOriginal: null,
+        localeOriginal: null,
+        hasLocaleEntry: false,
+        disabled: false
+      };
+      tracked.push(t);
+    } else {
+      t.roseyKey = key;
+    }
+    const data = await file.data.get({ slug: key }).catch(() => null);
+    if (myGeneration !== switchGeneration) return;
+    if (data == null) {
+      if (!t.disabled) log(`reconcile: "${key}" has no locale entry \u2192 disabling`);
+      applyMissingState(t);
+      return;
+    }
+    if (t.disabled || !t.hasLocaleEntry) clearMissingState(t);
+    if (!t.editor) {
+      log(`reconcile: "${key}" now present \u2192 creating editor`);
+      await setupEditor(t, data.value ?? data.original ?? t.originalContent);
+    }
+  };
+  const scheduleReconcile = () => {
+    if (reconcileScheduled) return;
+    reconcileScheduled = true;
+    requestAnimationFrame(() => {
+      reconcileScheduled = false;
+      if (myGeneration !== switchGeneration || !translationContainer) return;
+      const els = translationContainer.querySelectorAll(
+        "[data-rosey]:not([data-rcc-ignore])"
+      );
+      for (const el of els) void reconcileElement(el);
+    });
+  };
+  if (translationContainer) {
+    reconcileObserver = new MutationObserver(scheduleReconcile);
+    reconcileObserver.observe(translationContainer, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-rosey", "data-rosey-ns", "data-rosey-root"]
+    });
+  }
   log(`Switched to ${locale}`);
 }
 var FAB_SIZE = 48;

@@ -31,6 +31,13 @@ interface TrackedElement {
 	baseOriginal: string | null;
 	localeOriginal: string | null;
 	hasLocaleEntry: boolean;
+	/**
+	 * True when the element's Rosey key has no entry in the current locale file.
+	 * Set by applyMissingState; checked in the editor onChange to inert any
+	 * editor that was created before the element's key resolved to a missing
+	 * entry (createTextEditableRegion has no destroy()).
+	 */
+	disabled: boolean;
 }
 
 interface CCFile {
@@ -69,6 +76,16 @@ let translationContainer: HTMLElement | null = null;
 let activeDataset: CCDataset | null = null;
 let activeDatasetListener: (() => void) | null = null;
 let activeFile: CCFile | null = null;
+
+/**
+ * Watches the active translation container for [data-rosey] elements that CC
+ * adds or re-keys after the initial switch pass (e.g. a newly inserted array
+ * item, or an element whose data-rosey-ns is stamped from instance_value:UUID
+ * a tick after insertion). Without this, the disable decision would only ever
+ * run once during switchLocaleInner and miss those elements.
+ */
+let reconcileObserver: MutationObserver | null = null;
+let reconcileScheduled = false;
 
 /**
  * Guards against stale ProseMirror onChange fires. createTextEditableRegion
@@ -264,9 +281,34 @@ function trackElements(scope: Element): void {
 			baseOriginal: null,
 			localeOriginal: null,
 			hasLocaleEntry: false,
+			disabled: false,
 		});
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
+}
+
+// ---------------------------------------------------------------------------
+// Missing-entry state (element has no entry in the current locale file)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mark an element as having no locale entry: dim it, make it non-interactive,
+ * and set the disabled flag so any editor created for it before its key
+ * resolved to a missing entry becomes a no-op (createTextEditableRegion has
+ * no destroy()).
+ */
+function applyMissingState(t: TrackedElement): void {
+	t.hasLocaleEntry = false;
+	t.disabled = true;
+	t.element.style.opacity = "0.45";
+	t.element.style.pointerEvents = "none";
+}
+
+function clearMissingState(t: TrackedElement): void {
+	t.hasLocaleEntry = true;
+	t.disabled = false;
+	t.element.style.opacity = "";
+	t.element.style.pointerEvents = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +591,12 @@ function teardownEditors(): void {
 			`originalContainer=${!!originalContainer}, tracked=${tracked.length}`,
 	);
 
+	if (reconcileObserver) {
+		reconcileObserver.disconnect();
+		reconcileObserver = null;
+	}
+	reconcileScheduled = false;
+
 	if (activeDataset && activeDatasetListener) {
 		activeDataset.removeEventListener("change", activeDatasetListener);
 	}
@@ -783,8 +831,7 @@ async function switchLocaleInner(
 		t.element.innerHTML = value;
 
 		if (!t.hasLocaleEntry) {
-			t.element.style.opacity = "0.45";
-			t.element.style.pointerEvents = "none";
+			applyMissingState(t);
 		}
 
 		if (isStale) {
@@ -794,22 +841,23 @@ async function switchLocaleInner(
 	}
 	updateStaleBadge();
 	updateStaleList();
-	log(`Data loaded — ${staleCount} stale of ${tracked.length} elements`);
+	const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
+	log(`Data loaded — ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`);
+	if (missingKeys.length > 0) {
+		log(`Missing-entry keys (disabled, no editor): ${missingKeys.join(", ")}`);
+	}
 
 	// --- Phase 2: Sequential editor creation --------------------------------
+	//
+	// setupEditor is reused by the reconcile pass below, so an element CC adds
+	// or re-keys after this initial pass gets wired up the same way.
 
-	let editorsCreated = 0;
-	for (let i = 0; i < tracked.length; i++) {
-		const t = tracked[i];
-		if (myGeneration !== switchGeneration) {
-			log(`Generation changed, aborting "${locale}" editor setup`);
-			return;
+	const setupEditor = async (t: TrackedElement, value: string): Promise<boolean> => {
+		if (t.editor) {
+			t.editor.setContent(value);
+			return true;
 		}
-		if (!t.hasLocaleEntry) continue;
-
 		try {
-			const value = resolvedValues[i];
-
 			const inputConfig = originalInputConfigs.get(t.roseyKey);
 			const rccInputConfig = inputConfig
 				? { ...inputConfig, type: "html" }
@@ -817,11 +865,16 @@ async function switchLocaleInner(
 
 			const isSource = originalIsSource.has(t.roseyKey);
 
+			// Suppress the onChange that setContent triggers on creation, so a
+			// reconcile-created editor (setupComplete already true) doesn't write
+			// its initial value straight back to the locale file.
+			let applying = true;
 			const editor = await api!.createTextEditableRegion(
 				t.element,
 				(content) => {
 					if (myGeneration !== switchGeneration) return;
-					if (!setupComplete) return;
+					if (!setupComplete || applying) return;
+					if (t.disabled) return;
 					if (content == null) return;
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
@@ -837,14 +890,26 @@ async function switchLocaleInner(
 			);
 			t.editor = editor;
 			editor.setContent(value);
+			applying = false;
 
 			t.element.addEventListener("focus", () => { t.focused = true; });
 			t.element.addEventListener("blur", () => { t.focused = false; });
-
-			editorsCreated++;
+			return true;
 		} catch (err) {
 			warn(`Failed to set up editor for "${t.roseyKey}":`, err);
+			return false;
 		}
+	};
+
+	let editorsCreated = 0;
+	for (let i = 0; i < tracked.length; i++) {
+		const t = tracked[i];
+		if (myGeneration !== switchGeneration) {
+			log(`Generation changed, aborting "${locale}" editor setup`);
+			return;
+		}
+		if (!t.hasLocaleEntry) continue;
+		if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
 	}
 	log(`Created ${editorsCreated} editors`);
 
@@ -883,6 +948,82 @@ async function switchLocaleInner(
 		log(`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`);
 	};
 	dataset.addEventListener("change", activeDatasetListener);
+
+	// --- Reconcile elements CC adds or re-keys after this pass ----------------
+	// CC can insert a [data-rosey] element (a new array item) or stamp its
+	// data-rosey-ns from instance_value:UUID a tick after the switch pass. The
+	// initial gate above runs once, so re-run it on DOM changes: disable
+	// elements whose (possibly newly-stamped) key has no locale entry, and wire
+	// editors for elements that turn out to have one.
+
+	const reconcileElement = async (el: HTMLElement): Promise<void> => {
+		if (myGeneration !== switchGeneration) return;
+		const key = resolveRoseyKey(el);
+		if (!key) return;
+
+		let t = tracked.find((x) => x.element === el);
+		// Already settled and unchanged — nothing to do.
+		if (t && t.roseyKey === key && t.editor && !t.disabled) return;
+
+		if (!t) {
+			t = {
+				element: el,
+				roseyKey: key,
+				originalContent: el.innerHTML,
+				inferredType:
+					el.dataset.type === "block" || el.dataset.type === "text"
+						? "block"
+						: inferElementType(el),
+				focused: false,
+				stale: false,
+				baseOriginal: null,
+				localeOriginal: null,
+				hasLocaleEntry: false,
+				disabled: false,
+			};
+			tracked.push(t);
+		} else {
+			t.roseyKey = key;
+		}
+
+		const data = await file.data.get({ slug: key }).catch(() => null);
+		if (myGeneration !== switchGeneration) return;
+
+		if (data == null) {
+			if (!t.disabled) log(`reconcile: "${key}" has no locale entry → disabling`);
+			applyMissingState(t);
+			return;
+		}
+
+		if (t.disabled || !t.hasLocaleEntry) clearMissingState(t);
+		if (!t.editor) {
+			log(`reconcile: "${key}" now present → creating editor`);
+			await setupEditor(t, data.value ?? data.original ?? t.originalContent);
+		}
+	};
+
+	const scheduleReconcile = (): void => {
+		if (reconcileScheduled) return;
+		reconcileScheduled = true;
+		requestAnimationFrame(() => {
+			reconcileScheduled = false;
+			if (myGeneration !== switchGeneration || !translationContainer) return;
+			const els = translationContainer.querySelectorAll<HTMLElement>(
+				"[data-rosey]:not([data-rcc-ignore])",
+			);
+			for (const el of els) void reconcileElement(el);
+		});
+	};
+
+	if (translationContainer) {
+		reconcileObserver = new MutationObserver(scheduleReconcile);
+		reconcileObserver.observe(translationContainer, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ["data-rosey", "data-rosey-ns", "data-rosey-root"],
+		});
+	}
 
 	log(`Switched to ${locale}`);
 }
