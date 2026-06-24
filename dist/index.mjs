@@ -151,6 +151,7 @@ function newTrackedEntry(element, roseyKey) {
     inferredType: element.dataset.type === "block" || element.dataset.type === "text" ? "block" : inferElementType(element),
     focused: false,
     stale: false,
+    untranslated: false,
     baseOriginal: null,
     localeOriginal: null,
     hasLocaleEntry: false
@@ -207,7 +208,10 @@ async function prescanOriginals(container) {
 }
 var STALE_AMBER = "#f59e0b";
 var STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
+var UNTRANSLATED_TEAL = "#14b8a6";
+var UNTRANSLATED_TEAL_BG = "rgba(20, 184, 166, 0.08)";
 var staleCount = 0;
+var untranslatedCount = 0;
 function updateStaleBadge() {
   const badge = document.getElementById("rcc-stale-badge");
   if (!badge) return;
@@ -222,6 +226,20 @@ function recountStale() {
   staleCount = tracked.filter((t) => t.stale).length;
   updateStaleBadge();
   updateStaleList();
+}
+function updateUntranslatedBadge() {
+  const badge = document.getElementById("rcc-untranslated-badge");
+  if (!badge) return;
+  if (untranslatedCount > 0) {
+    badge.textContent = String(untranslatedCount);
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+function recountUntranslated() {
+  untranslatedCount = tracked.filter((t) => t.untranslated).length;
+  updateUntranslatedBadge();
 }
 function normalizeSource(s) {
   return s.replace(/\s+/g, " ").trim();
@@ -367,6 +385,29 @@ function unmarkStaleElement(t) {
   t.element.style.backgroundColor = "";
   recountStale();
 }
+function markUntranslatedElement(t) {
+  t.element.style.outline = `2px dotted ${UNTRANSLATED_TEAL}`;
+  t.element.style.outlineOffset = "2px";
+  t.element.style.backgroundColor = UNTRANSLATED_TEAL_BG;
+}
+function unmarkUntranslatedElement(t) {
+  t.untranslated = false;
+  t.element.style.outline = "";
+  t.element.style.outlineOffset = "";
+  t.element.style.backgroundColor = "";
+  recountUntranslated();
+}
+function refreshUntranslated(t, value) {
+  const original = t.localeOriginal ?? t.originalContent;
+  const nowUntranslated = normalizeSource(value) === normalizeSource(original);
+  if (nowUntranslated && !t.untranslated) {
+    t.untranslated = true;
+    markUntranslatedElement(t);
+    recountUntranslated();
+  } else if (!nowUntranslated && t.untranslated) {
+    unmarkUntranslatedElement(t);
+  }
+}
 function resolveStale(t, file) {
   if (!t.stale) return;
   const current = t.originalContent;
@@ -435,6 +476,8 @@ function teardownEditors() {
   staleCount = 0;
   updateStaleBadge();
   updateStaleList();
+  untranslatedCount = 0;
+  updateUntranslatedBadge();
   resumeBookshop();
   if (translationContainer && originalContainer) {
     const cloneInDOM = translationContainer.isConnected;
@@ -576,6 +619,7 @@ async function switchLocaleInner(locale, myGeneration) {
   activeFile = file;
   let setupComplete = false;
   staleCount = 0;
+  untranslatedCount = 0;
   const dataResults = await Promise.all(
     tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null))
   );
@@ -595,17 +639,23 @@ async function switchLocaleInner(locale, myGeneration) {
     const baseStale = staleEnabled && normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
     const liveStale = staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
     const isStale = baseStale || liveStale;
-    t.stale = isStale;
+    const isUntranslated = !t.hasLocaleEntry || normalizeSource(value) === normalizedOriginal;
+    t.untranslated = isUntranslated;
+    t.stale = !isUntranslated && isStale;
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
     t.element.innerHTML = value;
-    if (isStale) {
+    if (isUntranslated) {
+      markUntranslatedElement(t);
+      untranslatedCount++;
+    } else if (t.stale) {
       markStaleElement(t);
       staleCount++;
     }
   }
   updateStaleBadge();
   updateStaleList();
+  updateUntranslatedBadge();
   const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
   log(
     `Data loaded \u2014 ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`
@@ -640,6 +690,7 @@ async function switchLocaleInner(locale, myGeneration) {
             t.hasLocaleEntry = true;
             t.baseOriginal = t.originalContent;
             t.localeOriginal = t.originalContent;
+            refreshUntranslated(t, content);
             return;
           }
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
@@ -647,6 +698,7 @@ async function switchLocaleInner(locale, myGeneration) {
           if (t.stale) {
             resolveStale(t, file);
           }
+          refreshUntranslated(t, content);
         },
         {
           elementType: t.inferredType,
@@ -866,6 +918,27 @@ function injectSwitcher(locales) {
     pointerEvents: "none"
   });
   fab.appendChild(staleBadge);
+  const untranslatedBadge = document.createElement("div");
+  untranslatedBadge.id = "rcc-untranslated-badge";
+  Object.assign(untranslatedBadge.style, {
+    position: "absolute",
+    bottom: "-4px",
+    left: "-4px",
+    background: UNTRANSLATED_TEAL,
+    color: "#ffffff",
+    fontSize: "9px",
+    fontWeight: "700",
+    lineHeight: "1",
+    padding: "3px 5px",
+    borderRadius: "8px",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "16px",
+    textAlign: "center",
+    pointerEvents: "none"
+  });
+  fab.appendChild(untranslatedBadge);
   const popover = document.createElement("div");
   popover.id = "rcc-locale-popover";
   Object.assign(popover.style, {
@@ -1224,6 +1297,7 @@ async function init() {
     return;
   }
   api = ccWindow.CloudCannonAPI.useVersion("v1", true);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-24T04:09:53.141Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

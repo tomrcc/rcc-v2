@@ -6,10 +6,17 @@ Maintainer notes and follow-up ideas for the Rosey CloudCannon Connector (v2). E
 
 ## Current status (2026-06-24)
 
-Two changes landed/landing for in-editor translation of evolving content:
+Landed/uncommitted changes for in-editor translation of evolving content:
 
-1. **Missing-entry editing** — committed (`f4f40e0`). Elements whose Rosey key has no locale entry are now editable instead of dimmed; the first edit writes a full `{ original, value, _base_original }` entry (`_base_original` seeded from the page source). See `src/injector.ts` onChange + reconcile, and the "Elements with no locale entry yet" docs section.
-2. **Immediate (live-DOM) stale detection** — uncommitted (working tree: `src/injector.ts`, `docs/stale-translations.md`). Stale is now `baseStale || liveStale`, both whitespace-normalized via `normalizeSource()` and gated on `_base_original` presence (opt-out preserved). `resolveStale()` now writes both `original` and `_base_original` from the on-page source so a live-only stale clears before any build. **Tested:** `tsc` + `tsup` build pass. **Not yet verified** in a live CloudCannon Visual Editor — needs a manual CC test (edit source in Original view → switch locale → confirm immediate amber flag → resolve/edit clears it).
+1. **Missing-entry editing** — committed (`f4f40e0`). Elements whose Rosey key has no locale entry are now editable instead of dimmed; the first edit writes a full `{ original, value, _base_original }` entry (`_base_original` seeded from the page source).
+2. **Immediate (live-DOM) stale detection** — uncommitted. Stale is now `baseStale || liveStale`, both whitespace-normalized via `normalizeSource()` and gated on `_base_original` presence. `resolveStale()` writes both `original` and `_base_original` from the on-page source.
+3. **Untranslated indicator** — uncommitted. Teal dotted border + teal FAB count for elements with no entry or `value === original`; takes precedence over amber stale (`src/injector.ts` Phase 1 + `markUntranslatedElement`/`refreshUntranslated`).
+4. **Build banner** — uncommitted. `init()` logs `RCC: v<version> loaded (built <ts>)` always-visible; `__RCC_VERSION__`/`__RCC_BUILD__` injected via `tsup.config.ts` `define`.
+
+**Build-pickup gotcha (verifying in CC):** the test sites depend on `"rosey-cloudcannon-connector": "github:tomrcc/rcc-v2"`, so a CC rebuild only serves **committed + pushed** code (dist is committed; no install-time build). After `npm run build`, **commit + push** (and bump the pinned commit if a lockfile pins it) before rebuilding in CC; the build banner's timestamp confirms CC loaded the new code. For fast local iteration, temporarily point a test site at `file:../rcc-v2`.
+
+### OPEN — blocked on live diagnosis: new array items don't resolve their UUID ns until reload
+A new array item only gets its correct `data-rosey-ns` (UUID) after navigating out of the VE and back in — so its key is wrong in-session, breaking writes (#4) and go-stale (#3). **The `data-prop-data-rosey-ns="_uuid"` binding is NOT the fix** — `testimonial.astro:66` already has it and is the component exhibiting the bug. Real cause unknown; needs live diagnostics (DOM `data-rosey-ns` on a new item + whether `_uuid` is in `currentFile().data.get()` before reload). Candidate fixes pending evidence: connector reads `_uuid` from the API and resolves the key itself; or escalate a CC binding bug. See the plan file `~/.claude/plans/sweet-looks-pretty-good-quizzical-kay.md`.
 
 ---
 
