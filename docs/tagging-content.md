@@ -143,6 +143,10 @@ The entry the connector writes is the same shape `write-locales` produces, so a 
 
 **A note on key stability.** Because a missing key is now created silently on edit rather than flagged, an unstable key (see [Key uniqueness and stability](#key-uniqueness-and-stability)) no longer surfaces as an obvious "this element is disabled" signal — a shifted key just produces a new entry. Keep keys stable so edits land on the intended entry rather than scattering translations across orphaned keys.
 
+### Array items inside a component: keep `data-rosey-ns` live
+
+When `data-rosey-ns` is derived from a per-item id (e.g. a `_uuid` from `instance_value`) and the array is rendered **inside a component** (a widget that holds its own list), the Visual Editor may add or reorder items by cloning a sibling's DOM without re-rendering — so a new item gets a *stale, duplicated* `data-rosey-ns` until you reload, which collides keys and breaks new-content translation. If you see this, give each array item its **own registered component** and put `data-component` on the `array-item` element, with `data-rosey-ns` on the item component's own root, so CloudCannon renders the item directly. See [Astro patterns: Array items inside a component](../skills/make-site-multilingual/astro.md) for a worked example. (SSG-specific: the same principle applies wherever an editable array lives inside a re-rendering component.)
+
 ### Works with CloudCannon editable regions
 
 If you're using CloudCannon's editable region custom elements, `data-rosey` can go right on them:

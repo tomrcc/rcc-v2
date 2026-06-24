@@ -31,6 +31,31 @@ For a working example, see the [Rosey Astro Starter](https://github.com/CloudCan
 
 **Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index: `data-rosey-ns={`${block._name}-${i}`}`. Be aware that this is fragile — reordering shifts keys.
 
+### Array items inside a component must re-render to keep `data-rosey-ns` live
+
+`data-rosey-ns={item._uuid}` is build-time markup — it only re-evaluates when its component re-renders. For an **array nested inside a registered component** (e.g. a `testimonials` list inside a Testimonial block), CloudCannon adds/reorders items by **cloning a sibling's DOM** without re-rendering. So a newly added item inherits a *stale, duplicated* `data-rosey-ns` — its key collides with the cloned sibling — until the editor is reloaded, breaking new-content translation and stale detection.
+
+The fix: make each array item its **own registered component** so CloudCannon renders it directly. Put `data-component` on the `data-editable="array-item"` element, and put `data-rosey-ns={item._uuid}` on the item component's own root:
+
+```astro
+<!-- parent component template -->
+<div data-editable="array" data-prop="testimonials">
+  {testimonials.map((t) => (
+    <div data-editable="array-item" data-component="testimonial-item">
+      <TestimonialItem {...t} />
+    </div>
+  ))}
+</div>
+
+<!-- TestimonialItem.astro — registerAstroComponent("testimonial-item", TestimonialItem) -->
+<div data-rosey-ns={_uuid}>
+  <p data-editable="text" data-prop="message" data-rosey="testimonial:message">{message}</p>
+  <!-- …other data-rosey fields… -->
+</div>
+```
+
+That single `data-component` on the array-item is the whole fix — no `data-component-key`, `data-id-key`, or `<template>` is needed for a uniform sub-array. Reach for this **only** when you observe a sub-array item's derived markup (like `data-rosey-ns`) going stale on add/reorder; a plain sub-array otherwise re-renders fine via its parent for most edits.
+
 ## Auto-Derive `data-rosey` from `data-prop`
 
 For component-heavy Astro sites where building blocks already use `data-prop` for CloudCannon inline editing, auto-derive `data-rosey` from that attribute:

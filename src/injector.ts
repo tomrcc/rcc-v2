@@ -33,13 +33,6 @@ interface TrackedElement {
 	focused: boolean;
 	editor?: { setContent: (content?: string | null) => void };
 	stale: boolean;
-	/**
-	 * Not yet translated: the element has no locale entry, or its `value` still
-	 * equals its `original`. Flagged with a distinct (teal) indicator and takes
-	 * visual precedence over `stale` — an untranslated entry has no translation
-	 * to be out of date.
-	 */
-	untranslated: boolean;
 	baseOriginal: string | null;
 	localeOriginal: string | null;
 	/**
@@ -300,7 +293,6 @@ function newTrackedEntry(
 				: inferElementType(element),
 		focused: false,
 		stale: false,
-		untranslated: false,
 		baseOriginal: null,
 		localeOriginal: null,
 		hasLocaleEntry: false,
@@ -380,11 +372,7 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 const STALE_AMBER = "#f59e0b";
 const STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
 
-const UNTRANSLATED_TEAL = "#14b8a6";
-const UNTRANSLATED_TEAL_BG = "rgba(20, 184, 166, 0.08)";
-
 let staleCount = 0;
-let untranslatedCount = 0;
 
 function updateStaleBadge(): void {
 	const badge = document.getElementById("rcc-stale-badge");
@@ -401,22 +389,6 @@ function recountStale(): void {
 	staleCount = tracked.filter((t) => t.stale).length;
 	updateStaleBadge();
 	updateStaleList();
-}
-
-function updateUntranslatedBadge(): void {
-	const badge = document.getElementById("rcc-untranslated-badge");
-	if (!badge) return;
-	if (untranslatedCount > 0) {
-		badge.textContent = String(untranslatedCount);
-		badge.style.display = "flex";
-	} else {
-		badge.style.display = "none";
-	}
-}
-
-function recountUntranslated(): void {
-	untranslatedCount = tracked.filter((t) => t.untranslated).length;
-	updateUntranslatedBadge();
 }
 
 /**
@@ -593,36 +565,6 @@ function unmarkStaleElement(t: TrackedElement): void {
 	recountStale();
 }
 
-function markUntranslatedElement(t: TrackedElement): void {
-	t.element.style.outline = `2px dotted ${UNTRANSLATED_TEAL}`;
-	t.element.style.outlineOffset = "2px";
-	t.element.style.backgroundColor = UNTRANSLATED_TEAL_BG;
-}
-
-function unmarkUntranslatedElement(t: TrackedElement): void {
-	t.untranslated = false;
-	t.element.style.outline = "";
-	t.element.style.outlineOffset = "";
-	t.element.style.backgroundColor = "";
-	recountUntranslated();
-}
-
-/**
- * Recompute an element's untranslated state after an edit and update its teal
- * indicator. An element is untranslated when its value still matches its source.
- */
-function refreshUntranslated(t: TrackedElement, value: string): void {
-	const original = t.localeOriginal ?? t.originalContent;
-	const nowUntranslated = normalizeSource(value) === normalizeSource(original);
-	if (nowUntranslated && !t.untranslated) {
-		t.untranslated = true;
-		markUntranslatedElement(t);
-		recountUntranslated();
-	} else if (!nowUntranslated && t.untranslated) {
-		unmarkUntranslatedElement(t);
-	}
-}
-
 function resolveStale(t: TrackedElement, file: CCFile): void {
 	if (!t.stale) return;
 	// Acknowledge the source text currently on the page as the reviewed source.
@@ -715,8 +657,6 @@ function teardownEditors(): void {
 	staleCount = 0;
 	updateStaleBadge();
 	updateStaleList();
-	untranslatedCount = 0;
-	updateUntranslatedBadge();
 
 	resumeBookshop();
 
@@ -921,7 +861,6 @@ async function switchLocaleInner(
 	activeFile = file;
 	let setupComplete = false;
 	staleCount = 0;
-	untranslatedCount = 0;
 
 	// --- Phase 1: Parallel data fetch + stale detection --------------------
 	// Load all locale data in one batch so the stale list populates instantly
@@ -962,33 +901,20 @@ async function switchLocaleInner(
 			normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
 		const liveStale =
 			staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
-		const isStale = baseStale || liveStale;
 
-		// Untranslated: no entry yet, or value still equals original. Takes
-		// precedence over stale (an untranslated entry has no translation to be
-		// out of date), so a never-translated item whose source moved reads as
-		// "untranslated" (teal), not "stale" (amber).
-		const isUntranslated =
-			!t.hasLocaleEntry || normalizeSource(value) === normalizedOriginal;
-
-		t.untranslated = isUntranslated;
-		t.stale = !isUntranslated && isStale;
+		t.stale = baseStale || liveStale;
 		t.baseOriginal = data?._base_original ?? null;
 		t.localeOriginal = data?.original ?? null;
 
 		t.element.innerHTML = value;
 
-		if (isUntranslated) {
-			markUntranslatedElement(t);
-			untranslatedCount++;
-		} else if (t.stale) {
+		if (t.stale) {
 			markStaleElement(t);
 			staleCount++;
 		}
 	}
 	updateStaleBadge();
 	updateStaleList();
-	updateUntranslatedBadge();
 	const missingKeys = tracked
 		.filter((t) => !t.hasLocaleEntry)
 		.map((t) => t.roseyKey);
@@ -1048,7 +974,6 @@ async function switchLocaleInner(
 						t.hasLocaleEntry = true;
 						t.baseOriginal = t.originalContent;
 						t.localeOriginal = t.originalContent;
-						refreshUntranslated(t, content);
 						return;
 					}
 
@@ -1057,7 +982,6 @@ async function switchLocaleInner(
 					if (t.stale) {
 						resolveStale(t, file);
 					}
-					refreshUntranslated(t, content);
 				},
 				{
 					elementType: t.inferredType,
@@ -1323,29 +1247,6 @@ function injectSwitcher(locales: string[]): void {
 		pointerEvents: "none",
 	});
 	fab.appendChild(staleBadge);
-
-	// Untranslated badge — count of not-yet-translated elements (teal)
-	const untranslatedBadge = document.createElement("div");
-	untranslatedBadge.id = "rcc-untranslated-badge";
-	Object.assign(untranslatedBadge.style, {
-		position: "absolute",
-		bottom: "-4px",
-		left: "-4px",
-		background: UNTRANSLATED_TEAL,
-		color: "#ffffff",
-		fontSize: "9px",
-		fontWeight: "700",
-		lineHeight: "1",
-		padding: "3px 5px",
-		borderRadius: "8px",
-		display: "none",
-		alignItems: "center",
-		justifyContent: "center",
-		minWidth: "16px",
-		textAlign: "center",
-		pointerEvents: "none",
-	});
-	fab.appendChild(untranslatedBadge);
 
 	// --- Popover ----------------------------------------------------------
 
