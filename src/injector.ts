@@ -386,6 +386,17 @@ function recountStale(): void {
 	updateStaleList();
 }
 
+/**
+ * Normalize source text for stale comparison. The live DOM (`innerHTML`) and the
+ * stored `original` / `_base_original` (from base.json or a prior client write)
+ * can differ in insignificant whitespace, so collapse whitespace runs and trim
+ * before comparing. This errs toward false-negatives, which is intentional: the
+ * build-time `_base_original` signal stays the authoritative backstop.
+ */
+function normalizeSource(s: string): string {
+	return s.replace(/\s+/g, " ").trim();
+}
+
 function truncateText(text: string, max: number): string {
 	return text.length > max ? text.slice(0, max) + "…" : text;
 }
@@ -550,9 +561,21 @@ function unmarkStaleElement(t: TrackedElement): void {
 }
 
 function resolveStale(t: TrackedElement, file: CCFile): void {
-	if (!t.stale || !t.baseOriginal) return;
-	log(`[${t.roseyKey}] Resolving stale — updating .original`);
-	file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
+	if (!t.stale) return;
+	// Acknowledge the source text currently on the page as the reviewed source.
+	// Write both `original` and `_base_original` so the entry is self-consistent
+	// even when resolving a live edit before a build has refreshed _base_original
+	// from base.json — the next build reconciles _base_original harmlessly. Using
+	// the on-page source (not the stale t.baseOriginal) is what lets a live-only
+	// stale clear; post-build the two are equal anyway.
+	const current = t.originalContent;
+	log(
+		`[${t.roseyKey}] Resolving stale — original/_base_original ← page source`,
+	);
+	file.data.set({ slug: `${t.roseyKey}.original`, value: current });
+	file.data.set({ slug: `${t.roseyKey}._base_original`, value: current });
+	t.localeOriginal = current;
+	t.baseOriginal = current;
 	unmarkStaleElement(t);
 }
 
@@ -855,11 +878,25 @@ async function switchLocaleInner(
 		const value = data?.value ?? data?.original ?? t.originalContent;
 		resolvedValues[i] = value;
 
-		const isStale =
+		// Two independent stale signals, both gated on the per-entry opt-out
+		// (no _base_original ⇒ stale detection off for that entry):
+		//   • base — _base_original (last build's source) ≠ original
+		//   • live — the source text on the page *right now* ≠ original
+		// The live signal fires immediately on an in-session source edit, before
+		// any save/rebuild has refreshed _base_original. base.json can't do this:
+		// it's a build artifact of the same vintage as _base_original. Normalized
+		// compares avoid whitespace-only false positives.
+		const staleEnabled =
 			t.hasLocaleEntry &&
 			data?._base_original != null &&
-			data?.original != null &&
-			data._base_original !== data.original;
+			data?.original != null;
+		const normalizedOriginal = normalizeSource(data?.original ?? "");
+		const baseStale =
+			staleEnabled &&
+			normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
+		const liveStale =
+			staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
+		const isStale = baseStale || liveStale;
 		t.stale = isStale;
 		t.baseOriginal = data?._base_original ?? null;
 		t.localeOriginal = data?.original ?? null;
@@ -937,7 +974,7 @@ async function switchLocaleInner(
 
 					log(`[${t.roseyKey}] onChange → set(".value")`);
 					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
-					if (t.stale && t.baseOriginal) {
+					if (t.stale) {
 						resolveStale(t, file);
 					}
 				},
@@ -1402,7 +1439,7 @@ function injectSwitcher(locales: string[]): void {
 	resolveAllBtn.addEventListener("click", () => {
 		const stale = tracked.filter((t) => t.stale);
 		for (const t of stale) {
-			if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+			if (activeFile) resolveStale(t, activeFile);
 		}
 	});
 	stalePanel.appendChild(resolveAllBtn);

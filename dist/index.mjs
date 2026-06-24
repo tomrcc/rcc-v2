@@ -223,6 +223,9 @@ function recountStale() {
   updateStaleBadge();
   updateStaleList();
 }
+function normalizeSource(s) {
+  return s.replace(/\s+/g, " ").trim();
+}
 function truncateText(text, max) {
   return text.length > max ? text.slice(0, max) + "\u2026" : text;
 }
@@ -365,9 +368,15 @@ function unmarkStaleElement(t) {
   recountStale();
 }
 function resolveStale(t, file) {
-  if (!t.stale || !t.baseOriginal) return;
-  log(`[${t.roseyKey}] Resolving stale \u2014 updating .original`);
-  file.data.set({ slug: `${t.roseyKey}.original`, value: t.baseOriginal });
+  if (!t.stale) return;
+  const current = t.originalContent;
+  log(
+    `[${t.roseyKey}] Resolving stale \u2014 original/_base_original \u2190 page source`
+  );
+  file.data.set({ slug: `${t.roseyKey}.original`, value: current });
+  file.data.set({ slug: `${t.roseyKey}._base_original`, value: current });
+  t.localeOriginal = current;
+  t.baseOriginal = current;
   unmarkStaleElement(t);
 }
 var originalBookshopUpdate = null;
@@ -581,7 +590,11 @@ async function switchLocaleInner(locale, myGeneration) {
     t.hasLocaleEntry = data != null;
     const value = data?.value ?? data?.original ?? t.originalContent;
     resolvedValues[i] = value;
-    const isStale = t.hasLocaleEntry && data?._base_original != null && data?.original != null && data._base_original !== data.original;
+    const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
+    const normalizedOriginal = normalizeSource(data?.original ?? "");
+    const baseStale = staleEnabled && normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
+    const liveStale = staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
+    const isStale = baseStale || liveStale;
     t.stale = isStale;
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
@@ -631,7 +644,7 @@ async function switchLocaleInner(locale, myGeneration) {
           }
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
           file.data.set({ slug: `${t.roseyKey}.value`, value: content });
-          if (t.stale && t.baseOriginal) {
+          if (t.stale) {
             resolveStale(t, file);
           }
         },
@@ -1028,7 +1041,7 @@ function injectSwitcher(locales) {
   resolveAllBtn.addEventListener("click", () => {
     const stale = tracked.filter((t) => t.stale);
     for (const t of stale) {
-      if (activeFile && t.baseOriginal) resolveStale(t, activeFile);
+      if (activeFile) resolveStale(t, activeFile);
     }
   });
   stalePanel.appendChild(resolveAllBtn);
