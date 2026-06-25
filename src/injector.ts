@@ -104,6 +104,16 @@ function resolveDisplayValue(data: any, t: TrackedElement): string {
 	return data?.value ?? data?.original ?? t.originalContent;
 }
 
+/**
+ * An element whose source text is empty (or whitespace-only) has nothing to
+ * translate. We skip wiring an editor for it and never write a locale entry —
+ * it becomes translatable only once it gains source content (a rebuild or a
+ * live source edit), at which point the normal new-entry path takes over.
+ */
+function isEmptySource(text: string): boolean {
+	return normalizeSource(text) === "";
+}
+
 // ---------------------------------------------------------------------------
 // Input config prescan
 // ---------------------------------------------------------------------------
@@ -418,6 +428,11 @@ async function switchLocaleInner(
 					// this first save (it flips the moment the source text later
 					// changes), before write-locales has ever run for this key.
 					if (!t.hasLocaleEntry) {
+						// Never create an entry for an empty source — there's nothing to
+						// translate. This mirrors the editor-creation skip below; it's
+						// kept here too so the "no empty originals" rule holds at the
+						// write site regardless of how onChange was reached.
+						if (isEmptySource(t.originalContent)) return;
 						log(`[${t.roseyKey}] onChange → creating new locale entry`);
 						file.data.set({
 							slug: t.roseyKey,
@@ -469,6 +484,9 @@ async function switchLocaleInner(
 			log(`Generation changed, aborting "${locale}" editor setup`);
 			return;
 		}
+		// Empty source ⇒ nothing to translate; leave it tracked (a later live
+		// source edit can still reconcile it) but don't make it editable.
+		if (isEmptySource(t.originalContent)) continue;
 		if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
 	}
 	log(`Created ${editorsCreated} editors`);
@@ -543,7 +561,7 @@ async function switchLocaleInner(
 		if (myGeneration !== state.switchGeneration) return;
 
 		t.hasLocaleEntry = data != null;
-		if (!t.editor) {
+		if (!t.editor && !isEmptySource(t.originalContent)) {
 			log(
 				`reconcile: wiring editor for "${key}"${data == null ? " (no entry yet — created on first edit)" : ""}`,
 			);

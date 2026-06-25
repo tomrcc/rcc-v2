@@ -1,6 +1,9 @@
 // src/write-locales.ts
 import fs from "fs";
 import path from "path";
+function isEmptyText(s) {
+  return s == null || s.trim() === "";
+}
 function sortKeys(obj) {
   return Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
@@ -50,7 +53,15 @@ async function writeLocales(options) {
       }
     }
     let addedCount = 0;
+    let prunedEmpty = 0;
     for (const [key, entry] of Object.entries(keys)) {
+      if (isEmptyText(entry.original)) {
+        if (existing[key] && isEmptyText(existing[key].value)) {
+          delete existing[key];
+          prunedEmpty++;
+        }
+        continue;
+      }
       if (!existing[key]) {
         existing[key] = {
           original: entry.original,
@@ -68,7 +79,7 @@ async function writeLocales(options) {
     );
     const removedMsg = options.keepUnused ? `${unusedKeys.length} unused kept` : `${unusedKeys.length} removed`;
     console.log(
-      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg})`
+      `RCC: Wrote ${localePath} \u2014 ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg}, ${prunedEmpty} empty pruned)`
     );
   }
   const manifest = { locales };

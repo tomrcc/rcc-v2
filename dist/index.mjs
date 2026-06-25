@@ -918,6 +918,9 @@ function trackElements(scope) {
 function resolveDisplayValue(data, t) {
   return data?.value ?? data?.original ?? t.originalContent;
 }
+function isEmptySource(text) {
+  return normalizeSource(text) === "";
+}
 var CONFIG_TIMEOUT_MS = 200;
 async function fetchInputConfig(el) {
   const prop = el.dataset.prop;
@@ -1114,6 +1117,7 @@ async function switchLocaleInner(locale, myGeneration) {
           if (!setupComplete || applying) return;
           if (content == null) return;
           if (!t.hasLocaleEntry) {
+            if (isEmptySource(t.originalContent)) return;
             log(`[${t.roseyKey}] onChange \u2192 creating new locale entry`);
             file.data.set({
               slug: t.roseyKey,
@@ -1162,6 +1166,7 @@ async function switchLocaleInner(locale, myGeneration) {
       log(`Generation changed, aborting "${locale}" editor setup`);
       return;
     }
+    if (isEmptySource(t.originalContent)) continue;
     if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
   }
   log(`Created ${editorsCreated} editors`);
@@ -1210,7 +1215,7 @@ async function switchLocaleInner(locale, myGeneration) {
     const data = await file.data.get({ slug: key }).catch(() => null);
     if (myGeneration !== state.switchGeneration) return;
     t.hasLocaleEntry = data != null;
-    if (!t.editor) {
+    if (!t.editor && !isEmptySource(t.originalContent)) {
       log(
         `reconcile: wiring editor for "${key}"${data == null ? " (no entry yet \u2014 created on first edit)" : ""}`
       );
@@ -1248,7 +1253,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T08:34:40.654Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T08:57:59.660Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

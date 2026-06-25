@@ -28,6 +28,11 @@ interface LocaleEntry {
 	_base_original?: string;
 }
 
+/** Treat null/undefined and whitespace-only strings as empty. */
+function isEmptyText(s: string | null | undefined): boolean {
+	return s == null || s.trim() === "";
+}
+
 function sortKeys(
 	obj: Record<string, LocaleEntry>,
 ): Record<string, LocaleEntry> {
@@ -97,7 +102,18 @@ export async function writeLocales(
 		}
 
 		let addedCount = 0;
+		let prunedEmpty = 0;
 		for (const [key, entry] of Object.entries(keys)) {
+			// Empty source ⇒ nothing to translate: don't write an entry. Prune an
+			// existing entry only when its value is also empty (a placeholder), so a
+			// real translation typed against an empty source is never discarded.
+			if (isEmptyText(entry.original)) {
+				if (existing[key] && isEmptyText(existing[key].value)) {
+					delete existing[key];
+					prunedEmpty++;
+				}
+				continue;
+			}
 			if (!existing[key]) {
 				existing[key] = {
 					original: entry.original,
@@ -118,7 +134,7 @@ export async function writeLocales(
 			? `${unusedKeys.length} unused kept`
 			: `${unusedKeys.length} removed`;
 		console.log(
-			`RCC: Wrote ${localePath} — ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg})`,
+			`RCC: Wrote ${localePath} — ${Object.keys(existing).length} keys (${addedCount} added, ${removedMsg}, ${prunedEmpty} empty pruned)`,
 		);
 	}
 
