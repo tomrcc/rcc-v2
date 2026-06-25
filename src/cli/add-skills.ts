@@ -1,5 +1,5 @@
-import { cpSync, existsSync, readdirSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { cpSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const SKILLS_SOURCE = resolve(__dirname, "../../skills");
 

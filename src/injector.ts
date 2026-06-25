@@ -182,6 +182,11 @@ const CC_CUSTOM_ELEMENTS = [
 const BLOCK_LEVEL_SELECTOR =
 	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 
+/** Rosey/CC `data-type` hints that force a block (vs span) editor. */
+function isBlockType(dataType: string | null | undefined): boolean {
+	return dataType === "block" || dataType === "text";
+}
+
 function inferElementType(el: HTMLElement): "span" | "block" {
 	return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
 }
@@ -201,20 +206,7 @@ function cleanClone(root: HTMLElement): void {
 	stripBookshopComments(root);
 
 	const roseyEls = root.querySelectorAll("[data-rosey]").length;
-	const remainingComments = countComments(root, "bookshop");
-	log(
-		`cleanClone: ${roseyEls} [data-rosey] element(s), ` +
-			`${remainingComments} remaining bookshop comment(s)`,
-	);
-}
-
-function countComments(root: HTMLElement, needle: string): number {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
-	let count = 0;
-	while (walker.nextNode()) {
-		if ((walker.currentNode as Comment).data.includes(needle)) count++;
-	}
-	return count;
+	log(`cleanClone: ${roseyEls} [data-rosey] element(s)`);
 }
 
 /**
@@ -257,10 +249,10 @@ function replaceCustomElements(root: HTMLElement): void {
 			let replacementTag = "div";
 			if (tag === "EDITABLE-TEXT") {
 				const dataType = el.getAttribute("data-type");
-				const isBlockType = dataType === "block" || dataType === "text";
 				const hasBlockChildren =
 					el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-				replacementTag = isBlockType || hasBlockChildren ? "div" : "span";
+				replacementTag =
+					isBlockType(dataType) || hasBlockChildren ? "div" : "span";
 			}
 			const replacement = document.createElement(replacementTag);
 			for (const attr of Array.from(el.attributes)) {
@@ -287,10 +279,9 @@ function newTrackedEntry(
 		element,
 		roseyKey,
 		originalContent: element.innerHTML,
-		inferredType:
-			element.dataset.type === "block" || element.dataset.type === "text"
-				? "block"
-				: inferElementType(element),
+		inferredType: isBlockType(element.dataset.type)
+			? "block"
+			: inferElementType(element),
 		focused: false,
 		stale: false,
 		baseOriginal: null,
@@ -310,6 +301,14 @@ function trackElements(scope: Element): void {
 		tracked.push(newTrackedEntry(el, roseyKey));
 	}
 	log(`Tracked ${tracked.length} translatable elements`);
+}
+
+/**
+ * Pick the text to display in an editor: the saved translation, else the
+ * source recorded in the locale file, else the source text on the page.
+ */
+function resolveDisplayValue(data: any, t: TrackedElement): string {
+	return data?.value ?? data?.original ?? t.originalContent;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +402,7 @@ function normalizeSource(s: string): string {
 }
 
 function truncateText(text: string, max: number): string {
-	return text.length > max ? text.slice(0, max) + "…" : text;
+	return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 function updateStaleList(): void {
@@ -794,6 +793,9 @@ async function switchLocaleInner(
 	locale: string | null,
 	myGeneration: number,
 ): Promise<void> {
+	const cc = api;
+	if (!cc) return;
+
 	currentLocale = locale;
 	updateButtonStates();
 
@@ -845,7 +847,7 @@ async function switchLocaleInner(
 
 	const datasetKey = `locales_${locale}`;
 	log(`switchLocale: requesting dataset "${datasetKey}"`);
-	const dataset = api!.dataset(datasetKey);
+	const dataset = cc.dataset(datasetKey);
 	const file = await resolveFile(dataset);
 
 	if (!file) {
@@ -860,7 +862,6 @@ async function switchLocaleInner(
 
 	activeFile = file;
 	let setupComplete = false;
-	staleCount = 0;
 
 	// --- Phase 1: Parallel data fetch + stale detection --------------------
 	// Load all locale data in one batch so the stale list populates instantly
@@ -880,7 +881,7 @@ async function switchLocaleInner(
 		const t = tracked[i];
 		const data = dataResults[i];
 		t.hasLocaleEntry = data != null;
-		const value = data?.value ?? data?.original ?? t.originalContent;
+		const value = resolveDisplayValue(data, t);
 		resolvedValues[i] = value;
 
 		// Two independent stale signals, both gated on the per-entry opt-out
@@ -908,13 +909,9 @@ async function switchLocaleInner(
 
 		t.element.innerHTML = value;
 
-		if (t.stale) {
-			markStaleElement(t);
-			staleCount++;
-		}
+		if (t.stale) markStaleElement(t);
 	}
-	updateStaleBadge();
-	updateStaleList();
+	recountStale();
 	const missingKeys = tracked
 		.filter((t) => !t.hasLocaleEntry)
 		.map((t) => t.roseyKey);
@@ -948,7 +945,7 @@ async function switchLocaleInner(
 			// reconcile-created editor (setupComplete already true) doesn't write
 			// its initial value straight back to the locale file.
 			let applying = true;
-			const editor = await api!.createTextEditableRegion(
+			const editor = await cc.createTextEditableRegion(
 				t.element,
 				(content) => {
 					if (myGeneration !== switchGeneration) return;
@@ -1019,6 +1016,10 @@ async function switchLocaleInner(
 
 	if (myGeneration !== switchGeneration) return;
 
+	// Yield one microtask so any onChange still queued from the setContent calls
+	// above drains while setupComplete is false and the gate suppresses it. Only
+	// then open the gate, so an editor's initial value can't be written back to
+	// the locale file as if it were a user edit.
 	await Promise.resolve();
 	setupComplete = true;
 	log(`Setup complete for "${locale}" (generation ${myGeneration})`);
@@ -1042,8 +1043,7 @@ async function switchLocaleInner(
 			try {
 				const data = await freshFile.data.get({ slug: t.roseyKey });
 				t.hasLocaleEntry = data != null;
-				const value = data?.value ?? data?.original ?? t.originalContent;
-				t.editor.setContent(value);
+				t.editor.setContent(resolveDisplayValue(data, t));
 				updated++;
 			} catch {
 				/* key may not exist in this locale yet */
@@ -1088,7 +1088,7 @@ async function switchLocaleInner(
 			log(
 				`reconcile: wiring editor for "${key}"${data == null ? " (no entry yet — created on first edit)" : ""}`,
 			);
-			await setupEditor(t, data?.value ?? data?.original ?? t.originalContent);
+			await setupEditor(t, resolveDisplayValue(data, t));
 		}
 	};
 
@@ -1135,12 +1135,16 @@ const TRANSLATE_ICON = [
 	"</svg>",
 ].join("");
 
+function isActiveLocale(btn: HTMLButtonElement): boolean {
+	return (btn.dataset.locale ?? null) === (currentLocale ?? "");
+}
+
 function updateButtonStates(): void {
 	const buttons = document.querySelectorAll<HTMLButtonElement>(
 		"#rcc-locale-popover button[data-locale]",
 	);
 	for (const btn of buttons) {
-		const isActive = (btn.dataset.locale ?? null) === (currentLocale ?? "");
+		const isActive = isActiveLocale(btn);
 		Object.assign(btn.style, {
 			background: isActive ? CC_BLUE : "#f1f5f9",
 			color: isActive ? "#ffffff" : "#1e293b",
@@ -1301,20 +1305,17 @@ function injectSwitcher(locales: string[]): void {
 			fontWeight: "400",
 		});
 		btn.addEventListener("mouseenter", () => {
-			if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+			if (!isActiveLocale(btn)) {
 				btn.style.background = "#e2e8f0";
 			}
 		});
 		btn.addEventListener("mouseleave", () => {
-			if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+			if (!isActiveLocale(btn)) {
 				btn.style.background = "#f1f5f9";
 			}
 		});
-		btn.addEventListener("click", (e) => {
-			log(
-				`Button clicked: "${label}" (locale=${locale}) ` +
-					`isTrusted=${e.isTrusted}, currentLocale=${currentLocale}`,
-			);
+		btn.addEventListener("click", () => {
+			log(`Locale button clicked: ${label} (locale=${locale})`);
 			if (switchInProgress) {
 				log("Ignoring click — locale switch already in progress");
 				return;

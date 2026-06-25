@@ -24,15 +24,15 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/cli/add-skills.ts
-var import_fs = require("fs");
-var import_path = require("path");
-var SKILLS_SOURCE = (0, import_path.resolve)(__dirname, "../../skills");
+var import_node_fs = require("fs");
+var import_node_path = require("path");
+var SKILLS_SOURCE = (0, import_node_path.resolve)(__dirname, "../../skills");
 function collectFiles(dir, base) {
   const files = [];
-  for (const entry of (0, import_fs.readdirSync)(dir)) {
-    const full = (0, import_path.join)(dir, entry);
-    const rel = (0, import_path.join)(base, entry);
-    if ((0, import_fs.statSync)(full).isDirectory()) {
+  for (const entry of (0, import_node_fs.readdirSync)(dir)) {
+    const full = (0, import_node_path.join)(dir, entry);
+    const rel = (0, import_node_path.join)(base, entry);
+    if ((0, import_node_fs.statSync)(full).isDirectory()) {
       files.push(...collectFiles(full, rel));
     } else {
       files.push(rel);
@@ -41,7 +41,7 @@ function collectFiles(dir, base) {
   return files;
 }
 function run(argv) {
-  let dest = (0, import_path.join)(".cursor", "skills");
+  let dest = (0, import_node_path.join)(".cursor", "skills");
   let force = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -56,7 +56,7 @@ function run(argv) {
       process.exit(0);
     }
   }
-  if (!(0, import_fs.existsSync)(SKILLS_SOURCE)) {
+  if (!(0, import_node_fs.existsSync)(SKILLS_SOURCE)) {
     console.error(
       "Error: Skills directory not found in the installed package. This may indicate a broken installation \u2014 try reinstalling rosey-cloudcannon-connector."
     );
@@ -66,16 +66,16 @@ function run(argv) {
   let copied = 0;
   let skipped = 0;
   for (const relPath of files) {
-    const src = (0, import_path.join)(SKILLS_SOURCE, relPath);
-    const target = (0, import_path.join)(dest, relPath);
-    if ((0, import_fs.existsSync)(target) && !force) {
+    const src = (0, import_node_path.join)(SKILLS_SOURCE, relPath);
+    const target = (0, import_node_path.join)(dest, relPath);
+    if ((0, import_node_fs.existsSync)(target) && !force) {
       console.log(
         `  skip  ${relPath} (already exists, use --force to overwrite)`
       );
       skipped++;
       continue;
     }
-    (0, import_fs.cpSync)(src, target, { recursive: true });
+    (0, import_node_fs.cpSync)(src, target, { recursive: true });
     console.log(`  copy  ${relPath}`);
     copied++;
   }
@@ -92,8 +92,8 @@ Copied ${copied} file${copied !== 1 ? "s" : ""} to ${dest}/${skipped > 0 ? ` (${
 
 // src/cli/init/actions.ts
 var import_node_child_process = require("child_process");
-var import_node_fs = __toESM(require("fs"));
-var import_node_path = __toESM(require("path"));
+var import_node_fs2 = __toESM(require("fs"));
+var import_node_path2 = __toESM(require("path"));
 function installDependencies(ctx) {
   if (!ctx.hasPackageJson) {
     console.log(
@@ -170,8 +170,8 @@ function buildPostbuildBlock(answers) {
   return lines.join("\n");
 }
 function writePostbuild(ctx, answers) {
-  const dir = import_node_path.default.join(process.cwd(), ".cloudcannon");
-  const filePath = import_node_path.default.join(dir, "postbuild");
+  const dir = import_node_path2.default.join(process.cwd(), ".cloudcannon");
+  const filePath = import_node_path2.default.join(dir, "postbuild");
   const block = buildPostbuildBlock(answers);
   if (ctx.postbuildExists && ctx.postbuildContent != null) {
     const appended = `${ctx.postbuildContent.trimEnd()}
@@ -179,8 +179,8 @@ function writePostbuild(ctx, answers) {
 # Rosey
 ${block}
 `;
-    import_node_fs.default.mkdirSync(dir, { recursive: true });
-    import_node_fs.default.writeFileSync(filePath, appended);
+    import_node_fs2.default.mkdirSync(dir, { recursive: true });
+    import_node_fs2.default.writeFileSync(filePath, appended);
     console.log("\u2713  Appended Rosey commands to .cloudcannon/postbuild");
   } else {
     const content = `#!/usr/bin/env bash
@@ -188,8 +188,8 @@ ${block}
 # Rosey
 ${block}
 `;
-    import_node_fs.default.mkdirSync(dir, { recursive: true });
-    import_node_fs.default.writeFileSync(filePath, content, { mode: 493 });
+    import_node_fs2.default.mkdirSync(dir, { recursive: true });
+    import_node_fs2.default.writeFileSync(filePath, content, { mode: 493 });
     console.log("\u2713  Created .cloudcannon/postbuild");
   }
 }
@@ -308,7 +308,7 @@ function removeSourceKey(ctx, _answers) {
   if (!ctx.ccSource || ctx.ccSource === "." || ctx.ccSource === "/") return;
   if (!ctx.ccConfigPath) return;
   const source = ctx.ccSource.replace(/\/+$/, "");
-  const raw = import_node_fs.default.readFileSync(ctx.ccConfigPath, "utf-8");
+  const raw = import_node_fs2.default.readFileSync(ctx.ccConfigPath, "utf-8");
   let updated;
   if (ctx.ccConfigFormat === "json") {
     updated = removeSourceFromJson(raw, source);
@@ -317,16 +317,16 @@ function removeSourceKey(ctx, _answers) {
   } else {
     console.log(
       `
-\u26A0  Cannot automatically remove \`source\` from ${import_node_path.default.basename(ctx.ccConfigPath)}.`
+\u26A0  Cannot automatically remove \`source\` from ${import_node_path2.default.basename(ctx.ccConfigPath)}.`
     );
     console.log(
       `   Remove \`source: ${ctx.ccSource}\` manually and prepend "${source}/" to all collection, data, and file_config paths.`
     );
     return;
   }
-  import_node_fs.default.writeFileSync(ctx.ccConfigPath, updated);
+  import_node_fs2.default.writeFileSync(ctx.ccConfigPath, updated);
   console.log(
-    `\u2713  Removed \`source: ${ctx.ccSource}\` and updated paths in ${import_node_path.default.basename(ctx.ccConfigPath)}`
+    `\u2713  Removed \`source: ${ctx.ccSource}\` and updated paths in ${import_node_path2.default.basename(ctx.ccConfigPath)}`
   );
 }
 function buildDataConfigYaml(answers, indent) {
@@ -499,12 +499,12 @@ function updateCloudCannonConfig(ctx, answers) {
     return;
   }
   if (!ctx.ccConfigPath) {
-    const newPath = import_node_path.default.join(process.cwd(), "cloudcannon.config.yml");
-    import_node_fs.default.writeFileSync(newPath, buildFreshYamlConfig(answers));
+    const newPath = import_node_path2.default.join(process.cwd(), "cloudcannon.config.yml");
+    import_node_fs2.default.writeFileSync(newPath, buildFreshYamlConfig(answers));
     console.log("\u2713  Created cloudcannon.config.yml");
     return;
   }
-  const raw = import_node_fs.default.readFileSync(ctx.ccConfigPath, "utf-8");
+  const raw = import_node_fs2.default.readFileSync(ctx.ccConfigPath, "utf-8");
   let updated;
   if (ctx.ccConfigFormat === "json") {
     updated = updateJsonConfig(raw, answers);
@@ -512,11 +512,11 @@ function updateCloudCannonConfig(ctx, answers) {
     updated = updateYamlConfig(raw, answers);
   }
   if (updated !== raw) {
-    import_node_fs.default.writeFileSync(ctx.ccConfigPath, updated);
-    console.log(`\u2713  Updated ${import_node_path.default.basename(ctx.ccConfigPath)}`);
+    import_node_fs2.default.writeFileSync(ctx.ccConfigPath, updated);
+    console.log(`\u2713  Updated ${import_node_path2.default.basename(ctx.ccConfigPath)}`);
   } else {
     console.log(
-      `\u2713  ${import_node_path.default.basename(ctx.ccConfigPath)} already has the required entries.`
+      `\u2713  ${import_node_path2.default.basename(ctx.ccConfigPath)} already has the required entries.`
     );
   }
 }
@@ -567,8 +567,8 @@ function printInstructions(answers, options) {
 }
 
 // src/cli/init/detect.ts
-var import_node_fs2 = __toESM(require("fs"));
-var import_node_path2 = __toESM(require("path"));
+var import_node_fs3 = __toESM(require("fs"));
+var import_node_path3 = __toESM(require("path"));
 var CC_CONFIG_CANDIDATES = [
   { file: "cloudcannon.config.yml", format: "yml" },
   { file: "cloudcannon.config.yaml", format: "yaml" },
@@ -585,14 +585,14 @@ var LOCK_FILES = [
 ];
 function fileExists(filePath) {
   try {
-    return import_node_fs2.default.statSync(filePath).isFile();
+    return import_node_fs3.default.statSync(filePath).isFile();
   } catch {
     return false;
   }
 }
 function dirExists(dirPath) {
   try {
-    return import_node_fs2.default.statSync(dirPath).isDirectory();
+    return import_node_fs3.default.statSync(dirPath).isDirectory();
   } catch {
     return false;
   }
@@ -602,7 +602,7 @@ function detectProject(cwd = process.cwd()) {
   let ccConfigFormat = null;
   let ccSource = null;
   for (const candidate of CC_CONFIG_CANDIDATES) {
-    const full = import_node_path2.default.join(cwd, candidate.file);
+    const full = import_node_path3.default.join(cwd, candidate.file);
     if (fileExists(full)) {
       ccConfigPath = full;
       ccConfigFormat = candidate.format;
@@ -611,7 +611,7 @@ function detectProject(cwd = process.cwd()) {
   }
   if (ccConfigPath) {
     try {
-      const raw = import_node_fs2.default.readFileSync(ccConfigPath, "utf-8");
+      const raw = import_node_fs3.default.readFileSync(ccConfigPath, "utf-8");
       if (ccConfigFormat === "json") {
         const parsed = JSON.parse(raw);
         if (typeof parsed.source === "string") ccSource = parsed.source;
@@ -624,25 +624,25 @@ function detectProject(cwd = process.cwd()) {
   }
   let buildDir = null;
   for (const dir of BUILD_DIR_CANDIDATES) {
-    if (dirExists(import_node_path2.default.join(cwd, dir))) {
+    if (dirExists(import_node_path3.default.join(cwd, dir))) {
       buildDir = dir;
       break;
     }
   }
   let packageManager = "npm";
   for (const lock of LOCK_FILES) {
-    if (fileExists(import_node_path2.default.join(cwd, lock.file))) {
+    if (fileExists(import_node_path3.default.join(cwd, lock.file))) {
       packageManager = lock.pm;
       break;
     }
   }
-  const pkgPath = import_node_path2.default.join(cwd, "package.json");
+  const pkgPath = import_node_path3.default.join(cwd, "package.json");
   const hasPackageJson = fileExists(pkgPath);
   let roseyInstalled = false;
   let rccInstalled = false;
   if (hasPackageJson) {
     try {
-      const pkg = JSON.parse(import_node_fs2.default.readFileSync(pkgPath, "utf-8"));
+      const pkg = JSON.parse(import_node_fs3.default.readFileSync(pkgPath, "utf-8"));
       const allDeps = {
         ...pkg.dependencies,
         ...pkg.devDependencies
@@ -652,16 +652,16 @@ function detectProject(cwd = process.cwd()) {
     } catch {
     }
   }
-  const postbuildPath = import_node_path2.default.join(cwd, ".cloudcannon", "postbuild");
+  const postbuildPath = import_node_path3.default.join(cwd, ".cloudcannon", "postbuild");
   const postbuildExists = fileExists(postbuildPath);
   let postbuildContent = null;
   if (postbuildExists) {
     try {
-      postbuildContent = import_node_fs2.default.readFileSync(postbuildPath, "utf-8");
+      postbuildContent = import_node_fs3.default.readFileSync(postbuildPath, "utf-8");
     } catch {
     }
   }
-  const bookshopDetected = fileExists(import_node_path2.default.join(cwd, "bookshop.config.cjs")) || dirExists(import_node_path2.default.join(cwd, "_bookshop")) || dirExists(import_node_path2.default.join(cwd, "component-library", "bookshop"));
+  const bookshopDetected = fileExists(import_node_path3.default.join(cwd, "bookshop.config.cjs")) || dirExists(import_node_path3.default.join(cwd, "_bookshop")) || dirExists(import_node_path3.default.join(cwd, "component-library", "bookshop"));
   return {
     ccConfigPath,
     ccConfigFormat,
@@ -972,8 +972,8 @@ function buildPostbuildPreview(answers) {
 }
 
 // src/write-locales.ts
-var import_node_fs3 = __toESM(require("fs"));
-var import_node_path3 = __toESM(require("path"));
+var import_node_fs4 = __toESM(require("fs"));
+var import_node_path4 = __toESM(require("path"));
 function sortKeys(obj) {
   return Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
@@ -987,8 +987,8 @@ async function writeLocales(options) {
     process.exit(1);
   }
   let locales = options.locales;
-  const baseJsonPath = import_node_path3.default.join(roseyDir, "base.json");
-  const baseJsonRaw = await import_node_fs3.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
+  const baseJsonPath = import_node_path4.default.join(roseyDir, "base.json");
+  const baseJsonRaw = await import_node_fs4.default.promises.readFile(baseJsonPath, "utf-8").catch(() => {
     console.error(
       `RCC: Could not read ${baseJsonPath}. Run rosey generate first.`
     );
@@ -996,10 +996,10 @@ async function writeLocales(options) {
   });
   const baseJson = JSON.parse(baseJsonRaw);
   const keys = baseJson.keys;
-  const localesDir = import_node_path3.default.join(roseyDir, "locales");
-  await import_node_fs3.default.promises.mkdir(localesDir, { recursive: true });
+  const localesDir = import_node_path4.default.join(roseyDir, "locales");
+  await import_node_fs4.default.promises.mkdir(localesDir, { recursive: true });
   if (!locales || locales.length === 0) {
-    const files = await import_node_fs3.default.promises.readdir(localesDir);
+    const files = await import_node_fs4.default.promises.readdir(localesDir);
     locales = files.filter((f) => f.endsWith(".json") && !f.endsWith(".urls.json")).map((f) => f.replace(/\.json$/, ""));
     if (locales.length === 0) {
       console.warn(
@@ -1009,10 +1009,10 @@ async function writeLocales(options) {
     }
   }
   for (const locale of locales) {
-    const localePath = import_node_path3.default.join(localesDir, `${locale}.json`);
+    const localePath = import_node_path4.default.join(localesDir, `${locale}.json`);
     let existing = {};
     try {
-      const raw = await import_node_fs3.default.promises.readFile(localePath, "utf-8");
+      const raw = await import_node_fs4.default.promises.readFile(localePath, "utf-8");
       existing = JSON.parse(raw);
     } catch {
     }
@@ -1035,7 +1035,7 @@ async function writeLocales(options) {
         existing[key]._base_original = entry.original;
       }
     }
-    await import_node_fs3.default.promises.writeFile(
+    await import_node_fs4.default.promises.writeFile(
       localePath,
       JSON.stringify(sortKeys(existing), null, 2)
     );
@@ -1045,10 +1045,10 @@ async function writeLocales(options) {
     );
   }
   const manifest = { locales };
-  const rccDir = import_node_path3.default.join(dest, "_rcc");
-  await import_node_fs3.default.promises.mkdir(rccDir, { recursive: true });
-  const manifestPath = import_node_path3.default.join(rccDir, "locales.json");
-  await import_node_fs3.default.promises.writeFile(manifestPath, JSON.stringify(manifest));
+  const rccDir = import_node_path4.default.join(dest, "_rcc");
+  await import_node_fs4.default.promises.mkdir(rccDir, { recursive: true });
+  const manifestPath = import_node_path4.default.join(rccDir, "locales.json");
+  await import_node_fs4.default.promises.writeFile(manifestPath, JSON.stringify(manifest));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
   await validateDataConfig(locales);
 }
@@ -1061,7 +1061,7 @@ var CC_CONFIG_PATHS = [
 async function readCCConfig() {
   for (const p of CC_CONFIG_PATHS) {
     try {
-      const raw = await import_node_fs3.default.promises.readFile(p, "utf-8");
+      const raw = await import_node_fs4.default.promises.readFile(p, "utf-8");
       return { raw, path: p };
     } catch {
     }

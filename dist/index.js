@@ -74,6 +74,9 @@ var CC_CUSTOM_ELEMENTS = [
   "EDITABLE-ARRAY-ITEM"
 ];
 var BLOCK_LEVEL_SELECTOR = "address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
+function isBlockType(dataType) {
+  return dataType === "block" || dataType === "text";
+}
 function inferElementType(el) {
   return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
 }
@@ -85,18 +88,7 @@ function cleanClone(root) {
   replaceCustomElements(root);
   stripBookshopComments(root);
   const roseyEls = root.querySelectorAll("[data-rosey]").length;
-  const remainingComments = countComments(root, "bookshop");
-  log(
-    `cleanClone: ${roseyEls} [data-rosey] element(s), ${remainingComments} remaining bookshop comment(s)`
-  );
-}
-function countComments(root, needle) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
-  let count = 0;
-  while (walker.nextNode()) {
-    if (walker.currentNode.data.includes(needle)) count++;
-  }
-  return count;
+  log(`cleanClone: ${roseyEls} [data-rosey] element(s)`);
 }
 function stripBookshopComments(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
@@ -129,9 +121,8 @@ function replaceCustomElements(root) {
       let replacementTag = "div";
       if (tag === "EDITABLE-TEXT") {
         const dataType = el.getAttribute("data-type");
-        const isBlockType = dataType === "block" || dataType === "text";
         const hasBlockChildren = el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-        replacementTag = isBlockType || hasBlockChildren ? "div" : "span";
+        replacementTag = isBlockType(dataType) || hasBlockChildren ? "div" : "span";
       }
       const replacement = document.createElement(replacementTag);
       for (const attr of Array.from(el.attributes)) {
@@ -150,7 +141,7 @@ function newTrackedEntry(element, roseyKey) {
     element,
     roseyKey,
     originalContent: element.innerHTML,
-    inferredType: element.dataset.type === "block" || element.dataset.type === "text" ? "block" : inferElementType(element),
+    inferredType: isBlockType(element.dataset.type) ? "block" : inferElementType(element),
     focused: false,
     stale: false,
     baseOriginal: null,
@@ -169,6 +160,9 @@ function trackElements(scope) {
     tracked.push(newTrackedEntry(el, roseyKey));
   }
   log(`Tracked ${tracked.length} translatable elements`);
+}
+function resolveDisplayValue(data, t) {
+  return data?.value ?? data?.original ?? t.originalContent;
 }
 var CONFIG_TIMEOUT_MS = 200;
 async function fetchInputConfig(el) {
@@ -229,7 +223,7 @@ function normalizeSource(s) {
   return s.replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
-  return text.length > max ? text.slice(0, max) + "\u2026" : text;
+  return text.length > max ? `${text.slice(0, max)}\u2026` : text;
 }
 function updateStaleList() {
   const panel = document.getElementById("rcc-stale-panel");
@@ -534,6 +528,8 @@ async function switchLocale(locale) {
   }
 }
 async function switchLocaleInner(locale, myGeneration) {
+  const cc = api;
+  if (!cc) return;
   currentLocale = locale;
   updateButtonStates();
   teardownEditors();
@@ -566,7 +562,7 @@ async function switchLocaleInner(locale, myGeneration) {
   }
   const datasetKey = `locales_${locale}`;
   log(`switchLocale: requesting dataset "${datasetKey}"`);
-  const dataset = api.dataset(datasetKey);
+  const dataset = cc.dataset(datasetKey);
   const file = await resolveFile(dataset);
   if (!file) {
     warn(
@@ -577,7 +573,6 @@ async function switchLocaleInner(locale, myGeneration) {
   log(`switchLocale: resolved file from dataset "${datasetKey}"`);
   activeFile = file;
   let setupComplete = false;
-  staleCount = 0;
   const dataResults = await Promise.all(
     tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null))
   );
@@ -590,7 +585,7 @@ async function switchLocaleInner(locale, myGeneration) {
     const t = tracked[i];
     const data = dataResults[i];
     t.hasLocaleEntry = data != null;
-    const value = data?.value ?? data?.original ?? t.originalContent;
+    const value = resolveDisplayValue(data, t);
     resolvedValues[i] = value;
     const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
     const normalizedOriginal = normalizeSource(data?.original ?? "");
@@ -600,13 +595,9 @@ async function switchLocaleInner(locale, myGeneration) {
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
     t.element.innerHTML = value;
-    if (t.stale) {
-      markStaleElement(t);
-      staleCount++;
-    }
+    if (t.stale) markStaleElement(t);
   }
-  updateStaleBadge();
-  updateStaleList();
+  recountStale();
   const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
   log(
     `Data loaded \u2014 ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`
@@ -622,7 +613,7 @@ async function switchLocaleInner(locale, myGeneration) {
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
       const isSource = originalIsSource.has(t.roseyKey);
       let applying = true;
-      const editor = await api.createTextEditableRegion(
+      const editor = await cc.createTextEditableRegion(
         t.element,
         (content) => {
           if (myGeneration !== switchGeneration) return;
@@ -700,8 +691,7 @@ async function switchLocaleInner(locale, myGeneration) {
       try {
         const data = await freshFile.data.get({ slug: t.roseyKey });
         t.hasLocaleEntry = data != null;
-        const value = data?.value ?? data?.original ?? t.originalContent;
-        t.editor.setContent(value);
+        t.editor.setContent(resolveDisplayValue(data, t));
         updated++;
       } catch {
       }
@@ -730,7 +720,7 @@ async function switchLocaleInner(locale, myGeneration) {
       log(
         `reconcile: wiring editor for "${key}"${data == null ? " (no entry yet \u2014 created on first edit)" : ""}`
       );
-      await setupEditor(t, data?.value ?? data?.original ?? t.originalContent);
+      await setupEditor(t, resolveDisplayValue(data, t));
     }
   };
   const scheduleReconcile = () => {
@@ -767,12 +757,15 @@ var TRANSLATE_ICON = [
   '<path d="M14.5 19l2.5-6 2.5 6"/><path d="M15.5 17h3"/>',
   "</svg>"
 ].join("");
+function isActiveLocale(btn) {
+  return (btn.dataset.locale ?? null) === (currentLocale ?? "");
+}
 function updateButtonStates() {
   const buttons = document.querySelectorAll(
     "#rcc-locale-popover button[data-locale]"
   );
   for (const btn of buttons) {
-    const isActive = (btn.dataset.locale ?? null) === (currentLocale ?? "");
+    const isActive = isActiveLocale(btn);
     Object.assign(btn.style, {
       background: isActive ? CC_BLUE : "#f1f5f9",
       color: isActive ? "#ffffff" : "#1e293b",
@@ -913,19 +906,17 @@ function injectSwitcher(locales) {
       fontWeight: "400"
     });
     btn.addEventListener("mouseenter", () => {
-      if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+      if (!isActiveLocale(btn)) {
         btn.style.background = "#e2e8f0";
       }
     });
     btn.addEventListener("mouseleave", () => {
-      if ((btn.dataset.locale ?? null) !== (currentLocale ?? "")) {
+      if (!isActiveLocale(btn)) {
         btn.style.background = "#f1f5f9";
       }
     });
-    btn.addEventListener("click", (e) => {
-      log(
-        `Button clicked: "${label}" (locale=${locale}) isTrusted=${e.isTrusted}, currentLocale=${currentLocale}`
-      );
+    btn.addEventListener("click", () => {
+      log(`Locale button clicked: ${label} (locale=${locale})`);
       if (switchInProgress) {
         log("Ignoring click \u2014 locale switch already in progress");
         return;
@@ -1225,7 +1216,7 @@ async function init() {
     return;
   }
   api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-24T10:20:31.831Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T04:02:50.805Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
