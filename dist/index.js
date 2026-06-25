@@ -17,55 +17,98 @@ function warn(...args) {
   console.warn("RCC:", ...args);
 }
 
-// src/injector.ts
-var tracked = [];
-var currentLocale = null;
-var api = null;
-var originalContainer = null;
-var translationContainer = null;
-var activeDataset = null;
-var activeDatasetListener = null;
-var activeFile = null;
-var reconcileObserver = null;
-var reconcileScheduled = false;
-var switchGeneration = 0;
-var switchInProgress = false;
-var originalInputConfigs = /* @__PURE__ */ new Map();
-var originalIsSource = /* @__PURE__ */ new Set();
-var RTL_LOCALES = /* @__PURE__ */ new Set([
-  "ar",
-  "he",
-  "fa",
-  "ur",
-  "ps",
-  "sd",
-  "yi",
-  "ku",
-  "ckb",
-  "dv",
-  "ug"
-]);
-function isRtlLocale(locale) {
-  return RTL_LOCALES.has(locale.split("-")[0].toLowerCase());
-}
-function resolveRoseyKey(el) {
-  const localKey = el.getAttribute("data-rosey");
-  if (!localKey) return null;
-  const nsParts = [];
-  let current = el.parentElement;
-  while (current) {
-    const root = current.getAttribute("data-rosey-root");
-    if (root !== null) {
-      if (root) nsParts.push(root);
-      break;
-    }
-    const ns = current.getAttribute("data-rosey-ns");
-    if (ns) nsParts.push(ns);
-    current = current.parentElement;
+// src/bookshop.ts
+var originalBookshopUpdate = null;
+function pauseBookshop() {
+  const bsl = window.bookshopLive;
+  if (!bsl) {
+    log(
+      "pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)"
+    );
+    return;
   }
-  nsParts.reverse();
-  return [...nsParts, localKey].join(":");
+  if (typeof bsl.update !== "function") {
+    log("pauseBookshop: bookshopLive.update is not a function");
+    return;
+  }
+  if (originalBookshopUpdate) {
+    log("pauseBookshop: already paused");
+    return;
+  }
+  originalBookshopUpdate = bsl.update.bind(bsl);
+  bsl.update = async () => false;
+  log("Paused Bookshop live editing");
 }
+function resumeBookshop() {
+  if (!originalBookshopUpdate) {
+    log("resumeBookshop: nothing to resume (was not paused)");
+    return;
+  }
+  const bsl = window.bookshopLive;
+  if (!bsl) {
+    warn("resumeBookshop: window.bookshopLive disappeared \u2014 cannot restore");
+    originalBookshopUpdate = null;
+    return;
+  }
+  bsl.update = originalBookshopUpdate;
+  originalBookshopUpdate = null;
+  log("Resumed Bookshop live editing");
+}
+function stripCmsBindForRerender(container) {
+  const bound = container.querySelectorAll("[data-cms-bind]");
+  for (const el of bound) el.removeAttribute("data-cms-bind");
+  if (bound.length) {
+    log(
+      `Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`
+    );
+  }
+  forceBookshopRerender();
+}
+function forceBookshopRerender() {
+  const cc = window.CloudCannon;
+  const bsl = window.bookshopLive;
+  if (!bsl || typeof bsl.update !== "function") {
+    if (typeof cc?.refreshInterface === "function") {
+      requestAnimationFrame(() => {
+        cc.refreshInterface();
+        log(
+          "Called deferred CloudCannon.refreshInterface() (non-Bookshop site)"
+        );
+      });
+    }
+    return;
+  }
+  if (typeof cc?.value !== "function" || typeof cc?.refreshInterface !== "function") {
+    log(
+      "forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update"
+    );
+    return;
+  }
+  setTimeout(async () => {
+    try {
+      const data = await cc.value({
+        keepMarkdownAsHTML: false,
+        preferBlobs: true
+      });
+      const options = window.bookshopLiveOptions || {};
+      const rendered = await bsl.update(data, options);
+      if (rendered) {
+        cc.refreshInterface();
+        log(
+          "Forced Bookshop re-render + refreshInterface() to restore component panels"
+        );
+      } else {
+        log(
+          "Bookshop re-render was throttled, panels will restore on next update"
+        );
+      }
+    } catch (e) {
+      warn("Failed to force Bookshop re-render:", e);
+    }
+  }, 0);
+}
+
+// src/clean-clone.ts
 var CC_CUSTOM_ELEMENTS = [
   "EDITABLE-TEXT",
   "EDITABLE-SOURCE",
@@ -136,86 +179,109 @@ function replaceCustomElements(root) {
     }
   }
 }
-function newTrackedEntry(element, roseyKey) {
-  return {
-    element,
-    roseyKey,
-    originalContent: element.innerHTML,
-    inferredType: isBlockType(element.dataset.type) ? "block" : inferElementType(element),
-    focused: false,
-    stale: false,
-    baseOriginal: null,
-    localeOriginal: null,
-    hasLocaleEntry: false
-  };
+
+// src/locales.ts
+var RTL_LOCALES = /* @__PURE__ */ new Set([
+  "ar",
+  "he",
+  "fa",
+  "ur",
+  "ps",
+  "sd",
+  "yi",
+  "ku",
+  "ckb",
+  "dv",
+  "ug"
+]);
+function isRtlLocale(locale) {
+  return RTL_LOCALES.has(locale.split("-")[0].toLowerCase());
 }
-function trackElements(scope) {
-  tracked.length = 0;
-  const elements = scope.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
-  );
-  for (const el of elements) {
-    const roseyKey = resolveRoseyKey(el);
-    if (!roseyKey) continue;
-    tracked.push(newTrackedEntry(el, roseyKey));
-  }
-  log(`Tracked ${tracked.length} translatable elements`);
-}
-function resolveDisplayValue(data, t) {
-  return data?.value ?? data?.original ?? t.originalContent;
-}
-var CONFIG_TIMEOUT_MS = 200;
-async function fetchInputConfig(el) {
-  const prop = el.dataset.prop;
-  const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
-  if (!prop || !isEditable) return null;
-  const configPromise = new Promise((resolve) => {
-    el.dispatchEvent(
-      new CustomEvent("cloudcannon-api", {
-        bubbles: true,
-        detail: { action: "get-input-config", source: prop, callback: resolve }
-      })
-    );
-  });
-  const timeout = new Promise(
-    (resolve) => setTimeout(() => resolve(null), CONFIG_TIMEOUT_MS)
-  );
-  return Promise.race([configPromise, timeout]);
-}
-async function prescanOriginals(container) {
-  const elements = container.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
-  );
-  for (const el of elements) {
-    const roseyKey = resolveRoseyKey(el);
-    if (!roseyKey) continue;
-    if (el.dataset.editable === "source" || el.tagName === "EDITABLE-SOURCE") {
-      originalIsSource.add(roseyKey);
+async function discoverLocales() {
+  try {
+    const res = await fetch("/_rcc/locales.json");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const locales = data?.locales;
+    if (!Array.isArray(locales) || locales.length === 0) {
+      throw new Error("manifest missing locales array");
     }
-    const config = await fetchInputConfig(el);
-    if (config != null) {
-      originalInputConfigs.set(roseyKey, config);
-    }
+    log("Discovered locales from manifest:", locales);
+    return locales;
+  } catch {
   }
-  log(
-    `Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`
+  warn(
+    "Could not load /_rcc/locales.json. Ensure write-locales ran with --dest pointing to your build output directory."
   );
+  return null;
 }
+
+// src/rosey-key.ts
+function resolveRoseyKey(el) {
+  const localKey = el.getAttribute("data-rosey");
+  if (!localKey) return null;
+  const nsParts = [];
+  let current = el.parentElement;
+  while (current) {
+    const root = current.getAttribute("data-rosey-root");
+    if (root !== null) {
+      if (root) nsParts.push(root);
+      break;
+    }
+    const ns = current.getAttribute("data-rosey-ns");
+    if (ns) nsParts.push(ns);
+    current = current.parentElement;
+  }
+  nsParts.reverse();
+  return [...nsParts, localKey].join(":");
+}
+
+// src/state.ts
+var tracked = [];
+var state = {
+  currentLocale: null,
+  api: null,
+  originalContainer: null,
+  translationContainer: null,
+  activeDataset: null,
+  activeDatasetListener: null,
+  activeFile: null,
+  /**
+   * Watches the active translation container for [data-rosey] elements that CC
+   * adds or re-keys after the initial switch pass (e.g. a newly inserted array
+   * item, or an element whose data-rosey-ns is stamped from instance_value:UUID
+   * a tick after insertion). Without this, editor setup would only ever run once
+   * during switchLocaleInner and miss those elements.
+   */
+  reconcileObserver: null,
+  reconcileScheduled: false,
+  /**
+   * Guards against stale ProseMirror onChange fires. createTextEditableRegion
+   * has no destroy() so old editors stay alive and fire when the DOM changes.
+   * Each onChange closure captures its generation; mismatches are no-ops.
+   */
+  switchGeneration: 0,
+  /** True while an async locale switch is running. Blocks re-entrant clicks. */
+  switchInProgress: false,
+  /** Cached count of stale tracked entries; drives the FAB stale badge. */
+  staleCount: 0
+};
+
+// src/stale.ts
 var STALE_AMBER = "#f59e0b";
 var STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
-var staleCount = 0;
 function updateStaleBadge() {
   const badge = document.getElementById("rcc-stale-badge");
   if (!badge) return;
-  if (staleCount > 0) {
-    badge.textContent = String(staleCount);
+  if (state.staleCount > 0) {
+    badge.textContent = String(state.staleCount);
     badge.style.display = "flex";
   } else {
     badge.style.display = "none";
   }
 }
 function recountStale() {
-  staleCount = tracked.filter((t) => t.stale).length;
+  state.staleCount = tracked.filter((t) => t.stale).length;
   updateStaleBadge();
   updateStaleList();
 }
@@ -231,18 +297,18 @@ function updateStaleList() {
     "[data-rcc-stale-submenu]"
   );
   for (const sub of allSubmenus) {
-    if (sub.dataset.rccStaleSubmenu !== currentLocale) {
+    if (sub.dataset.rccStaleSubmenu !== state.currentLocale) {
       sub.style.display = "none";
       const ch = sub.querySelector("[data-rcc-stale-chevron]");
       if (ch) ch.style.transform = "rotate(0deg)";
     }
   }
-  if (!currentLocale) {
+  if (!state.currentLocale) {
     if (panel) panel.style.display = "none";
     return;
   }
   const submenu = document.querySelector(
-    `[data-rcc-stale-submenu="${currentLocale}"]`
+    `[data-rcc-stale-submenu="${state.currentLocale}"]`
   );
   const staleItems = tracked.filter((t) => t.stale);
   if (staleItems.length === 0) {
@@ -339,7 +405,7 @@ function updateStaleList() {
     });
     resolveBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (activeFile) resolveStale(t, activeFile);
+      if (state.activeFile) resolveStale(t, state.activeFile);
     });
     row.appendChild(scrollBtn);
     row.appendChild(resolveBtn);
@@ -375,377 +441,8 @@ function resolveStale(t, file) {
   t.baseOriginal = current;
   unmarkStaleElement(t);
 }
-var originalBookshopUpdate = null;
-function pauseBookshop() {
-  const bsl = window.bookshopLive;
-  if (!bsl) {
-    log(
-      "pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)"
-    );
-    return;
-  }
-  if (typeof bsl.update !== "function") {
-    log("pauseBookshop: bookshopLive.update is not a function");
-    return;
-  }
-  if (originalBookshopUpdate) {
-    log("pauseBookshop: already paused");
-    return;
-  }
-  originalBookshopUpdate = bsl.update.bind(bsl);
-  bsl.update = async () => false;
-  log("Paused Bookshop live editing");
-}
-function resumeBookshop() {
-  if (!originalBookshopUpdate) {
-    log("resumeBookshop: nothing to resume (was not paused)");
-    return;
-  }
-  const bsl = window.bookshopLive;
-  if (!bsl) {
-    warn("resumeBookshop: window.bookshopLive disappeared \u2014 cannot restore");
-    originalBookshopUpdate = null;
-    return;
-  }
-  bsl.update = originalBookshopUpdate;
-  originalBookshopUpdate = null;
-  log("Resumed Bookshop live editing");
-}
-function teardownEditors() {
-  log(
-    `teardownEditors: translationContainer=${!!translationContainer}, originalContainer=${!!originalContainer}, tracked=${tracked.length}`
-  );
-  if (reconcileObserver) {
-    reconcileObserver.disconnect();
-    reconcileObserver = null;
-  }
-  reconcileScheduled = false;
-  if (activeDataset && activeDatasetListener) {
-    activeDataset.removeEventListener("change", activeDatasetListener);
-  }
-  activeDataset = null;
-  activeDatasetListener = null;
-  activeFile = null;
-  for (const t of tracked) t.editor = void 0;
-  tracked.length = 0;
-  staleCount = 0;
-  updateStaleBadge();
-  updateStaleList();
-  resumeBookshop();
-  if (translationContainer && originalContainer) {
-    const cloneInDOM = translationContainer.isConnected;
-    const originalInDOM = originalContainer.isConnected;
-    log(
-      `teardownEditors: clone connected=${cloneInDOM}, original connected=${originalInDOM} \u2014 swapping`
-    );
-    translationContainer.replaceWith(originalContainer);
-    log("Restored original container");
-    stripCmsBindForRerender(originalContainer);
-  } else {
-    log("teardownEditors: no containers to swap");
-  }
-  translationContainer = null;
-  originalContainer = null;
-}
-function stripCmsBindForRerender(container) {
-  const bound = container.querySelectorAll("[data-cms-bind]");
-  for (const el of bound) el.removeAttribute("data-cms-bind");
-  if (bound.length) {
-    log(
-      `Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`
-    );
-  }
-  forceBookshopRerender();
-}
-function forceBookshopRerender() {
-  const cc = window.CloudCannon;
-  const bsl = window.bookshopLive;
-  if (!bsl || typeof bsl.update !== "function") {
-    if (typeof cc?.refreshInterface === "function") {
-      requestAnimationFrame(() => {
-        cc.refreshInterface();
-        log(
-          "Called deferred CloudCannon.refreshInterface() (non-Bookshop site)"
-        );
-      });
-    }
-    return;
-  }
-  if (typeof cc?.value !== "function" || typeof cc?.refreshInterface !== "function") {
-    log(
-      "forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update"
-    );
-    return;
-  }
-  setTimeout(async () => {
-    try {
-      const data = await cc.value({
-        keepMarkdownAsHTML: false,
-        preferBlobs: true
-      });
-      const options = window.bookshopLiveOptions || {};
-      const rendered = await bsl.update(data, options);
-      if (rendered) {
-        cc.refreshInterface();
-        log(
-          "Forced Bookshop re-render + refreshInterface() to restore component panels"
-        );
-      } else {
-        log(
-          "Bookshop re-render was throttled, panels will restore on next update"
-        );
-      }
-    } catch (e) {
-      warn("Failed to force Bookshop re-render:", e);
-    }
-  }, 0);
-}
-var DATASET_TIMEOUT_MS = 5e3;
-async function resolveFile(dataset) {
-  const timeout = new Promise(
-    (resolve) => setTimeout(() => resolve(null), DATASET_TIMEOUT_MS)
-  );
-  const result = await Promise.race([dataset.items(), timeout]);
-  if (result === null) {
-    warn(
-      `dataset.items() did not resolve within ${DATASET_TIMEOUT_MS / 1e3}s. This usually means CloudCannon cannot find the file configured in data_config. Check that the path in data_config is correct relative to your source directory.`
-    );
-    return null;
-  }
-  if (Array.isArray(result)) return result[0] ?? null;
-  return result ?? null;
-}
-async function switchLocale(locale) {
-  if (!api) return;
-  switchGeneration++;
-  const myGeneration = switchGeneration;
-  log(`switchLocale("${locale}") \u2014 generation ${myGeneration}`);
-  switchInProgress = true;
-  try {
-    await switchLocaleInner(locale, myGeneration);
-  } finally {
-    switchInProgress = false;
-  }
-}
-async function switchLocaleInner(locale, myGeneration) {
-  const cc = api;
-  if (!cc) return;
-  currentLocale = locale;
-  updateButtonStates();
-  teardownEditors();
-  if (!locale) {
-    log("Switched to Original");
-    return;
-  }
-  pauseBookshop();
-  const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
-  if (!container) {
-    warn("No locale container found");
-    return;
-  }
-  originalContainer = container;
-  log(
-    `switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ${container.children.length} child element(s)`
-  );
-  const clone = container.cloneNode(true);
-  cleanClone(clone);
-  const rtl = isRtlLocale(locale);
-  if (rtl) clone.dir = "rtl";
-  container.replaceWith(clone);
-  translationContainer = clone;
-  log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
-  trackElements(clone);
-  if (tracked.length === 0) {
-    warn(
-      `No [data-rosey] elements found in the snapshot boundary. Make sure your translatable elements have data-rosey attributes.`
-    );
-  }
-  const datasetKey = `locales_${locale}`;
-  log(`switchLocale: requesting dataset "${datasetKey}"`);
-  const dataset = cc.dataset(datasetKey);
-  const file = await resolveFile(dataset);
-  if (!file) {
-    warn(
-      `No file found in dataset "${datasetKey}". Check that data_config.${datasetKey} exists in cloudcannon.config.yml and points to a valid locale file.`
-    );
-    return;
-  }
-  log(`switchLocale: resolved file from dataset "${datasetKey}"`);
-  activeFile = file;
-  let setupComplete = false;
-  const dataResults = await Promise.all(
-    tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null))
-  );
-  if (myGeneration !== switchGeneration) {
-    log(`Generation changed after data fetch, aborting "${locale}" setup`);
-    return;
-  }
-  const resolvedValues = [];
-  for (let i = 0; i < tracked.length; i++) {
-    const t = tracked[i];
-    const data = dataResults[i];
-    t.hasLocaleEntry = data != null;
-    const value = resolveDisplayValue(data, t);
-    resolvedValues[i] = value;
-    const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
-    const normalizedOriginal = normalizeSource(data?.original ?? "");
-    const baseStale = staleEnabled && normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
-    const liveStale = staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
-    t.stale = baseStale || liveStale;
-    t.baseOriginal = data?._base_original ?? null;
-    t.localeOriginal = data?.original ?? null;
-    t.element.innerHTML = value;
-    if (t.stale) markStaleElement(t);
-  }
-  recountStale();
-  const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
-  log(
-    `Data loaded \u2014 ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`
-  );
-  if (missingKeys.length > 0) {
-    log(
-      `Missing-entry keys (editable, new entry written on first edit): ${missingKeys.join(", ")}`
-    );
-  }
-  const setupEditor = async (t, value) => {
-    try {
-      const inputConfig = originalInputConfigs.get(t.roseyKey);
-      const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
-      const isSource = originalIsSource.has(t.roseyKey);
-      let applying = true;
-      const editor = await cc.createTextEditableRegion(
-        t.element,
-        (content) => {
-          if (myGeneration !== switchGeneration) return;
-          if (!setupComplete || applying) return;
-          if (content == null) return;
-          if (!t.hasLocaleEntry) {
-            log(`[${t.roseyKey}] onChange \u2192 creating new locale entry`);
-            file.data.set({
-              slug: t.roseyKey,
-              value: {
-                original: t.originalContent,
-                value: content,
-                _base_original: t.originalContent
-              }
-            });
-            t.hasLocaleEntry = true;
-            t.baseOriginal = t.originalContent;
-            t.localeOriginal = t.originalContent;
-            return;
-          }
-          log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
-          file.data.set({ slug: `${t.roseyKey}.value`, value: content });
-          if (t.stale) {
-            resolveStale(t, file);
-          }
-        },
-        {
-          elementType: t.inferredType,
-          ...isSource && { editableType: "content" },
-          ...rccInputConfig != null && { inputConfig: rccInputConfig }
-        }
-      );
-      t.editor = editor;
-      editor.setContent(value);
-      applying = false;
-      t.element.addEventListener("focus", () => {
-        t.focused = true;
-      });
-      t.element.addEventListener("blur", () => {
-        t.focused = false;
-      });
-      return true;
-    } catch (err) {
-      warn(`Failed to set up editor for "${t.roseyKey}":`, err);
-      return false;
-    }
-  };
-  let editorsCreated = 0;
-  for (let i = 0; i < tracked.length; i++) {
-    const t = tracked[i];
-    if (myGeneration !== switchGeneration) {
-      log(`Generation changed, aborting "${locale}" editor setup`);
-      return;
-    }
-    if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
-  }
-  log(`Created ${editorsCreated} editors`);
-  if (myGeneration !== switchGeneration) return;
-  await Promise.resolve();
-  setupComplete = true;
-  log(`Setup complete for "${locale}" (generation ${myGeneration})`);
-  activeDataset = dataset;
-  activeDatasetListener = async () => {
-    if (myGeneration !== switchGeneration) return;
-    const freshFile = await resolveFile(dataset);
-    if (!freshFile) return;
-    let updated = 0;
-    let skipped = 0;
-    for (const t of tracked) {
-      if (!t.editor) continue;
-      if (t.focused) {
-        skipped++;
-        continue;
-      }
-      try {
-        const data = await freshFile.data.get({ slug: t.roseyKey });
-        t.hasLocaleEntry = data != null;
-        t.editor.setContent(resolveDisplayValue(data, t));
-        updated++;
-      } catch {
-      }
-    }
-    log(
-      `Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`
-    );
-  };
-  dataset.addEventListener("change", activeDatasetListener);
-  const reconcileElement = async (el) => {
-    if (myGeneration !== switchGeneration) return;
-    const key = resolveRoseyKey(el);
-    if (!key) return;
-    let t = tracked.find((x) => x.element === el);
-    if (t && t.roseyKey === key && t.editor) return;
-    if (!t) {
-      t = newTrackedEntry(el, key);
-      tracked.push(t);
-    } else {
-      t.roseyKey = key;
-    }
-    const data = await file.data.get({ slug: key }).catch(() => null);
-    if (myGeneration !== switchGeneration) return;
-    t.hasLocaleEntry = data != null;
-    if (!t.editor) {
-      log(
-        `reconcile: wiring editor for "${key}"${data == null ? " (no entry yet \u2014 created on first edit)" : ""}`
-      );
-      await setupEditor(t, resolveDisplayValue(data, t));
-    }
-  };
-  const scheduleReconcile = () => {
-    if (reconcileScheduled) return;
-    reconcileScheduled = true;
-    requestAnimationFrame(() => {
-      reconcileScheduled = false;
-      if (myGeneration !== switchGeneration || !translationContainer) return;
-      const els = translationContainer.querySelectorAll(
-        "[data-rosey]:not([data-rcc-ignore])"
-      );
-      for (const el of els) void reconcileElement(el);
-    });
-  };
-  if (translationContainer) {
-    reconcileObserver = new MutationObserver(scheduleReconcile);
-    reconcileObserver.observe(translationContainer, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["data-rosey", "data-rosey-ns", "data-rosey-root"]
-    });
-  }
-  log(`Switched to ${locale}`);
-}
+
+// src/ui/switcher.ts
 var FAB_SIZE = 48;
 var FAB_STORAGE_KEY = "rcc-fab-position";
 var CC_BLUE = "#034ad8";
@@ -758,7 +455,7 @@ var TRANSLATE_ICON = [
   "</svg>"
 ].join("");
 function isActiveLocale(btn) {
-  return (btn.dataset.locale ?? null) === (currentLocale ?? "");
+  return (btn.dataset.locale ?? null) === (state.currentLocale ?? "");
 }
 function updateButtonStates() {
   const buttons = document.querySelectorAll(
@@ -774,15 +471,15 @@ function updateButtonStates() {
   }
   const badge = document.getElementById("rcc-fab-badge");
   if (badge) {
-    if (currentLocale) {
-      badge.textContent = currentLocale.toUpperCase();
+    if (state.currentLocale) {
+      badge.textContent = state.currentLocale.toUpperCase();
       badge.style.display = "flex";
     } else {
       badge.style.display = "none";
     }
   }
 }
-function injectSwitcher(locales) {
+function injectSwitcher(locales, onSelect) {
   const fab = document.createElement("div");
   fab.id = "rcc-locale-switcher";
   const savedPos = (() => {
@@ -917,11 +614,11 @@ function injectSwitcher(locales) {
     });
     btn.addEventListener("click", () => {
       log(`Locale button clicked: ${label} (locale=${locale})`);
-      if (switchInProgress) {
+      if (state.switchInProgress) {
         log("Ignoring click \u2014 locale switch already in progress");
         return;
       }
-      switchLocale(locale);
+      onSelect(locale);
       closePopover();
     });
     return btn;
@@ -1033,7 +730,7 @@ function injectSwitcher(locales) {
   resolveAllBtn.addEventListener("click", () => {
     const stale = tracked.filter((t) => t.stale);
     for (const t of stale) {
-      if (activeFile) resolveStale(t, activeFile);
+      if (state.activeFile) resolveStale(t, state.activeFile);
     }
   });
   stalePanel.appendChild(resolveAllBtn);
@@ -1058,14 +755,14 @@ function injectSwitcher(locales) {
   function openStalePanel() {
     positionStalePanel();
     const chevron = document.querySelector(
-      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+      `[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`
     );
     if (chevron) chevron.style.transform = "rotate(90deg)";
   }
   function closeStalePanel() {
     stalePanel.style.display = "none";
     const chevron = document.querySelector(
-      `[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`
+      `[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`
     );
     if (chevron) chevron.style.transform = "rotate(0deg)";
   }
@@ -1191,23 +888,360 @@ function injectSwitcher(locales) {
   document.body.appendChild(stalePanel);
   updateButtonStates();
 }
-async function discoverLocales() {
-  try {
-    const res = await fetch("/_rcc/locales.json");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const locales = data?.locales;
-    if (!Array.isArray(locales) || locales.length === 0) {
-      throw new Error("manifest missing locales array");
-    }
-    log("Discovered locales from manifest:", locales);
-    return locales;
-  } catch {
-  }
-  warn(
-    "Could not load /_rcc/locales.json. Ensure write-locales ran with --dest pointing to your build output directory."
+
+// src/injector.ts
+var originalInputConfigs = /* @__PURE__ */ new Map();
+var originalIsSource = /* @__PURE__ */ new Set();
+function newTrackedEntry(element, roseyKey) {
+  return {
+    element,
+    roseyKey,
+    originalContent: element.innerHTML,
+    inferredType: isBlockType(element.dataset.type) ? "block" : inferElementType(element),
+    focused: false,
+    stale: false,
+    baseOriginal: null,
+    localeOriginal: null,
+    hasLocaleEntry: false
+  };
+}
+function trackElements(scope) {
+  tracked.length = 0;
+  const elements = scope.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
   );
-  return null;
+  for (const el of elements) {
+    const roseyKey = resolveRoseyKey(el);
+    if (!roseyKey) continue;
+    tracked.push(newTrackedEntry(el, roseyKey));
+  }
+  log(`Tracked ${tracked.length} translatable elements`);
+}
+function resolveDisplayValue(data, t) {
+  return data?.value ?? data?.original ?? t.originalContent;
+}
+var CONFIG_TIMEOUT_MS = 200;
+async function fetchInputConfig(el) {
+  const prop = el.dataset.prop;
+  const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
+  if (!prop || !isEditable) return null;
+  const configPromise = new Promise((resolve) => {
+    el.dispatchEvent(
+      new CustomEvent("cloudcannon-api", {
+        bubbles: true,
+        detail: { action: "get-input-config", source: prop, callback: resolve }
+      })
+    );
+  });
+  const timeout = new Promise(
+    (resolve) => setTimeout(() => resolve(null), CONFIG_TIMEOUT_MS)
+  );
+  return Promise.race([configPromise, timeout]);
+}
+async function prescanOriginals(container) {
+  const elements = container.querySelectorAll(
+    "[data-rosey]:not([data-rcc-ignore])"
+  );
+  for (const el of elements) {
+    const roseyKey = resolveRoseyKey(el);
+    if (!roseyKey) continue;
+    if (el.dataset.editable === "source" || el.tagName === "EDITABLE-SOURCE") {
+      originalIsSource.add(roseyKey);
+    }
+    const config = await fetchInputConfig(el);
+    if (config != null) {
+      originalInputConfigs.set(roseyKey, config);
+    }
+  }
+  log(
+    `Prescan: captured input configs for ${originalInputConfigs.size} of ${elements.length} elements`
+  );
+}
+function teardownEditors() {
+  log(
+    `teardownEditors: translationContainer=${!!state.translationContainer}, originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`
+  );
+  if (state.reconcileObserver) {
+    state.reconcileObserver.disconnect();
+    state.reconcileObserver = null;
+  }
+  state.reconcileScheduled = false;
+  if (state.activeDataset && state.activeDatasetListener) {
+    state.activeDataset.removeEventListener(
+      "change",
+      state.activeDatasetListener
+    );
+  }
+  state.activeDataset = null;
+  state.activeDatasetListener = null;
+  state.activeFile = null;
+  for (const t of tracked) t.editor = void 0;
+  tracked.length = 0;
+  state.staleCount = 0;
+  updateStaleBadge();
+  updateStaleList();
+  resumeBookshop();
+  if (state.translationContainer && state.originalContainer) {
+    const cloneInDOM = state.translationContainer.isConnected;
+    const originalInDOM = state.originalContainer.isConnected;
+    log(
+      `teardownEditors: clone connected=${cloneInDOM}, original connected=${originalInDOM} \u2014 swapping`
+    );
+    state.translationContainer.replaceWith(state.originalContainer);
+    log("Restored original container");
+    stripCmsBindForRerender(state.originalContainer);
+  } else {
+    log("teardownEditors: no containers to swap");
+  }
+  state.translationContainer = null;
+  state.originalContainer = null;
+}
+var DATASET_TIMEOUT_MS = 5e3;
+async function resolveFile(dataset) {
+  const timeout = new Promise(
+    (resolve) => setTimeout(() => resolve(null), DATASET_TIMEOUT_MS)
+  );
+  const result = await Promise.race([dataset.items(), timeout]);
+  if (result === null) {
+    warn(
+      `dataset.items() did not resolve within ${DATASET_TIMEOUT_MS / 1e3}s. This usually means CloudCannon cannot find the file configured in data_config. Check that the path in data_config is correct relative to your source directory.`
+    );
+    return null;
+  }
+  if (Array.isArray(result)) return result[0] ?? null;
+  return result ?? null;
+}
+async function switchLocale(locale) {
+  if (!state.api) return;
+  state.switchGeneration++;
+  const myGeneration = state.switchGeneration;
+  log(`switchLocale("${locale}") \u2014 generation ${myGeneration}`);
+  state.switchInProgress = true;
+  try {
+    await switchLocaleInner(locale, myGeneration);
+  } finally {
+    state.switchInProgress = false;
+  }
+}
+async function switchLocaleInner(locale, myGeneration) {
+  const cc = state.api;
+  if (!cc) return;
+  state.currentLocale = locale;
+  updateButtonStates();
+  teardownEditors();
+  if (!locale) {
+    log("Switched to Original");
+    return;
+  }
+  pauseBookshop();
+  const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
+  if (!container) {
+    warn("No locale container found");
+    return;
+  }
+  state.originalContainer = container;
+  log(
+    `switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ${container.children.length} child element(s)`
+  );
+  const clone = container.cloneNode(true);
+  cleanClone(clone);
+  const rtl = isRtlLocale(locale);
+  if (rtl) clone.dir = "rtl";
+  container.replaceWith(clone);
+  state.translationContainer = clone;
+  log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
+  trackElements(clone);
+  if (tracked.length === 0) {
+    warn(
+      `No [data-rosey] elements found in the snapshot boundary. Make sure your translatable elements have data-rosey attributes.`
+    );
+  }
+  const datasetKey = `locales_${locale}`;
+  log(`switchLocale: requesting dataset "${datasetKey}"`);
+  const dataset = cc.dataset(datasetKey);
+  const file = await resolveFile(dataset);
+  if (!file) {
+    warn(
+      `No file found in dataset "${datasetKey}". Check that data_config.${datasetKey} exists in cloudcannon.config.yml and points to a valid locale file.`
+    );
+    return;
+  }
+  log(`switchLocale: resolved file from dataset "${datasetKey}"`);
+  state.activeFile = file;
+  let setupComplete = false;
+  const dataResults = await Promise.all(
+    tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null))
+  );
+  if (myGeneration !== state.switchGeneration) {
+    log(`Generation changed after data fetch, aborting "${locale}" setup`);
+    return;
+  }
+  const resolvedValues = [];
+  for (let i = 0; i < tracked.length; i++) {
+    const t = tracked[i];
+    const data = dataResults[i];
+    t.hasLocaleEntry = data != null;
+    const value = resolveDisplayValue(data, t);
+    resolvedValues[i] = value;
+    const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
+    const normalizedOriginal = normalizeSource(data?.original ?? "");
+    const baseStale = staleEnabled && normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
+    const liveStale = staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
+    t.stale = baseStale || liveStale;
+    t.baseOriginal = data?._base_original ?? null;
+    t.localeOriginal = data?.original ?? null;
+    t.element.innerHTML = value;
+    if (t.stale) markStaleElement(t);
+  }
+  recountStale();
+  const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
+  log(
+    `Data loaded \u2014 ${state.staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`
+  );
+  if (missingKeys.length > 0) {
+    log(
+      `Missing-entry keys (editable, new entry written on first edit): ${missingKeys.join(", ")}`
+    );
+  }
+  const setupEditor = async (t, value) => {
+    try {
+      const inputConfig = originalInputConfigs.get(t.roseyKey);
+      const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
+      const isSource = originalIsSource.has(t.roseyKey);
+      let applying = true;
+      const editor = await cc.createTextEditableRegion(
+        t.element,
+        (content) => {
+          if (myGeneration !== state.switchGeneration) return;
+          if (!setupComplete || applying) return;
+          if (content == null) return;
+          if (!t.hasLocaleEntry) {
+            log(`[${t.roseyKey}] onChange \u2192 creating new locale entry`);
+            file.data.set({
+              slug: t.roseyKey,
+              value: {
+                original: t.originalContent,
+                value: content,
+                _base_original: t.originalContent
+              }
+            });
+            t.hasLocaleEntry = true;
+            t.baseOriginal = t.originalContent;
+            t.localeOriginal = t.originalContent;
+            return;
+          }
+          log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
+          file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+          if (t.stale) {
+            resolveStale(t, file);
+          }
+        },
+        {
+          elementType: t.inferredType,
+          ...isSource && { editableType: "content" },
+          ...rccInputConfig != null && { inputConfig: rccInputConfig }
+        }
+      );
+      t.editor = editor;
+      editor.setContent(value);
+      applying = false;
+      t.element.addEventListener("focus", () => {
+        t.focused = true;
+      });
+      t.element.addEventListener("blur", () => {
+        t.focused = false;
+      });
+      return true;
+    } catch (err) {
+      warn(`Failed to set up editor for "${t.roseyKey}":`, err);
+      return false;
+    }
+  };
+  let editorsCreated = 0;
+  for (let i = 0; i < tracked.length; i++) {
+    const t = tracked[i];
+    if (myGeneration !== state.switchGeneration) {
+      log(`Generation changed, aborting "${locale}" editor setup`);
+      return;
+    }
+    if (await setupEditor(t, resolvedValues[i])) editorsCreated++;
+  }
+  log(`Created ${editorsCreated} editors`);
+  if (myGeneration !== state.switchGeneration) return;
+  await Promise.resolve();
+  setupComplete = true;
+  log(`Setup complete for "${locale}" (generation ${myGeneration})`);
+  state.activeDataset = dataset;
+  state.activeDatasetListener = async () => {
+    if (myGeneration !== state.switchGeneration) return;
+    const freshFile = await resolveFile(dataset);
+    if (!freshFile) return;
+    let updated = 0;
+    let skipped = 0;
+    for (const t of tracked) {
+      if (!t.editor) continue;
+      if (t.focused) {
+        skipped++;
+        continue;
+      }
+      try {
+        const data = await freshFile.data.get({ slug: t.roseyKey });
+        t.hasLocaleEntry = data != null;
+        t.editor.setContent(resolveDisplayValue(data, t));
+        updated++;
+      } catch {
+      }
+    }
+    log(
+      `Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`
+    );
+  };
+  dataset.addEventListener("change", state.activeDatasetListener);
+  const reconcileElement = async (el) => {
+    if (myGeneration !== state.switchGeneration) return;
+    const key = resolveRoseyKey(el);
+    if (!key) return;
+    let t = tracked.find((x) => x.element === el);
+    if (t && t.roseyKey === key && t.editor) return;
+    if (!t) {
+      t = newTrackedEntry(el, key);
+      tracked.push(t);
+    } else {
+      t.roseyKey = key;
+    }
+    const data = await file.data.get({ slug: key }).catch(() => null);
+    if (myGeneration !== state.switchGeneration) return;
+    t.hasLocaleEntry = data != null;
+    if (!t.editor) {
+      log(
+        `reconcile: wiring editor for "${key}"${data == null ? " (no entry yet \u2014 created on first edit)" : ""}`
+      );
+      await setupEditor(t, resolveDisplayValue(data, t));
+    }
+  };
+  const scheduleReconcile = () => {
+    if (state.reconcileScheduled) return;
+    state.reconcileScheduled = true;
+    requestAnimationFrame(() => {
+      state.reconcileScheduled = false;
+      if (myGeneration !== state.switchGeneration || !state.translationContainer)
+        return;
+      const els = state.translationContainer.querySelectorAll(
+        "[data-rosey]:not([data-rcc-ignore])"
+      );
+      for (const el of els) void reconcileElement(el);
+    });
+  };
+  if (state.translationContainer) {
+    state.reconcileObserver = new MutationObserver(scheduleReconcile);
+    state.reconcileObserver.observe(state.translationContainer, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-rosey", "data-rosey-ns", "data-rosey-root"]
+    });
+  }
+  log(`Switched to ${locale}`);
 }
 async function init() {
   const ccWindow = window;
@@ -1215,8 +1249,8 @@ async function init() {
     warn("CloudCannonAPI not available");
     return;
   }
-  api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T04:02:50.805Z"})`);
+  state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T08:34:40.654Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
@@ -1234,7 +1268,7 @@ async function init() {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
-  injectSwitcher(locales);
+  injectSwitcher(locales, switchLocale);
   await prescanOriginals(container);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
 }

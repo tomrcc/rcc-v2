@@ -12,98 +12,39 @@
  * in and CC auto-restores all editing.
  *
  * Add data-rcc-ignore to any [data-rosey] element to opt it out.
+ *
+ * This module is the orchestration layer; the pieces it coordinates live in
+ * sibling modules: clone-cleaning (clean-clone), Bookshop integration
+ * (bookshop), the stale-translation model + panel (stale), the floating
+ * switcher UI (ui/switcher), locale discovery (locales), and shared mutable
+ * session state (state).
  */
 
+import {
+	pauseBookshop,
+	resumeBookshop,
+	stripCmsBindForRerender,
+} from "./bookshop";
+import { cleanClone, inferElementType, isBlockType } from "./clean-clone";
+import { discoverLocales, isRtlLocale } from "./locales";
 import { log, warn } from "./logger";
+import { resolveRoseyKey } from "./rosey-key";
+import {
+	markStaleElement,
+	normalizeSource,
+	recountStale,
+	resolveStale,
+	updateStaleBadge,
+	updateStaleList,
+} from "./stale";
+import { state, tracked } from "./state";
+import type { CCApi, CCDataset, CCFile, TrackedElement } from "./types";
+import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
 // Injected by tsup at build time (see tsup.config.ts). Used for the always-on
 // "RCC loaded" banner so it's clear which build CloudCannon actually served.
 declare const __RCC_VERSION__: string;
 declare const __RCC_BUILD__: string;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface TrackedElement {
-	element: HTMLElement;
-	roseyKey: string;
-	originalContent: string;
-	inferredType: "span" | "block";
-	focused: boolean;
-	editor?: { setContent: (content?: string | null) => void };
-	stale: boolean;
-	baseOriginal: string | null;
-	localeOriginal: string | null;
-	/**
-	 * Whether the element's Rosey key already has an entry in the current locale
-	 * file. Both states are editable; this only selects the write path on edit:
-	 * a missing entry creates a full {original, value, _base_original} object on
-	 * first edit, a present entry patches just `.value`.
-	 */
-	hasLocaleEntry: boolean;
-}
-
-interface CCFile {
-	data: {
-		get(opts?: { slug?: string }): Promise<any>;
-		set(opts: { slug: string; value: any }): Promise<any>;
-	};
-}
-
-interface CCDataset {
-	items(): Promise<CCFile | CCFile[]>;
-	addEventListener(event: string, listener: () => void): void;
-	removeEventListener(event: string, listener: () => void): void;
-}
-
-interface CCApi {
-	dataset(key: string): CCDataset;
-	createTextEditableRegion(
-		element: HTMLElement,
-		onChange: (content?: string | null) => void,
-		options?: {
-			elementType?: string;
-			editableType?: string;
-			inputConfig?: Record<string, unknown>;
-		},
-	): Promise<{ setContent: (content?: string | null) => void }>;
-}
-
-// ---------------------------------------------------------------------------
-// Module state
-// ---------------------------------------------------------------------------
-
-const tracked: TrackedElement[] = [];
-let currentLocale: string | null = null;
-let api: CCApi | null = null;
-
-let originalContainer: HTMLElement | null = null;
-let translationContainer: HTMLElement | null = null;
-
-let activeDataset: CCDataset | null = null;
-let activeDatasetListener: (() => void) | null = null;
-let activeFile: CCFile | null = null;
-
-/**
- * Watches the active translation container for [data-rosey] elements that CC
- * adds or re-keys after the initial switch pass (e.g. a newly inserted array
- * item, or an element whose data-rosey-ns is stamped from instance_value:UUID
- * a tick after insertion). Without this, editor setup would only ever run once
- * during switchLocaleInner and miss those elements.
- */
-let reconcileObserver: MutationObserver | null = null;
-let reconcileScheduled = false;
-
-/**
- * Guards against stale ProseMirror onChange fires. createTextEditableRegion
- * has no destroy() so old editors stay alive and fire when the DOM changes.
- * Each onChange closure captures its generation; mismatches are no-ops.
- */
-let switchGeneration = 0;
-
-/** True while an async locale switch is running. Blocks re-entrant clicks. */
-let switchInProgress = false;
 
 /**
  * Input configs captured from CC's editable infrastructure at init time.
@@ -118,154 +59,6 @@ const originalInputConfigs = new Map<string, Record<string, unknown>>();
  * `editableType: "content"` so CC applies the `_editables.content` toolbar.
  */
 const originalIsSource = new Set<string>();
-
-// ---------------------------------------------------------------------------
-// RTL locale detection
-// ---------------------------------------------------------------------------
-
-const RTL_LOCALES = new Set([
-	"ar",
-	"he",
-	"fa",
-	"ur",
-	"ps",
-	"sd",
-	"yi",
-	"ku",
-	"ckb",
-	"dv",
-	"ug",
-]);
-
-function isRtlLocale(locale: string): boolean {
-	return RTL_LOCALES.has(locale.split("-")[0].toLowerCase());
-}
-
-// ---------------------------------------------------------------------------
-// Rosey key resolution
-// ---------------------------------------------------------------------------
-
-function resolveRoseyKey(el: Element): string | null {
-	const localKey = el.getAttribute("data-rosey");
-	if (!localKey) return null;
-
-	const nsParts: string[] = [];
-	let current = el.parentElement;
-
-	while (current) {
-		const root = current.getAttribute("data-rosey-root");
-		if (root !== null) {
-			if (root) nsParts.push(root);
-			break;
-		}
-		const ns = current.getAttribute("data-rosey-ns");
-		if (ns) nsParts.push(ns);
-		current = current.parentElement;
-	}
-
-	nsParts.reverse();
-	return [...nsParts, localKey].join(":");
-}
-
-// ---------------------------------------------------------------------------
-// DOM clone cleaning
-// ---------------------------------------------------------------------------
-
-const CC_CUSTOM_ELEMENTS = [
-	"EDITABLE-TEXT",
-	"EDITABLE-SOURCE",
-	"EDITABLE-IMAGE",
-	"EDITABLE-COMPONENT",
-	"EDITABLE-ARRAY-ITEM",
-];
-
-const BLOCK_LEVEL_SELECTOR =
-	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
-
-/** Rosey/CC `data-type` hints that force a block (vs span) editor. */
-function isBlockType(dataType: string | null | undefined): boolean {
-	return dataType === "block" || dataType === "text";
-}
-
-function inferElementType(el: HTMLElement): "span" | "block" {
-	return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
-}
-
-/**
- * Strip all CC editing infrastructure from a detached DOM tree.
- * Because the tree is not in the document, there is no MutationObserver,
- * no connectedCallback, and no race conditions.
- */
-function cleanClone(root: HTMLElement): void {
-	stripCCAttributes(root);
-	root.querySelectorAll("*").forEach((el) => {
-		if (el instanceof HTMLElement) stripCCAttributes(el);
-	});
-
-	replaceCustomElements(root);
-	stripBookshopComments(root);
-
-	const roseyEls = root.querySelectorAll("[data-rosey]").length;
-	log(`cleanClone: ${roseyEls} [data-rosey] element(s)`);
-}
-
-/**
- * Remove Bookshop live-editing comment markers from the clone.
- * Bookshop's runtime uses XPath to scan the document for
- * `<!--bookshop-live ...-->` comments and re-renders component HTML
- * between them. Stripping these prevents Bookshop from overwriting
- * RCC's translation editors.
- */
-function stripBookshopComments(root: HTMLElement): void {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
-	const toRemove: Comment[] = [];
-	while (walker.nextNode()) {
-		const comment = walker.currentNode as Comment;
-		if (comment.data.includes("bookshop-live")) {
-			toRemove.push(comment);
-		}
-	}
-	for (const node of toRemove) node.remove();
-	if (toRemove.length > 0) {
-		log(`Stripped ${toRemove.length} Bookshop comment(s) from clone`);
-	}
-}
-
-function stripCCAttributes(el: HTMLElement): void {
-	el.removeAttribute("data-editable");
-	el.removeAttribute("data-prop");
-	el.removeAttribute("data-cms-bind");
-	for (const attr of Array.from(el.attributes)) {
-		if (attr.name.startsWith("data-prop-")) {
-			el.removeAttribute(attr.name);
-		}
-	}
-}
-
-function replaceCustomElements(root: HTMLElement): void {
-	for (const tag of CC_CUSTOM_ELEMENTS) {
-		const els = root.querySelectorAll(tag);
-		for (const el of els) {
-			let replacementTag = "div";
-			if (tag === "EDITABLE-TEXT") {
-				const dataType = el.getAttribute("data-type");
-				const hasBlockChildren =
-					el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-				replacementTag =
-					isBlockType(dataType) || hasBlockChildren ? "div" : "span";
-			}
-			const replacement = document.createElement(replacementTag);
-			for (const attr of Array.from(el.attributes)) {
-				if (attr.name === "data-prop" || attr.name.startsWith("data-prop-"))
-					continue;
-				if (attr.name === "data-editable") continue;
-				replacement.setAttribute(attr.name, attr.value);
-			}
-			replacement.innerHTML = el.innerHTML;
-			el.replaceWith(replacement);
-		}
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Element tracking
@@ -365,390 +158,56 @@ async function prescanOriginals(container: HTMLElement): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Stale translation indicators
-// ---------------------------------------------------------------------------
-
-const STALE_AMBER = "#f59e0b";
-const STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
-
-let staleCount = 0;
-
-function updateStaleBadge(): void {
-	const badge = document.getElementById("rcc-stale-badge");
-	if (!badge) return;
-	if (staleCount > 0) {
-		badge.textContent = String(staleCount);
-		badge.style.display = "flex";
-	} else {
-		badge.style.display = "none";
-	}
-}
-
-function recountStale(): void {
-	staleCount = tracked.filter((t) => t.stale).length;
-	updateStaleBadge();
-	updateStaleList();
-}
-
-/**
- * Normalize source text for stale comparison. The live DOM (`innerHTML`) and the
- * stored `original` / `_base_original` (from base.json or a prior client write)
- * can differ in insignificant whitespace, so collapse whitespace runs and trim
- * before comparing. This errs toward false-negatives, which is intentional: the
- * build-time `_base_original` signal stays the authoritative backstop.
- */
-function normalizeSource(s: string): string {
-	return s.replace(/\s+/g, " ").trim();
-}
-
-function truncateText(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-function updateStaleList(): void {
-	const panel = document.getElementById("rcc-stale-panel");
-
-	const allSubmenus = document.querySelectorAll<HTMLElement>(
-		"[data-rcc-stale-submenu]",
-	);
-	for (const sub of allSubmenus) {
-		if (sub.dataset.rccStaleSubmenu !== currentLocale) {
-			sub.style.display = "none";
-			const ch = sub.querySelector<HTMLElement>("[data-rcc-stale-chevron]");
-			if (ch) ch.style.transform = "rotate(0deg)";
-		}
-	}
-
-	if (!currentLocale) {
-		if (panel) panel.style.display = "none";
-		return;
-	}
-
-	const submenu = document.querySelector<HTMLElement>(
-		`[data-rcc-stale-submenu="${currentLocale}"]`,
-	);
-
-	const staleItems = tracked.filter((t) => t.stale);
-	if (staleItems.length === 0) {
-		if (submenu) {
-			submenu.style.display = "none";
-			const ch = submenu.querySelector<HTMLElement>("[data-rcc-stale-chevron]");
-			if (ch) ch.style.transform = "rotate(0deg)";
-		}
-		if (panel) panel.style.display = "none";
-		return;
-	}
-
-	if (submenu) {
-		submenu.style.display = "flex";
-		const countEl = submenu.querySelector<HTMLElement>(
-			"[data-rcc-stale-count]",
-		);
-		if (countEl) countEl.textContent = `${staleItems.length} out of date`;
-	}
-
-	if (!panel) return;
-
-	const panelCount = panel.querySelector<HTMLElement>("[data-rcc-panel-count]");
-	if (panelCount) panelCount.textContent = `${staleItems.length} out of date`;
-
-	const list = panel.querySelector<HTMLElement>("[data-rcc-stale-items]");
-	if (!list) return;
-	list.innerHTML = "";
-
-	for (const t of staleItems) {
-		const textPreview = truncateText(
-			t.element.textContent?.trim() || t.roseyKey,
-			40,
-		);
-
-		const row = document.createElement("div");
-		Object.assign(row.style, {
-			display: "flex",
-			alignItems: "stretch",
-			borderRadius: "4px",
-			transition: "background 0.15s",
-		});
-		row.addEventListener("mouseenter", () => {
-			row.style.background = "#fef3c7";
-		});
-		row.addEventListener("mouseleave", () => {
-			row.style.background = "transparent";
-		});
-
-		const scrollBtn = document.createElement("button");
-		Object.assign(scrollBtn.style, {
-			display: "flex",
-			flexDirection: "column",
-			gap: "1px",
-			flex: "1",
-			minWidth: "0",
-			padding: "5px 6px",
-			border: "none",
-			cursor: "pointer",
-			fontSize: "11px",
-			textAlign: "left",
-			background: "transparent",
-			color: "#1e293b",
-			fontFamily: "system-ui, sans-serif",
-		});
-
-		const preview = document.createElement("span");
-		Object.assign(preview.style, {
-			overflow: "hidden",
-			textOverflow: "ellipsis",
-			whiteSpace: "nowrap",
-		});
-		preview.textContent = textPreview;
-
-		const keyEl = document.createElement("span");
-		Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
-		keyEl.textContent = t.roseyKey;
-
-		scrollBtn.appendChild(preview);
-		scrollBtn.appendChild(keyEl);
-		scrollBtn.addEventListener("click", () => {
-			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
-		});
-
-		const resolveBtn = document.createElement("button");
-		Object.assign(resolveBtn.style, {
-			display: "flex",
-			alignItems: "center",
-			justifyContent: "center",
-			padding: "0 6px",
-			border: "none",
-			cursor: "pointer",
-			background: "transparent",
-			color: "#d1d5db",
-			transition: "color 0.15s",
-			flexShrink: "0",
-		});
-		resolveBtn.innerHTML =
-			'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
-		resolveBtn.title = "Mark as reviewed";
-		resolveBtn.addEventListener("mouseenter", () => {
-			resolveBtn.style.color = STALE_AMBER;
-		});
-		resolveBtn.addEventListener("mouseleave", () => {
-			resolveBtn.style.color = "#d1d5db";
-		});
-		resolveBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			if (activeFile) resolveStale(t, activeFile);
-		});
-
-		row.appendChild(scrollBtn);
-		row.appendChild(resolveBtn);
-		list.appendChild(row);
-	}
-
-	const resolveAllBtn = panel.querySelector<HTMLElement>(
-		"[data-rcc-resolve-all]",
-	);
-	if (resolveAllBtn)
-		resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
-}
-
-function markStaleElement(t: TrackedElement): void {
-	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
-	t.element.style.outlineOffset = "2px";
-	t.element.style.backgroundColor = STALE_AMBER_BG;
-}
-
-function unmarkStaleElement(t: TrackedElement): void {
-	t.stale = false;
-	t.element.style.outline = "";
-	t.element.style.outlineOffset = "";
-	t.element.style.backgroundColor = "";
-	recountStale();
-}
-
-function resolveStale(t: TrackedElement, file: CCFile): void {
-	if (!t.stale) return;
-	// Acknowledge the source text currently on the page as the reviewed source.
-	// Write both `original` and `_base_original` so the entry is self-consistent
-	// even when resolving a live edit before a build has refreshed _base_original
-	// from base.json — the next build reconciles _base_original harmlessly. Using
-	// the on-page source (not the stale t.baseOriginal) is what lets a live-only
-	// stale clear; post-build the two are equal anyway.
-	const current = t.originalContent;
-	log(
-		`[${t.roseyKey}] Resolving stale — original/_base_original ← page source`,
-	);
-	file.data.set({ slug: `${t.roseyKey}.original`, value: current });
-	file.data.set({ slug: `${t.roseyKey}._base_original`, value: current });
-	t.localeOriginal = current;
-	t.baseOriginal = current;
-	unmarkStaleElement(t);
-}
-
-// ---------------------------------------------------------------------------
-// Bookshop live-editing pause/resume
-// ---------------------------------------------------------------------------
-
-let originalBookshopUpdate: ((...args: any[]) => Promise<boolean>) | null =
-	null;
-
-function pauseBookshop(): void {
-	const bsl = (window as any).bookshopLive;
-	if (!bsl) {
-		log(
-			"pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)",
-		);
-		return;
-	}
-	if (typeof bsl.update !== "function") {
-		log("pauseBookshop: bookshopLive.update is not a function");
-		return;
-	}
-	if (originalBookshopUpdate) {
-		log("pauseBookshop: already paused");
-		return;
-	}
-	originalBookshopUpdate = bsl.update.bind(bsl);
-	bsl.update = async () => false;
-	log("Paused Bookshop live editing");
-}
-
-function resumeBookshop(): void {
-	if (!originalBookshopUpdate) {
-		log("resumeBookshop: nothing to resume (was not paused)");
-		return;
-	}
-	const bsl = (window as any).bookshopLive;
-	if (!bsl) {
-		warn("resumeBookshop: window.bookshopLive disappeared — cannot restore");
-		originalBookshopUpdate = null;
-		return;
-	}
-	bsl.update = originalBookshopUpdate;
-	originalBookshopUpdate = null;
-	log("Resumed Bookshop live editing");
-}
-
-// ---------------------------------------------------------------------------
 // Teardown / restore
 // ---------------------------------------------------------------------------
 
 function teardownEditors(): void {
 	log(
-		`teardownEditors: translationContainer=${!!translationContainer}, ` +
-			`originalContainer=${!!originalContainer}, tracked=${tracked.length}`,
+		`teardownEditors: translationContainer=${!!state.translationContainer}, ` +
+			`originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`,
 	);
 
-	if (reconcileObserver) {
-		reconcileObserver.disconnect();
-		reconcileObserver = null;
+	if (state.reconcileObserver) {
+		state.reconcileObserver.disconnect();
+		state.reconcileObserver = null;
 	}
-	reconcileScheduled = false;
+	state.reconcileScheduled = false;
 
-	if (activeDataset && activeDatasetListener) {
-		activeDataset.removeEventListener("change", activeDatasetListener);
+	if (state.activeDataset && state.activeDatasetListener) {
+		state.activeDataset.removeEventListener(
+			"change",
+			state.activeDatasetListener,
+		);
 	}
-	activeDataset = null;
-	activeDatasetListener = null;
-	activeFile = null;
+	state.activeDataset = null;
+	state.activeDatasetListener = null;
+	state.activeFile = null;
 
 	for (const t of tracked) t.editor = undefined;
 	tracked.length = 0;
 
-	staleCount = 0;
+	state.staleCount = 0;
 	updateStaleBadge();
 	updateStaleList();
 
 	resumeBookshop();
 
-	if (translationContainer && originalContainer) {
-		const cloneInDOM = translationContainer.isConnected;
-		const originalInDOM = originalContainer.isConnected;
+	if (state.translationContainer && state.originalContainer) {
+		const cloneInDOM = state.translationContainer.isConnected;
+		const originalInDOM = state.originalContainer.isConnected;
 		log(
 			`teardownEditors: clone connected=${cloneInDOM}, ` +
 				`original connected=${originalInDOM} — swapping`,
 		);
-		translationContainer.replaceWith(originalContainer);
+		state.translationContainer.replaceWith(state.originalContainer);
 		log("Restored original container");
 
-		stripCmsBindForRerender(originalContainer);
+		stripCmsBindForRerender(state.originalContainer);
 	} else {
 		log("teardownEditors: no containers to swap");
 	}
-	translationContainer = null;
-	originalContainer = null;
-}
-
-/**
- * Bookshop's graftTrees does fine-grained DOM diffing: it preserves element
- * nodes when only text content changed and replaces the minimal subtree.
- * Because data-cms-bind sits on component wrapper elements that graftTrees
- * keeps in place, the CC editor sees the *same* DOM references it already
- * tracked — but the overlay nodes were destroyed during the swap-out. CC
- * won't recreate overlays for elements it already "knows."
- *
- * Stripping data-cms-bind forces a shallow-clone mismatch in graftTrees on
- * the next Bookshop render: the virtual DOM has the attribute, the real DOM
- * doesn't → the element is replaced with a fresh node → CC sees a new
- * element → refreshInterface() creates overlays.
- */
-function stripCmsBindForRerender(container: HTMLElement): void {
-	const bound = container.querySelectorAll("[data-cms-bind]");
-	for (const el of bound) el.removeAttribute("data-cms-bind");
-	if (bound.length) {
-		log(
-			`Stripped data-cms-bind from ${bound.length} element(s) to force fresh overlays`,
-		);
-	}
-	forceBookshopRerender();
-}
-
-function forceBookshopRerender(): void {
-	const cc = (window as any).CloudCannon;
-	const bsl = (window as any).bookshopLive;
-
-	if (!bsl || typeof bsl.update !== "function") {
-		if (typeof cc?.refreshInterface === "function") {
-			requestAnimationFrame(() => {
-				cc.refreshInterface();
-				log(
-					"Called deferred CloudCannon.refreshInterface() (non-Bookshop site)",
-				);
-			});
-		}
-		return;
-	}
-
-	if (
-		typeof cc?.value !== "function" ||
-		typeof cc?.refreshInterface !== "function"
-	) {
-		log(
-			"forceBookshopRerender: CloudCannon API incomplete, panels will restore on next update",
-		);
-		return;
-	}
-
-	setTimeout(async () => {
-		try {
-			const data = await cc.value({
-				keepMarkdownAsHTML: false,
-				preferBlobs: true,
-			});
-			const options = (window as any).bookshopLiveOptions || {};
-			const rendered = await bsl.update(data, options);
-			if (rendered) {
-				cc.refreshInterface();
-				log(
-					"Forced Bookshop re-render + refreshInterface() to restore component panels",
-				);
-			} else {
-				log(
-					"Bookshop re-render was throttled, panels will restore on next update",
-				);
-			}
-		} catch (e) {
-			warn("Failed to force Bookshop re-render:", e);
-		}
-	}, 0);
+	state.translationContainer = null;
+	state.originalContainer = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -775,17 +234,17 @@ async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
 }
 
 async function switchLocale(locale: string | null): Promise<void> {
-	if (!api) return;
+	if (!state.api) return;
 
-	switchGeneration++;
-	const myGeneration = switchGeneration;
+	state.switchGeneration++;
+	const myGeneration = state.switchGeneration;
 	log(`switchLocale("${locale}") — generation ${myGeneration}`);
 
-	switchInProgress = true;
+	state.switchInProgress = true;
 	try {
 		await switchLocaleInner(locale, myGeneration);
 	} finally {
-		switchInProgress = false;
+		state.switchInProgress = false;
 	}
 }
 
@@ -793,10 +252,10 @@ async function switchLocaleInner(
 	locale: string | null,
 	myGeneration: number,
 ): Promise<void> {
-	const cc = api;
+	const cc = state.api;
 	if (!cc) return;
 
-	currentLocale = locale;
+	state.currentLocale = locale;
 	updateButtonStates();
 
 	teardownEditors();
@@ -818,7 +277,7 @@ async function switchLocaleInner(
 		return;
 	}
 
-	originalContainer = container;
+	state.originalContainer = container;
 	log(
 		`switchLocale: snapshot boundary is <${container.tagName.toLowerCase()}>, ` +
 			`${container.children.length} child element(s)`,
@@ -831,7 +290,7 @@ async function switchLocaleInner(
 	if (rtl) clone.dir = "rtl";
 
 	container.replaceWith(clone);
-	translationContainer = clone;
+	state.translationContainer = clone;
 	log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
 
 	// --- Track elements in the clone and set up editors ---------------------
@@ -860,7 +319,7 @@ async function switchLocaleInner(
 	}
 	log(`switchLocale: resolved file from dataset "${datasetKey}"`);
 
-	activeFile = file;
+	state.activeFile = file;
 	let setupComplete = false;
 
 	// --- Phase 1: Parallel data fetch + stale detection --------------------
@@ -871,7 +330,7 @@ async function switchLocaleInner(
 		tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null)),
 	);
 
-	if (myGeneration !== switchGeneration) {
+	if (myGeneration !== state.switchGeneration) {
 		log(`Generation changed after data fetch, aborting "${locale}" setup`);
 		return;
 	}
@@ -916,7 +375,7 @@ async function switchLocaleInner(
 		.filter((t) => !t.hasLocaleEntry)
 		.map((t) => t.roseyKey);
 	log(
-		`Data loaded — ${staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`,
+		`Data loaded — ${state.staleCount} stale, ${missingKeys.length} missing of ${tracked.length} elements`,
 	);
 	if (missingKeys.length > 0) {
 		log(
@@ -948,7 +407,7 @@ async function switchLocaleInner(
 			const editor = await cc.createTextEditableRegion(
 				t.element,
 				(content) => {
-					if (myGeneration !== switchGeneration) return;
+					if (myGeneration !== state.switchGeneration) return;
 					if (!setupComplete || applying) return;
 					if (content == null) return;
 
@@ -1006,7 +465,7 @@ async function switchLocaleInner(
 	let editorsCreated = 0;
 	for (let i = 0; i < tracked.length; i++) {
 		const t = tracked[i];
-		if (myGeneration !== switchGeneration) {
+		if (myGeneration !== state.switchGeneration) {
 			log(`Generation changed, aborting "${locale}" editor setup`);
 			return;
 		}
@@ -1014,7 +473,7 @@ async function switchLocaleInner(
 	}
 	log(`Created ${editorsCreated} editors`);
 
-	if (myGeneration !== switchGeneration) return;
+	if (myGeneration !== state.switchGeneration) return;
 
 	// Yield one microtask so any onChange still queued from the setContent calls
 	// above drains while setupComplete is false and the gate suppresses it. Only
@@ -1026,9 +485,9 @@ async function switchLocaleInner(
 
 	// --- Listen for external data changes -----------------------------------
 
-	activeDataset = dataset;
-	activeDatasetListener = async () => {
-		if (myGeneration !== switchGeneration) return;
+	state.activeDataset = dataset;
+	state.activeDatasetListener = async () => {
+		if (myGeneration !== state.switchGeneration) return;
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
 
@@ -1053,7 +512,7 @@ async function switchLocaleInner(
 			`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`,
 		);
 	};
-	dataset.addEventListener("change", activeDatasetListener);
+	dataset.addEventListener("change", state.activeDatasetListener);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (a new array item) or stamp its
@@ -1064,7 +523,7 @@ async function switchLocaleInner(
 	// onChange creates the entry on first edit.
 
 	const reconcileElement = async (el: HTMLElement): Promise<void> => {
-		if (myGeneration !== switchGeneration) return;
+		if (myGeneration !== state.switchGeneration) return;
 		const key = resolveRoseyKey(el);
 		if (!key) return;
 
@@ -1081,7 +540,7 @@ async function switchLocaleInner(
 		}
 
 		const data = await file.data.get({ slug: key }).catch(() => null);
-		if (myGeneration !== switchGeneration) return;
+		if (myGeneration !== state.switchGeneration) return;
 
 		t.hasLocaleEntry = data != null;
 		if (!t.editor) {
@@ -1093,21 +552,25 @@ async function switchLocaleInner(
 	};
 
 	const scheduleReconcile = (): void => {
-		if (reconcileScheduled) return;
-		reconcileScheduled = true;
+		if (state.reconcileScheduled) return;
+		state.reconcileScheduled = true;
 		requestAnimationFrame(() => {
-			reconcileScheduled = false;
-			if (myGeneration !== switchGeneration || !translationContainer) return;
-			const els = translationContainer.querySelectorAll<HTMLElement>(
+			state.reconcileScheduled = false;
+			if (
+				myGeneration !== state.switchGeneration ||
+				!state.translationContainer
+			)
+				return;
+			const els = state.translationContainer.querySelectorAll<HTMLElement>(
 				"[data-rosey]:not([data-rcc-ignore])",
 			);
 			for (const el of els) void reconcileElement(el);
 		});
 	};
 
-	if (translationContainer) {
-		reconcileObserver = new MutationObserver(scheduleReconcile);
-		reconcileObserver.observe(translationContainer, {
+	if (state.translationContainer) {
+		state.reconcileObserver = new MutationObserver(scheduleReconcile);
+		state.reconcileObserver.observe(state.translationContainer, {
 			childList: true,
 			subtree: true,
 			attributes: true,
@@ -1116,569 +579,6 @@ async function switchLocaleInner(
 	}
 
 	log(`Switched to ${locale}`);
-}
-
-// ---------------------------------------------------------------------------
-// UI — Collapsible / movable locale FAB + popover
-// ---------------------------------------------------------------------------
-
-const FAB_SIZE = 48;
-const FAB_STORAGE_KEY = "rcc-fab-position";
-const CC_BLUE = "#034ad8";
-
-const TRANSLATE_ICON = [
-	'<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"',
-	` fill="none" stroke="${CC_BLUE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
-	'<path d="M4 5h8"/><path d="M8 5V3"/>',
-	'<path d="M4.5 5c1 4 4 8 7.5 10"/><path d="M12 5c-1 3-3 6-7.5 10"/>',
-	'<path d="M14.5 19l2.5-6 2.5 6"/><path d="M15.5 17h3"/>',
-	"</svg>",
-].join("");
-
-function isActiveLocale(btn: HTMLButtonElement): boolean {
-	return (btn.dataset.locale ?? null) === (currentLocale ?? "");
-}
-
-function updateButtonStates(): void {
-	const buttons = document.querySelectorAll<HTMLButtonElement>(
-		"#rcc-locale-popover button[data-locale]",
-	);
-	for (const btn of buttons) {
-		const isActive = isActiveLocale(btn);
-		Object.assign(btn.style, {
-			background: isActive ? CC_BLUE : "#f1f5f9",
-			color: isActive ? "#ffffff" : "#1e293b",
-			fontWeight: isActive ? "600" : "400",
-		});
-	}
-
-	const badge = document.getElementById("rcc-fab-badge");
-	if (badge) {
-		if (currentLocale) {
-			badge.textContent = currentLocale.toUpperCase();
-			badge.style.display = "flex";
-		} else {
-			badge.style.display = "none";
-		}
-	}
-}
-
-function injectSwitcher(locales: string[]): void {
-	// --- FAB (floating action button) ------------------------------------
-
-	const fab = document.createElement("div");
-	fab.id = "rcc-locale-switcher";
-
-	const savedPos = (() => {
-		try {
-			const raw = localStorage.getItem(FAB_STORAGE_KEY);
-			return raw ? (JSON.parse(raw) as { top: number; left: number }) : null;
-		} catch {
-			return null;
-		}
-	})();
-
-	Object.assign(fab.style, {
-		position: "fixed",
-		zIndex: "999999",
-		width: `${FAB_SIZE}px`,
-		height: `${FAB_SIZE}px`,
-		borderRadius: "50%",
-		background: "#ffffff",
-		display: "flex",
-		alignItems: "center",
-		justifyContent: "center",
-		boxShadow: "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)",
-		cursor: "grab",
-		userSelect: "none",
-		touchAction: "none",
-		transition: "box-shadow 0.2s",
-		fontFamily: "system-ui, sans-serif",
-	});
-
-	if (savedPos) {
-		fab.style.top = `${savedPos.top}px`;
-		fab.style.left = `${savedPos.left}px`;
-	} else {
-		fab.style.bottom = "20px";
-		fab.style.right = "20px";
-	}
-
-	fab.innerHTML = TRANSLATE_ICON;
-
-	// Badge — shows active locale code on the FAB corner
-	const badge = document.createElement("div");
-	badge.id = "rcc-fab-badge";
-	Object.assign(badge.style, {
-		position: "absolute",
-		top: "-4px",
-		right: "-4px",
-		background: CC_BLUE,
-		color: "#ffffff",
-		fontSize: "9px",
-		fontWeight: "700",
-		lineHeight: "1",
-		padding: "3px 5px",
-		borderRadius: "8px",
-		display: "none",
-		alignItems: "center",
-		justifyContent: "center",
-		minWidth: "16px",
-		textAlign: "center",
-		pointerEvents: "none",
-	});
-	fab.appendChild(badge);
-
-	// Stale badge — shows count of out-of-date translations
-	const staleBadge = document.createElement("div");
-	staleBadge.id = "rcc-stale-badge";
-	Object.assign(staleBadge.style, {
-		position: "absolute",
-		bottom: "-4px",
-		right: "-4px",
-		background: STALE_AMBER,
-		color: "#ffffff",
-		fontSize: "9px",
-		fontWeight: "700",
-		lineHeight: "1",
-		padding: "3px 5px",
-		borderRadius: "8px",
-		display: "none",
-		alignItems: "center",
-		justifyContent: "center",
-		minWidth: "16px",
-		textAlign: "center",
-		pointerEvents: "none",
-	});
-	fab.appendChild(staleBadge);
-
-	// --- Popover ----------------------------------------------------------
-
-	const popover = document.createElement("div");
-	popover.id = "rcc-locale-popover";
-	Object.assign(popover.style, {
-		position: "fixed",
-		zIndex: "999998",
-		background: "#ffffff",
-		borderRadius: "10px",
-		padding: "8px",
-		boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
-		display: "none",
-		flexDirection: "column",
-		gap: "4px",
-		fontFamily: "system-ui, sans-serif",
-		fontSize: "13px",
-		minWidth: "120px",
-	});
-
-	const header = document.createElement("div");
-	Object.assign(header.style, {
-		fontWeight: "600",
-		fontSize: "11px",
-		color: "#6b7280",
-		textTransform: "uppercase",
-		letterSpacing: "0.05em",
-		padding: "4px 8px 2px",
-	});
-	header.textContent = "Locale";
-	popover.appendChild(header);
-
-	function makeLocaleButton(
-		label: string,
-		locale: string | null,
-	): HTMLButtonElement {
-		const btn = document.createElement("button");
-		btn.textContent = label;
-		btn.dataset.locale = locale ?? "";
-		Object.assign(btn.style, {
-			display: "block",
-			width: "100%",
-			padding: "8px 12px",
-			border: "none",
-			borderRadius: "6px",
-			cursor: "pointer",
-			fontSize: "13px",
-			textAlign: "left",
-			transition: "background 0.15s, color 0.15s",
-			background: "#f1f5f9",
-			color: "#1e293b",
-			fontWeight: "400",
-		});
-		btn.addEventListener("mouseenter", () => {
-			if (!isActiveLocale(btn)) {
-				btn.style.background = "#e2e8f0";
-			}
-		});
-		btn.addEventListener("mouseleave", () => {
-			if (!isActiveLocale(btn)) {
-				btn.style.background = "#f1f5f9";
-			}
-		});
-		btn.addEventListener("click", () => {
-			log(`Locale button clicked: ${label} (locale=${locale})`);
-			if (switchInProgress) {
-				log("Ignoring click — locale switch already in progress");
-				return;
-			}
-			switchLocale(locale);
-			closePopover();
-		});
-		return btn;
-	}
-
-	popover.appendChild(makeLocaleButton("Original", null));
-	for (const locale of locales) {
-		const wrapper = document.createElement("div");
-		wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
-
-		const submenu = document.createElement("div");
-		submenu.dataset.rccStaleSubmenu = locale;
-		Object.assign(submenu.style, {
-			display: "none",
-			alignItems: "center",
-			gap: "4px",
-			cursor: "pointer",
-			padding: "4px 12px 2px",
-			userSelect: "none",
-		});
-
-		const chevron = document.createElement("span");
-		chevron.dataset.rccStaleChevron = "";
-		Object.assign(chevron.style, {
-			display: "inline-flex",
-			transition: "transform 0.2s",
-			transform: "rotate(0deg)",
-			color: STALE_AMBER,
-			fontSize: "10px",
-			lineHeight: "1",
-		});
-		chevron.innerHTML =
-			'<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
-
-		const countLabel = document.createElement("span");
-		countLabel.dataset.rccStaleCount = "";
-		Object.assign(countLabel.style, {
-			fontWeight: "600",
-			fontSize: "10px",
-			color: STALE_AMBER,
-			letterSpacing: "0.03em",
-		});
-
-		submenu.appendChild(chevron);
-		submenu.appendChild(countLabel);
-		submenu.addEventListener("click", () => {
-			toggleStalePanel();
-		});
-
-		wrapper.appendChild(submenu);
-		popover.appendChild(wrapper);
-	}
-
-	// --- Stale translations panel (separate floating card) ----------------
-
-	const stalePanel = document.createElement("div");
-	stalePanel.id = "rcc-stale-panel";
-	Object.assign(stalePanel.style, {
-		position: "fixed",
-		zIndex: "999997",
-		background: "#ffffff",
-		borderRadius: "10px",
-		padding: "8px",
-		boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
-		display: "none",
-		flexDirection: "column",
-		gap: "4px",
-		fontFamily: "system-ui, sans-serif",
-		fontSize: "13px",
-		minWidth: "200px",
-		maxWidth: "260px",
-		borderTop: `3px solid ${STALE_AMBER}`,
-	});
-
-	const panelHeader = document.createElement("div");
-	Object.assign(panelHeader.style, {
-		fontWeight: "600",
-		fontSize: "11px",
-		color: STALE_AMBER,
-		textTransform: "uppercase",
-		letterSpacing: "0.05em",
-		padding: "4px 8px 2px",
-	});
-	panelHeader.dataset.rccPanelCount = "";
-	stalePanel.appendChild(panelHeader);
-
-	const panelItems = document.createElement("div");
-	panelItems.dataset.rccStaleItems = "";
-	Object.assign(panelItems.style, {
-		maxHeight: "240px",
-		overflowY: "auto",
-		display: "flex",
-		flexDirection: "column",
-		gap: "1px",
-	});
-	stalePanel.appendChild(panelItems);
-
-	const resolveAllBtn = document.createElement("button");
-	resolveAllBtn.dataset.rccResolveAll = "";
-	Object.assign(resolveAllBtn.style, {
-		display: "none",
-		width: "100%",
-		marginTop: "4px",
-		padding: "6px 10px",
-		border: "none",
-		borderRadius: "5px",
-		background: STALE_AMBER,
-		color: "#ffffff",
-		fontSize: "11px",
-		fontWeight: "600",
-		cursor: "pointer",
-		transition: "background 0.15s",
-		fontFamily: "system-ui, sans-serif",
-	});
-	resolveAllBtn.textContent = "Resolve all";
-	resolveAllBtn.addEventListener("mouseenter", () => {
-		resolveAllBtn.style.background = "#d97706";
-	});
-	resolveAllBtn.addEventListener("mouseleave", () => {
-		resolveAllBtn.style.background = STALE_AMBER;
-	});
-	resolveAllBtn.addEventListener("click", () => {
-		const stale = tracked.filter((t) => t.stale);
-		for (const t of stale) {
-			if (activeFile) resolveStale(t, activeFile);
-		}
-	});
-	stalePanel.appendChild(resolveAllBtn);
-
-	function positionStalePanel() {
-		stalePanel.style.visibility = "hidden";
-		stalePanel.style.display = "flex";
-		const popRect = popover.getBoundingClientRect();
-		const panelRect = stalePanel.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const gap = 8;
-
-		let left = popRect.left - panelRect.width - gap;
-		if (left < 4) left = popRect.right + gap;
-		if (left + panelRect.width > vw - 4) left = 4;
-
-		let top = popRect.top;
-		if (top + panelRect.height > vh - 4) top = vh - panelRect.height - 4;
-		top = Math.max(4, top);
-
-		stalePanel.style.top = `${top}px`;
-		stalePanel.style.left = `${left}px`;
-		stalePanel.style.visibility = "visible";
-	}
-
-	function openStalePanel() {
-		positionStalePanel();
-		const chevron = document.querySelector<HTMLElement>(
-			`[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`,
-		);
-		if (chevron) chevron.style.transform = "rotate(90deg)";
-	}
-
-	function closeStalePanel() {
-		stalePanel.style.display = "none";
-		const chevron = document.querySelector<HTMLElement>(
-			`[data-rcc-stale-submenu="${currentLocale}"] [data-rcc-stale-chevron]`,
-		);
-		if (chevron) chevron.style.transform = "rotate(0deg)";
-	}
-
-	function toggleStalePanel() {
-		if (stalePanel.style.display !== "none") closeStalePanel();
-		else openStalePanel();
-	}
-
-	// --- Drag logic -------------------------------------------------------
-
-	let isDragging = false;
-	let hasDragged = false;
-	let dragStartX = 0;
-	let dragStartY = 0;
-	let fabStartX = 0;
-	let fabStartY = 0;
-
-	function clampToViewport(x: number, y: number) {
-		return {
-			x: Math.max(0, Math.min(x, window.innerWidth - FAB_SIZE)),
-			y: Math.max(0, Math.min(y, window.innerHeight - FAB_SIZE)),
-		};
-	}
-
-	function saveFabPosition() {
-		const r = fab.getBoundingClientRect();
-		localStorage.setItem(
-			FAB_STORAGE_KEY,
-			JSON.stringify({ top: r.top, left: r.left }),
-		);
-	}
-
-	fab.addEventListener("pointerdown", (e: PointerEvent) => {
-		isDragging = true;
-		hasDragged = false;
-		dragStartX = e.clientX;
-		dragStartY = e.clientY;
-		const r = fab.getBoundingClientRect();
-		fabStartX = r.left;
-		fabStartY = r.top;
-		fab.setPointerCapture(e.pointerId);
-		fab.style.cursor = "grabbing";
-		fab.style.boxShadow =
-			"0 4px 20px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.12)";
-	});
-
-	fab.addEventListener("pointermove", (e: PointerEvent) => {
-		if (!isDragging) return;
-		const dx = e.clientX - dragStartX;
-		const dy = e.clientY - dragStartY;
-		if (!hasDragged && Math.sqrt(dx * dx + dy * dy) < 5) return;
-		hasDragged = true;
-
-		const { x, y } = clampToViewport(fabStartX + dx, fabStartY + dy);
-		fab.style.bottom = "auto";
-		fab.style.right = "auto";
-		fab.style.top = `${y}px`;
-		fab.style.left = `${x}px`;
-
-		if (popoverOpen) {
-			positionPopover();
-			if (stalePanel.style.display !== "none") positionStalePanel();
-		}
-	});
-
-	fab.addEventListener("pointerup", () => {
-		if (!isDragging) return;
-		isDragging = false;
-		fab.style.cursor = "grab";
-		fab.style.boxShadow =
-			"0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)";
-
-		if (hasDragged) {
-			saveFabPosition();
-		} else {
-			togglePopover();
-		}
-	});
-
-	// Re-clamp on viewport resize
-	window.addEventListener("resize", () => {
-		const r = fab.getBoundingClientRect();
-		const { x, y } = clampToViewport(r.left, r.top);
-		if (x !== r.left || y !== r.top) {
-			fab.style.bottom = "auto";
-			fab.style.right = "auto";
-			fab.style.top = `${y}px`;
-			fab.style.left = `${x}px`;
-			saveFabPosition();
-		}
-		if (popoverOpen) {
-			positionPopover();
-			if (stalePanel.style.display !== "none") positionStalePanel();
-		}
-	});
-
-	// --- Popover positioning & toggling -----------------------------------
-
-	let popoverOpen = false;
-
-	function positionPopover() {
-		popover.style.visibility = "hidden";
-		popover.style.display = "flex";
-		const fabRect = fab.getBoundingClientRect();
-		const popRect = popover.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const gap = 8;
-
-		let top =
-			fabRect.top - gap - popRect.height > 0
-				? fabRect.top - gap - popRect.height
-				: fabRect.bottom + gap;
-
-		let left =
-			fabRect.right - popRect.width > 0
-				? fabRect.right - popRect.width
-				: fabRect.left;
-
-		top = Math.max(4, Math.min(top, vh - popRect.height - 4));
-		left = Math.max(4, Math.min(left, vw - popRect.width - 4));
-
-		popover.style.top = `${top}px`;
-		popover.style.left = `${left}px`;
-		popover.style.visibility = "visible";
-	}
-
-	function openPopover() {
-		positionPopover();
-		popoverOpen = true;
-	}
-
-	function closePopover() {
-		popover.style.display = "none";
-		popoverOpen = false;
-		closeStalePanel();
-	}
-
-	function togglePopover() {
-		if (popoverOpen) closePopover();
-		else openPopover();
-	}
-
-	// Close on outside click
-	document.addEventListener("pointerdown", (e: PointerEvent) => {
-		if (!popoverOpen) return;
-		const target = e.target as Node;
-		if (
-			fab.contains(target) ||
-			popover.contains(target) ||
-			stalePanel.contains(target)
-		)
-			return;
-		closePopover();
-	});
-
-	// Close on Escape
-	document.addEventListener("keydown", (e: KeyboardEvent) => {
-		if (popoverOpen && e.key === "Escape") closePopover();
-	});
-
-	// --- Mount ------------------------------------------------------------
-
-	document.body.appendChild(fab);
-	document.body.appendChild(popover);
-	document.body.appendChild(stalePanel);
-	updateButtonStates();
-}
-
-// ---------------------------------------------------------------------------
-// Locale discovery
-// ---------------------------------------------------------------------------
-
-async function discoverLocales(): Promise<string[] | null> {
-	try {
-		const res = await fetch("/_rcc/locales.json");
-		if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-		const data = await res.json();
-		const locales: string[] | undefined = data?.locales;
-		if (!Array.isArray(locales) || locales.length === 0) {
-			throw new Error("manifest missing locales array");
-		}
-
-		log("Discovered locales from manifest:", locales);
-		return locales;
-	} catch {
-		// Manifest unavailable or malformed
-	}
-
-	warn(
-		"Could not load /_rcc/locales.json. Ensure write-locales ran with --dest pointing to your build output directory.",
-	);
-	return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1691,7 +591,7 @@ async function init(): Promise<void> {
 		warn("CloudCannonAPI not available");
 		return;
 	}
-	api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
+	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
 	// Always-visible (not verbose-gated) so you can confirm CC loaded this exact
 	// build — the timestamp is stamped at `npm run build`.
@@ -1728,7 +628,7 @@ async function init(): Promise<void> {
 		return;
 	}
 
-	injectSwitcher(locales);
+	injectSwitcher(locales, switchLocale);
 
 	await prescanOriginals(container);
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
