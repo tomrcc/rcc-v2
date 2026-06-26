@@ -1,3 +1,5 @@
+import path from "node:path";
+import { resolveRoseyConfig } from "../../rosey-config";
 import {
 	installDependencies,
 	printInstructions,
@@ -106,6 +108,22 @@ export async function run(argv: string[]): Promise<void> {
 
 	const ctx = detectProject();
 
+	// Rosey config (env over file) supplies prompt defaults below; CLI flags
+	// still win. roseyDir is derived from the config's `locales` directory.
+	const rosey = resolveRoseyConfig();
+	const roseyDirDefault = rosey.localesDir
+		? path.dirname(rosey.localesDir)
+		: "rosey";
+
+	if (rosey.source || rosey.languages || rosey.defaultLanguage) {
+		const bits = [
+			rosey.source && `source=${rosey.source}`,
+			rosey.languages && `languages=${rosey.languages.join(",")}`,
+			rosey.defaultLanguage && `default_language=${rosey.defaultLanguage}`,
+		].filter(Boolean);
+		console.log(`  Detected Rosey config: ${bits.join(", ")}`);
+	}
+
 	if (ctx.buildDir) {
 		console.log(`  Detected build directory: ${ctx.buildDir}`);
 	}
@@ -129,21 +147,23 @@ export async function run(argv: string[]): Promise<void> {
 	// ── Headless mode (--yes) ───────────────────────────────────────
 
 	if (flags.yes) {
-		if (!flags.locales || flags.locales.length === 0) {
+		const locales = flags.locales ?? rosey.languages;
+		if (!locales || locales.length === 0) {
 			console.error(
-				"Error: --locales is required in non-interactive mode (--yes).",
+				"Error: locales are required in non-interactive mode (--yes). " +
+					"Pass --locales, or set `languages` in your rosey config.",
 			);
 			process.exit(1);
 		}
 
 		const answers: WizardAnswers = {
-			locales: flags.locales,
-			defaultLanguage: flags.defaultLanguage ?? "en",
+			locales,
+			defaultLanguage: flags.defaultLanguage ?? rosey.defaultLanguage ?? "en",
 			useBuiltinWriteLocales: flags.useBuiltinWriteLocales ?? true,
 			contentAtRoot: flags.contentAtRoot ?? true,
 			exposeAsCollection: flags.exposeAsCollection ?? true,
-			buildDir: flags.buildDir ?? ctx.buildDir ?? "dist",
-			roseyDir: flags.roseyDir ?? "rosey",
+			buildDir: flags.buildDir ?? rosey.source ?? ctx.buildDir ?? "dist",
+			roseyDir: flags.roseyDir ?? roseyDirDefault,
 			ccSource: ctx.ccSource,
 		};
 
@@ -171,7 +191,7 @@ export async function run(argv: string[]): Promise<void> {
 
 	const localesRaw = await askText(
 		"What locales do you want to support? (comma-separated, e.g. fr,de,es)",
-		flags.locales?.join(","),
+		flags.locales?.join(",") ?? rosey.languages?.join(","),
 	);
 	if (!localesRaw) {
 		console.error("At least one locale is required.");
@@ -185,7 +205,7 @@ export async function run(argv: string[]): Promise<void> {
 
 	const defaultLanguage = await askText(
 		"What is the default/source language?",
-		flags.defaultLanguage ?? "en",
+		flags.defaultLanguage ?? rosey.defaultLanguage ?? "en",
 	);
 
 	let useBuiltinWriteLocales: boolean;
@@ -241,12 +261,12 @@ export async function run(argv: string[]): Promise<void> {
 
 	const buildDir = await askText(
 		"Build output directory?",
-		flags.buildDir ?? ctx.buildDir ?? "dist",
+		flags.buildDir ?? rosey.source ?? ctx.buildDir ?? "dist",
 	);
 
 	const roseyDir = await askText(
 		"Rosey source directory?",
-		flags.roseyDir ?? "rosey",
+		flags.roseyDir ?? roseyDirDefault,
 	);
 
 	const answers: WizardAnswers = {

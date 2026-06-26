@@ -50,10 +50,9 @@ Landed/uncommitted changes for in-editor translation of evolving content:
 **Approach:** detect dots in resolved Rosey keys and `warn()` (or document the constraint prominently in `tagging-content.md`). Don't silently break.
 
 ### 5. Read connector config from `rosey.yml`
-**Why (from `rcc-notes.md`):** the tag name (`data-rosey`) and the locale-dataset naming (`locales_*`) are hardcoded. Rosey's own `rosey.yml` already configures things like the tag and source dir.
-**Approach:** read `rosey.yml` (it's a source file, reachable at build time by the CLI; the client may need it surfaced via a manifest or data_config) for:
-- the configured tag/key attribute → drive what `resolveRoseyKey()` / selectors look for instead of assuming `data-rosey`.
-- an (unofficial) locales list and/or the `data_config` prefix → feeds item 1's discovery.
+**Why (from `rcc-notes.md`):** the tag name (`data-rosey`) and the locale-dataset naming (`locales_*`) are hardcoded. Rosey's own config already configures things like the tag, source dir, and languages.
+**Done (build-time):** `src/rosey-config.ts` is a zero-dep reader for `rosey.{yaml,yml,json}` (`.toml` skipped — no parser) plus `ROSEY_*` env vars, resolving with Rosey's precedence (CLI flag > env > file). Key mapping: Rosey `source`→build dir, `languages`→locale codes, `locales`→locale-files dir, `default_language`, `tag`, `separator`. Wired into `write-locales` (dest←`source`, locales←`languages`, roseyDir←dir of `locales`) and the `init` wizard (prompt defaults). `tag`/`separator` are read but not yet consumed.
+**Remaining (client-side):** the injector still hardcodes the `data-rosey` tag and `:` separator, and locale-dataset naming (`locales_*`) — these can't read `rosey.yml` at runtime, so they'd need the resolved `tag`/`separator` surfaced via the build-time manifest (`_rcc/locales.json`) and read by `resolveRoseyKey()` / selectors. Feeds item 1's discovery.
 
 ### 6. Live-stale normalization is text-oriented
 **Where:** `normalizeSource()` in `injector.ts`.

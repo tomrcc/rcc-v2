@@ -1253,7 +1253,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T08:57:59.660Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T09:33:39.706Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
