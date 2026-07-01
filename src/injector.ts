@@ -540,20 +540,52 @@ async function switchLocaleInner(
 	// (possibly newly-stamped) key already has a locale entry — the editor's
 	// onChange creates the entry on first edit.
 
+	// Diagnostic helper (mystery #3 — mid-array inserts): truncate content for logs.
+	const snippet = (s: string | null | undefined): string =>
+		s == null ? "<null>" : JSON.stringify(s.slice(0, 40));
+
 	const reconcileElement = async (el: HTMLElement): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
 		const key = resolveRoseyKey(el);
 		if (!key) return;
 
 		let t = tracked.find((x) => x.element === el);
+
+		// --- Diagnostic trace ---------------------------------------------------
+		// One line per reconcile pass over a [data-rosey] element. For a new/cloned
+		// array item this shows whether the resolved key matches the item's real
+		// _uuid, whether reconcile re-fires after CC re-renders the clone, and
+		// whether an existing editor blocks re-wiring under the new key.
+		log(
+			`reconcile: key="${key}" existing=${t ? "yes" : "no"}` +
+				(t
+					? ` prevKey="${t.roseyKey}" hasEditor=${!!t.editor} original=${snippet(t.originalContent)}`
+					: ""),
+		);
+
 		// Already wired and unchanged — nothing to do. An element with an editor
 		// is fully set up regardless of whether its key has a locale entry yet.
-		if (t && t.roseyKey === key && t.editor) return;
+		if (t && t.roseyKey === key && t.editor) {
+			log(`reconcile: skip "${key}" (already wired, key unchanged)`);
+			return;
+		}
 
 		if (!t) {
 			t = newTrackedEntry(el, key);
 			tracked.push(t);
 		} else {
+			if (t.roseyKey !== key) {
+				// The element's resolved key changed under us (e.g. CC re-rendered a
+				// cloned array item with its real _uuid). If an editor already exists
+				// it is NOT torn down/rebound below (createTextEditableRegion has no
+				// destroy()), so it stays bound to the old key — suspected mystery #3.
+				log(
+					`reconcile: RE-KEY "${t.roseyKey}" → "${key}"` +
+						(t.editor
+							? ` — editor ALREADY EXISTS, will NOT re-wire (stale editor stays bound to old key; suspected mystery #3 cause)`
+							: ""),
+				);
+			}
 			t.roseyKey = key;
 		}
 
@@ -566,6 +598,10 @@ async function switchLocaleInner(
 				`reconcile: wiring editor for "${key}"${data == null ? " (no entry yet — created on first edit)" : ""}`,
 			);
 			await setupEditor(t, resolveDisplayValue(data, t));
+		} else if (t.editor) {
+			log(
+				`reconcile: editor already present for "${key}" — skipped re-wire (onChange writes to current key; initial content not refreshed)`,
+			);
 		}
 	};
 

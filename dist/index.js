@@ -1202,16 +1202,28 @@ async function switchLocaleInner(locale, myGeneration) {
     );
   };
   dataset.addEventListener("change", state.activeDatasetListener);
+  const snippet = (s) => s == null ? "<null>" : JSON.stringify(s.slice(0, 40));
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
     if (!key) return;
     let t = tracked.find((x) => x.element === el);
-    if (t && t.roseyKey === key && t.editor) return;
+    log(
+      `reconcile: key="${key}" existing=${t ? "yes" : "no"}` + (t ? ` prevKey="${t.roseyKey}" hasEditor=${!!t.editor} original=${snippet(t.originalContent)}` : "")
+    );
+    if (t && t.roseyKey === key && t.editor) {
+      log(`reconcile: skip "${key}" (already wired, key unchanged)`);
+      return;
+    }
     if (!t) {
       t = newTrackedEntry(el, key);
       tracked.push(t);
     } else {
+      if (t.roseyKey !== key) {
+        log(
+          `reconcile: RE-KEY "${t.roseyKey}" \u2192 "${key}"` + (t.editor ? ` \u2014 editor ALREADY EXISTS, will NOT re-wire (stale editor stays bound to old key; suspected mystery #3 cause)` : "")
+        );
+      }
       t.roseyKey = key;
     }
     const data = await file.data.get({ slug: key }).catch(() => null);
@@ -1222,6 +1234,10 @@ async function switchLocaleInner(locale, myGeneration) {
         `reconcile: wiring editor for "${key}"${data == null ? " (no entry yet \u2014 created on first edit)" : ""}`
       );
       await setupEditor(t, resolveDisplayValue(data, t));
+    } else if (t.editor) {
+      log(
+        `reconcile: editor already present for "${key}" \u2014 skipped re-wire (onChange writes to current key; initial content not refreshed)`
+      );
     }
   };
   const scheduleReconcile = () => {
@@ -1255,7 +1271,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-25T09:33:39.706Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-30T08:55:41.450Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
