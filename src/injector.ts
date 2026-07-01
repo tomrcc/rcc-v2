@@ -416,7 +416,7 @@ async function switchLocaleInner(
 			let applying = true;
 			const editor = await cc.createTextEditableRegion(
 				t.element,
-				(content) => {
+				async (content) => {
 					if (myGeneration !== state.switchGeneration) return;
 					if (!setupComplete || applying) return;
 					if (content == null) return;
@@ -434,22 +434,41 @@ async function switchLocaleInner(
 						// write site regardless of how onChange was reached.
 						if (isEmptySource(t.originalContent)) return;
 						log(`[${t.roseyKey}] onChange → creating new locale entry`);
-						file.data.set({
-							slug: t.roseyKey,
-							value: {
-								original: t.originalContent,
-								value: content,
-								_base_original: t.originalContent,
-							},
-						});
+						// Optimistically flip before the await so a rapid follow-up
+						// keystroke takes the ".value" path instead of double-creating.
 						t.hasLocaleEntry = true;
 						t.baseOriginal = t.originalContent;
 						t.localeOriginal = t.originalContent;
+						// DIAGNOSTIC (new-key persistence): await + read back so we can
+						// tell a rejected set() from a set() that resolves but never
+						// materialises the new top-level key in the file's data model.
+						try {
+							await file.data.set({
+								slug: t.roseyKey,
+								value: {
+									original: t.originalContent,
+									value: content,
+									_base_original: t.originalContent,
+								},
+							});
+							const readback = await file.data
+								.get({ slug: t.roseyKey })
+								.catch(() => null);
+							log(
+								`[${t.roseyKey}] set(new entry) resolved — readback=${
+									readback == null
+										? "<null> — model did NOT accept the new key"
+										: JSON.stringify(readback).slice(0, 120)
+								}`,
+							);
+						} catch (err) {
+							warn(`[${t.roseyKey}] set(new entry) REJECTED:`, err);
+						}
 						return;
 					}
 
 					log(`[${t.roseyKey}] onChange → set(".value")`);
-					file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+					await file.data.set({ slug: `${t.roseyKey}.value`, value: content });
 					if (t.stale) {
 						resolveStale(t, file);
 					}
@@ -540,10 +559,6 @@ async function switchLocaleInner(
 	// (possibly newly-stamped) key already has a locale entry — the editor's
 	// onChange creates the entry on first edit.
 
-	// Diagnostic helper (mystery #3 — mid-array inserts): truncate content for logs.
-	const snippet = (s: string | null | undefined): string =>
-		s == null ? "<null>" : JSON.stringify(s.slice(0, 40));
-
 	const reconcileElement = async (el: HTMLElement): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
 		const key = resolveRoseyKey(el);
@@ -551,24 +566,11 @@ async function switchLocaleInner(
 
 		let t = tracked.find((x) => x.element === el);
 
-		// --- Diagnostic trace ---------------------------------------------------
-		// One line per reconcile pass over a [data-rosey] element. For a new/cloned
-		// array item this shows whether the resolved key matches the item's real
-		// _uuid, whether reconcile re-fires after CC re-renders the clone, and
-		// whether an existing editor blocks re-wiring under the new key.
-		log(
-			`reconcile: key="${key}" existing=${t ? "yes" : "no"}` +
-				(t
-					? ` prevKey="${t.roseyKey}" hasEditor=${!!t.editor} original=${snippet(t.originalContent)}`
-					: ""),
-		);
-
 		// Already wired and unchanged — nothing to do. An element with an editor
 		// is fully set up regardless of whether its key has a locale entry yet.
-		if (t && t.roseyKey === key && t.editor) {
-			log(`reconcile: skip "${key}" (already wired, key unchanged)`);
-			return;
-		}
+		// (No log here: this is the common case and fires once per element per
+		// reconcile pass — logging it drowns the console.)
+		if (t && t.roseyKey === key && t.editor) return;
 
 		if (!t) {
 			t = newTrackedEntry(el, key);

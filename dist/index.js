@@ -1114,28 +1114,36 @@ async function switchLocaleInner(locale, myGeneration) {
       let applying = true;
       const editor = await cc.createTextEditableRegion(
         t.element,
-        (content) => {
+        async (content) => {
           if (myGeneration !== state.switchGeneration) return;
           if (!setupComplete || applying) return;
           if (content == null) return;
           if (!t.hasLocaleEntry) {
             if (isEmptySource(t.originalContent)) return;
             log(`[${t.roseyKey}] onChange \u2192 creating new locale entry`);
-            file.data.set({
-              slug: t.roseyKey,
-              value: {
-                original: t.originalContent,
-                value: content,
-                _base_original: t.originalContent
-              }
-            });
             t.hasLocaleEntry = true;
             t.baseOriginal = t.originalContent;
             t.localeOriginal = t.originalContent;
+            try {
+              await file.data.set({
+                slug: t.roseyKey,
+                value: {
+                  original: t.originalContent,
+                  value: content,
+                  _base_original: t.originalContent
+                }
+              });
+              const readback = await file.data.get({ slug: t.roseyKey }).catch(() => null);
+              log(
+                `[${t.roseyKey}] set(new entry) resolved \u2014 readback=${readback == null ? "<null> \u2014 model did NOT accept the new key" : JSON.stringify(readback).slice(0, 120)}`
+              );
+            } catch (err) {
+              warn(`[${t.roseyKey}] set(new entry) REJECTED:`, err);
+            }
             return;
           }
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
-          file.data.set({ slug: `${t.roseyKey}.value`, value: content });
+          await file.data.set({ slug: `${t.roseyKey}.value`, value: content });
           if (t.stale) {
             resolveStale(t, file);
           }
@@ -1202,19 +1210,12 @@ async function switchLocaleInner(locale, myGeneration) {
     );
   };
   dataset.addEventListener("change", state.activeDatasetListener);
-  const snippet = (s) => s == null ? "<null>" : JSON.stringify(s.slice(0, 40));
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
     if (!key) return;
     let t = tracked.find((x) => x.element === el);
-    log(
-      `reconcile: key="${key}" existing=${t ? "yes" : "no"}` + (t ? ` prevKey="${t.roseyKey}" hasEditor=${!!t.editor} original=${snippet(t.originalContent)}` : "")
-    );
-    if (t && t.roseyKey === key && t.editor) {
-      log(`reconcile: skip "${key}" (already wired, key unchanged)`);
-      return;
-    }
+    if (t && t.roseyKey === key && t.editor) return;
     if (!t) {
       t = newTrackedEntry(el, key);
       tracked.push(t);
@@ -1271,7 +1272,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-06-30T08:55:41.450Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-01T03:13:49.591Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
