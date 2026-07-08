@@ -76,11 +76,8 @@ export function run(argv: string[]): void {
 	if (copied > 0) {
 		console.log(
 			"\nSkills available:\n" +
-				"  translate-locale-files          — Translate untranslated/stale entries in locale files\n" +
-				"  translate-content-collections   — Translate split-by-directory content collection files\n" +
-				"  make-site-multilingual          — Set up Rosey/RCC/CloudCannon from scratch\n" +
-				"  migrate-i18n-to-rosey           — Replace an existing i18n system with Rosey\n" +
-				"  migrate-rcc-v1-to-v2            — Upgrade from RCC v1 to v2\n",
+				"  make-site-multilingual   — Get a site Rosey-ready (+ optional RCC); also covers migrating from another i18n system and upgrading from RCC v1\n" +
+				"  translate-multilingual   — Translate Rosey locale files and split-by-directory content collections with AI\n",
 		);
 	}
 }

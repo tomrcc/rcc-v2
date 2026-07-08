@@ -46,7 +46,7 @@ The package ships agent skills that guide an AI coding assistant through the tra
 npx rosey-cloudcannon-connector add-skills
 ```
 
-This copies skill files into your project (default: `.cursor/skills/`). The `translate-locale-files` skill walks the agent through reading the locale file, classifying entries, translating in context-aware batches, and writing back valid JSON.
+This copies skill files into your project (default: `.cursor/skills/`). The `translate-multilingual` skill walks the agent through reading the locale file, classifying entries, translating in context-aware batches, and writing back valid JSON — and covers split-by-directory content collections in the same skill.
 
 With the skill installed, tell your AI assistant:
 
@@ -120,10 +120,8 @@ The package includes several agent skills for AI coding assistants. These are st
 
 | Skill | Purpose |
 |-------|---------|
-| `translate-locale-files` | Translate untranslated and stale entries in locale files |
-| `make-site-multilingual` | Set up Rosey/RCC/CloudCannon from scratch on a single-language site |
-| `migrate-i18n-to-rosey` | Replace an existing i18n system with Rosey |
-| `migrate-rcc-v1-to-v2` | Upgrade from RCC v1 to v2 |
+| `make-site-multilingual` | Get a site Rosey-ready (with the RCC as an optional visual-editing layer); also covers migrating from an existing i18n system and upgrading from RCC v1 to v2 |
+| `translate-multilingual` | Translate Rosey locale files (untranslated + stale entries) and split-by-directory content collections with AI |
 
 Install them with:
 

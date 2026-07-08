@@ -12,13 +12,13 @@ In Eleventy, `page.url` gives the URL path (e.g., `/booking/`). For flat URL str
 <main data-rosey-root="{{ rosey_slug }}">
 ```
 
-> The `replace: '/'` approach works for flat URL structures (e.g., `/about/` becomes `about`). For nested paths like `/blog/my-post/`, use a split/join approach: `{% assign rosey_slug = page.url | split: '/' | join: '-' | remove_first: '-' %}` or similar, depending on how you want nested keys to read.
+> The `replace: '/'` approach works for flat URLs (`/about/` → `about`). For nested paths (`/blog/my-post/`), use a split/join: `{% assign rosey_slug = page.url | split: '/' | join: '-' | remove_first: '-' %}`.
 
-## Content Block Namespacing
+## Content-Block Namespacing — keep rosey attributes inside the block, not the loop
 
-### Eleventy/Liquid
+> This implements the core rule from §3g of the main skill. The `data-rosey-ns` / `data-rosey` attributes belong on the block partial (the thing rendered per item), not left dangling on the parent's `{% for %}` wrapper, so that CloudCannon's clone-on-add/reorder can't produce a stale, duplicated namespace.
 
-For sites using `content_blocks`, the shared page template (which loops `content_blocks`) is the best place to add `data-rosey-ns` wrappers. Use the block's `_uuid` field (populated by CloudCannon's `instance_value: UUID`) for stable keys:
+For sites using `content_blocks`, the shared page template loops the blocks; use each block's `_uuid` (from CloudCannon's `instance_value: UUID`) as the namespace segment:
 
 ```liquid
 {% for block in content_blocks %}
@@ -28,20 +28,18 @@ For sites using `content_blocks`, the shared page template (which loops `content
 {% endfor %}
 ```
 
-This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every structure value — see section 3g of the main skill. One change covers all content blocks across all pages.
+This requires a `_uuid` input in `cloudcannon.config.yml` and `_uuid:` in every structure value — see §3g of the main skill. One change covers all blocks across all pages. The `data-rosey` leaf keys themselves live inside each included block partial.
 
-**Fallback (non-CloudCannon):** If `instance_value` isn't available, use block name + index:
+**Fallback (non-CloudCannon):** block name + index — fragile, reordering shifts keys:
 
 ```liquid
 {% assign block_ns = block._name | append: "-" | append: forloop.index0 %}
 <div data-rosey-ns="{{ block_ns }}">
 ```
 
-This derives names like `hero-0`, `price-list-1` but is fragile — reordering shifts keys.
-
 ### If using Bookshop
 
-> **Skip this subsection if the site does not use Bookshop.** Most Eleventy sites do not use Bookshop — the patterns above work with any component system.
+> **Skip this if the site doesn't use Bookshop.** Most Eleventy sites don't — the patterns above work with any component system.
 
 For Bookshop sites, the shared `page.eleventy.liquid` template renders blocks via `{% bookshop %}`. The same UUID namespacing applies:
 
@@ -53,7 +51,7 @@ For Bookshop sites, the shared `page.eleventy.liquid` template renders blocks vi
 {% endfor %}
 ```
 
-The fallback for Bookshop sites without `instance_value` uses `_bookshop_name`:
+Fallback for Bookshop sites without `instance_value`:
 
 ```liquid
 {% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}
@@ -62,29 +60,26 @@ The fallback for Bookshop sites without `instance_value` uses `_bookshop_name`:
 
 ## Split-by-Directory for Body Content
 
-When implementing the split-by-directory pattern (Phase 7 of the main skill) in Eleventy:
+When implementing split-by-directory (Phase 8 of the main skill) in Eleventy:
 
-- Create per-locale directories (e.g., `blog_fr/`, `blog_de/`) alongside the English blog directory.
+- Create per-locale directories (`blog_fr/`, `blog_de/`) alongside the English blog directory.
 - Use computed data or directory data files (`blog_fr/blog_fr.json`) to set a `locale` variable and output URL prefix.
-- Shared layouts receive the `locale` variable and conditionally adjust links and date formatting.
-- Suppress `data-rosey` on frontmatter-driven fields by conditionally omitting the attribute in the template when `locale` is set.
+- Shared layouts receive `locale` and conditionally adjust links and date formatting.
+- Suppress `data-rosey` on frontmatter-driven fields by conditionally omitting the attribute when `locale` is set.
 
 ## Visitor-Facing Locale Picker
 
-When implementing the locale picker (Phase 8 of the main skill) in Eleventy, use `page.url | split: "/"` to parse the path and detect the current locale. The first meaningful segment is at index 1 (`path_segments[1]`) since index 0 is empty from the leading `/`.
-
-The URL construction logic (parse path, detect locale prefix, strip/prepend) is the same as described in the main skill -- adapt using Liquid filters.
+When implementing the locale picker (Phase 9 of the main skill) in Eleventy, use `page.url | split: "/"` to parse the path and detect the current locale. The first meaningful segment is at index 1 (`path_segments[1]`) since index 0 is empty from the leading `/`. The URL construction logic (parse path, detect locale prefix, strip/prepend) is the same as the main skill — adapt using Liquid filters.
 
 ## Gotchas
 
 ### Eleventy
 
-- **Slug derivation via `page.url`.** In Eleventy, `page.url` gives the URL path (e.g., `/booking/`). For flat URL structures, derive a Rosey root slug with `{% assign rosey_slug = page.url | replace: '/', '' %}` and fall back for the index page: `{% if rosey_slug == '' %}{% assign rosey_slug = 'index' %}{% endif %}`. For nested paths (e.g., `/blog/my-post/`), use a split/join approach instead of a blanket replace.
-- **Locale picker path parsing.** In Eleventy, use `page.url | split: "/"` to parse the path and detect the current locale. The first meaningful segment is at index 1 (`path_segments[1]`) since index 0 is empty from the leading `/`.
+- **Slug derivation via `page.url`.** Flat: `{% assign rosey_slug = page.url | replace: '/', '' %}` with an `index` fallback. Nested: use split/join instead of a blanket replace.
+- **Locale-picker path parsing.** `page.url | split: "/"`; the first meaningful segment is index 1.
+- **Block namespacing lives on the block, not the loop.** Put `data-rosey-ns="{{ block._uuid }}"` on the per-block wrapper/partial so it re-renders per item; don't rely on a shared parent element that CloudCannon can clone.
 
 ### Bookshop (skip if site does not use Bookshop)
 
-> Most Eleventy sites do not use Bookshop. If the audit in Phase 1 found no Bookshop infrastructure, skip this section entirely.
-
-- **`page.eleventy.liquid` is the ideal block namespacing point.** For Bookshop sites, the shared `page.eleventy.liquid` template (which loops `content_blocks`) is the single best place to add `data-rosey-ns` wrappers. Use `{{ block._uuid }}` (from CloudCannon's `instance_value: UUID`) for stable keys. If `instance_value` isn't available, fall back to `{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}` (but be aware this is fragile). One change covers all content blocks across all pages.
-- **Button `data-rosey` captures SVG icon markup.** When `data-rosey` is placed on an `<a>` or `<button>` that contains both text and a Bookshop icon component (e.g., arrow icons), Rosey captures the full `innerHTML` including the rendered SVG and Bookshop live-edit comments. The translation `value` must preserve the icon markup; only the text portion should change. For cleaner translations, wrap the button text in a `<span data-rosey="button_text">` and leave the icon outside, but this requires restructuring the button component.
+- **`page.eleventy.liquid` is the ideal block-namespacing point.** Use `{{ block._uuid }}` (from `instance_value: UUID`) for stable keys; fall back to `{% assign block_ns = block._bookshop_name | split: "/" | last | append: "-" | append: forloop.index0 %}` (fragile). One change covers all blocks.
+- **Button `data-rosey` captures SVG icon markup.** On an `<a>`/`<button>` containing both text and a Bookshop icon, Rosey captures the full `innerHTML` including the rendered SVG and live-edit comments. The translation `value` must preserve the icon markup; for cleaner translations wrap just the text in a `<span data-rosey="button_text">` and leave the icon outside (requires restructuring the button).

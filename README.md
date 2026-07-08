@@ -121,7 +121,7 @@ Accurate stale detection and element activation depend on each element having a 
 
 ## Already Using an i18n System?
 
-If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. The package also includes an agent skill (`migrate-i18n-to-rosey`) with detailed step-by-step instructions — run `npx rosey-cloudcannon-connector add-skills` to add it to your project.
+If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. The package also includes an agent skill (`make-site-multilingual`, whose "Migrating from an existing i18n system" appendix covers this) with detailed step-by-step instructions — run `npx rosey-cloudcannon-connector add-skills` to add it to your project.
 
 ## Documentation
 

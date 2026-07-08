@@ -46,7 +46,7 @@ The package includes agent skills with detailed step-by-step migration workflows
 npx rosey-cloudcannon-connector add-skills
 ```
 
-The `migrate-i18n-to-rosey` skill walks through the full process: detecting the current system, extracting translations, removing old infrastructure, applying the Rosey stack, and verifying the result. It includes an Astro-specific supplement with concrete before/after patterns for Astro's built-in i18n.
+The `make-site-multilingual` skill walks through the full process in its "Migrating from an existing i18n system" appendix: detecting the current system, extracting translations, removing old infrastructure, applying the Rosey stack, and verifying the result. Its `astro.md` companion includes an Astro-specific supplement with concrete before/after patterns for Astro's built-in i18n.
 
 ### Manual migration
 
@@ -68,4 +68,4 @@ This means the migration is mainly about:
 - Deleting duplicate page directories (for pages where only strings differ)
 - Replacing `getRelativeLocaleUrl()` calls with plain paths (Rosey rewrites links automatically)
 
-For detailed before/after code patterns, use the `migrate-i18n-to-rosey` agent skill (it includes an Astro-specific supplement), or see the [Astro migration patterns](../skills/migrate-i18n-to-rosey/astro.md) directly.
+For detailed before/after code patterns, use the `make-site-multilingual` agent skill (its "Migrating from an existing i18n system" appendix), or see the [Astro migration patterns](../skills/make-site-multilingual/astro.md) directly (the "Migrating an Astro Site Off Its Existing i18n" section).
