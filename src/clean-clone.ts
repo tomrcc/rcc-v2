@@ -69,6 +69,11 @@ function stripCCAttributes(el: HTMLElement): void {
 			el.removeAttribute(attr.name);
 		}
 	}
+
+	// cloneNode captures CC's live ProseMirror state; drop it so the clone isn't
+	// natively editable. RCC re-adds it on [data-rosey] editors.
+	el.removeAttribute("contenteditable");
+	el.classList.remove("ProseMirror");
 }
 
 function replaceCustomElements(root: HTMLElement): void {
