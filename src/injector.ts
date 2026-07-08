@@ -39,6 +39,10 @@ import {
 } from "./stale";
 import { state, tracked } from "./state";
 import type { CCApi, CCDataset, CCFile, TrackedElement } from "./types";
+import {
+	injectHideControlsStyle,
+	setLocaleControlsHidden,
+} from "./ui/hide-controls";
 import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
 // Injected by tsup at build time (see tsup.config.ts). Used for the always-on
@@ -177,6 +181,11 @@ function teardownEditors(): void {
 			`originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`,
 	);
 
+	// Universal restore path (runs at the start of every switch). Clearing the
+	// flag here brings CC's editing chrome back for Original; a real-locale
+	// switch re-sets it after the clone swap below.
+	setLocaleControlsHidden(false);
+
 	if (state.reconcileObserver) {
 		state.reconcileObserver.disconnect();
 		state.reconcileObserver = null;
@@ -301,6 +310,11 @@ async function switchLocaleInner(
 
 	container.replaceWith(clone);
 	state.translationContainer = clone;
+	// Mark the clone as the translatable region so the control-hiding CSS can
+	// scope outlines to it (container-agnostic: works for [data-rcc] or the
+	// `main` fallback), then hide all CC editing chrome elsewhere on the page.
+	clone.setAttribute("data-rcc-translation-root", "");
+	setLocaleControlsHidden(true);
 	log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
 
 	// --- Track elements in the clone and set up editors ---------------------
@@ -684,6 +698,7 @@ async function init(): Promise<void> {
 		return;
 	}
 
+	injectHideControlsStyle();
 	injectSwitcher(locales, switchLocale);
 
 	await prescanOriginals(container);

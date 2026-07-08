@@ -440,6 +440,49 @@ function resolveStale(t, file) {
   unmarkStaleElement(t);
 }
 
+// src/ui/hide-controls.ts
+var STYLE_ID = "rcc-hide-controls";
+var CSS = `
+/* Hide all CloudCannon control gizmos while a locale is active. */
+html[data-rcc-locale-active] editable-array-item-controls,
+html[data-rcc-locale-active] editable-component-controls,
+html[data-rcc-locale-active] editable-region-button,
+html[data-rcc-locale-active] editable-region-error-card {
+	display: none !important;
+}
+
+/* Remove CC outlines on editable regions OUTSIDE the translation root.
+   Visual-only \u2014 the elements stay rendered so their text is not hidden. */
+html[data-rcc-locale-active] :is(
+	editable-text, editable-source, editable-image,
+	editable-component, editable-array-item, editable-snippet,
+	[data-editable="text"], [data-editable="source"], [data-editable="image"],
+	[data-editable="component"], [data-editable="array-item"]
+):not([data-rcc-translation-root] *) {
+	outline: none !important;
+}
+
+/* Add a visible outline to the actual translatable regions (they carry no CC
+   outline of their own \u2014 cleanClone stripped the markup CC's CSS targets).
+   Reuse CC's OWN highlight variables so it matches the editor's yellowish
+   "highlighted" state; hex fallbacks cover the case where the host-injected
+   --ccve-* vars don't resolve at this scope. */
+html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]) {
+	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
+	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
+}
+`;
+function injectHideControlsStyle() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = CSS;
+  document.head.appendChild(style);
+}
+function setLocaleControlsHidden(active) {
+  document.documentElement.toggleAttribute("data-rcc-locale-active", active);
+}
+
 // src/ui/switcher.ts
 var FAB_SIZE = 48;
 var FAB_STORAGE_KEY = "rcc-fab-position";
@@ -962,6 +1005,7 @@ function teardownEditors() {
   log(
     `teardownEditors: translationContainer=${!!state.translationContainer}, originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`
   );
+  setLocaleControlsHidden(false);
   if (state.reconcileObserver) {
     state.reconcileObserver.disconnect();
     state.reconcileObserver = null;
@@ -1050,6 +1094,8 @@ async function switchLocaleInner(locale, myGeneration) {
   if (rtl) clone.dir = "rtl";
   container.replaceWith(clone);
   state.translationContainer = clone;
+  clone.setAttribute("data-rcc-translation-root", "");
+  setLocaleControlsHidden(true);
   log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
   trackElements(clone);
   if (tracked.length === 0) {
@@ -1270,7 +1316,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-01T03:13:49.591Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T07:48:24.837Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
@@ -1288,6 +1334,7 @@ async function init() {
     warn("No translatable elements found (missing data-rosey attributes)");
     return;
   }
+  injectHideControlsStyle();
   injectSwitcher(locales, switchLocale);
   await prescanOriginals(container);
   log(`Ready \u2014 ${locales.length} locales, ${elementCount} elements`);
