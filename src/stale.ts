@@ -187,6 +187,9 @@ export function updateStaleList(): void {
 }
 
 export function markStaleElement(t: TrackedElement): void {
+	// data-rcc-stale excludes it from the translatable-region outline in
+	// hide-controls, so this orange stale outline shows instead of the yellow.
+	t.element.dataset.rccStale = "";
 	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
 	t.element.style.outlineOffset = "2px";
 	t.element.style.backgroundColor = STALE_AMBER_BG;
@@ -194,6 +197,7 @@ export function markStaleElement(t: TrackedElement): void {
 
 function unmarkStaleElement(t: TrackedElement): void {
 	t.stale = false;
+	delete t.element.dataset.rccStale;
 	t.element.style.outline = "";
 	t.element.style.outlineOffset = "";
 	t.element.style.backgroundColor = "";

@@ -418,12 +418,14 @@ function updateStaleList() {
     resolveAllBtn.style.display = staleItems.length > 0 ? "block" : "none";
 }
 function markStaleElement(t) {
+  t.element.dataset.rccStale = "";
   t.element.style.outline = `2px dashed ${STALE_AMBER}`;
   t.element.style.outlineOffset = "2px";
   t.element.style.backgroundColor = STALE_AMBER_BG;
 }
 function unmarkStaleElement(t) {
   t.stale = false;
+  delete t.element.dataset.rccStale;
   t.element.style.outline = "";
   t.element.style.outlineOffset = "";
   t.element.style.backgroundColor = "";
@@ -475,7 +477,7 @@ html[data-rcc-locale-active] :is(
    Reuse CC's OWN highlight variables so it matches the editor's yellowish
    "highlighted" state; hex fallbacks cover the case where the host-injected
    --ccve-* vars don't resolve at this scope. */
-html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]) {
+html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]):not([data-rcc-stale]) {
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
 }
@@ -1324,7 +1326,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T09:00:59.776Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T09:13:37.070Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

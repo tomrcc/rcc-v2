@@ -48,7 +48,7 @@ html[data-rcc-locale-active] :is(
    Reuse CC's OWN highlight variables so it matches the editor's yellowish
    "highlighted" state; hex fallbacks cover the case where the host-injected
    --ccve-* vars don't resolve at this scope. */
-html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]) {
+html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]):not([data-rcc-stale]) {
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
 }
