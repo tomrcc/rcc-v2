@@ -443,11 +443,17 @@ function resolveStale(t, file) {
 // src/ui/hide-controls.ts
 var STYLE_ID = "rcc-hide-controls";
 var CSS = `
-/* Hide all CloudCannon control gizmos while a locale is active. */
+/* Hide all CloudCannon control gizmos while a locale is active.
+   \u2022 editable-*-controls / editable-region-*  \u2192 editable-regions (Phase 1)
+   \u2022 c-cloudcannon-editor-overlay-*           \u2192 legacy data-cms-bind /
+     Bookshop overlay layer (Phase 2). RCC strips data-cms-bind from the clone
+     and pauses Bookshop, so no overlay in this family belongs to the
+     translatable region \u2014 hide the whole family page-wide. */
 html[data-rcc-locale-active] editable-array-item-controls,
 html[data-rcc-locale-active] editable-component-controls,
 html[data-rcc-locale-active] editable-region-button,
-html[data-rcc-locale-active] editable-region-error-card {
+html[data-rcc-locale-active] editable-region-error-card,
+html[data-rcc-locale-active] [class*="c-cloudcannon-editor-overlay"] {
 	display: none !important;
 }
 
@@ -1316,7 +1322,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T07:48:24.837Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T08:14:42.812Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

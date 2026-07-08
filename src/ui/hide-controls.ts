@@ -18,11 +18,17 @@
 const STYLE_ID = "rcc-hide-controls";
 
 const CSS = `
-/* Hide all CloudCannon control gizmos while a locale is active. */
+/* Hide all CloudCannon control gizmos while a locale is active.
+   • editable-*-controls / editable-region-*  → editable-regions (Phase 1)
+   • c-cloudcannon-editor-overlay-*           → legacy data-cms-bind /
+     Bookshop overlay layer (Phase 2). RCC strips data-cms-bind from the clone
+     and pauses Bookshop, so no overlay in this family belongs to the
+     translatable region — hide the whole family page-wide. */
 html[data-rcc-locale-active] editable-array-item-controls,
 html[data-rcc-locale-active] editable-component-controls,
 html[data-rcc-locale-active] editable-region-button,
-html[data-rcc-locale-active] editable-region-error-card {
+html[data-rcc-locale-active] editable-region-error-card,
+html[data-rcc-locale-active] [class*="c-cloudcannon-editor-overlay"] {
 	display: none !important;
 }
 
