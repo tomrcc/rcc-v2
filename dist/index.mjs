@@ -282,8 +282,22 @@ function recountStale() {
   updateStaleBadge();
   updateStaleList();
 }
+function unwrapLooseListItems(s) {
+  if (!s.includes("<li")) return s;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = s;
+  let changed = false;
+  for (const li of tpl.content.querySelectorAll("li")) {
+    const paras = [...li.children].filter((c) => c.tagName === "P");
+    if (paras.length === 1) {
+      paras[0].replaceWith(...Array.from(paras[0].childNodes));
+      changed = true;
+    }
+  }
+  return changed ? tpl.innerHTML : s;
+}
 function normalizeSource(s) {
-  return s.replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
+  return unwrapLooseListItems(s).replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
   return text.length > max ? `${text.slice(0, max)}\u2026` : text;

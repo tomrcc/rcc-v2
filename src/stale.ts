@@ -27,19 +27,50 @@ export function recountStale(): void {
 }
 
 /**
+ * Collapse a markdown "loose" list item to its "tight" equivalent by unwrapping
+ * a single <p> wrapping the item's text. Markdown renders a list tight
+ * (`<li>x</li>`) or loose (`<li><p>x</p></li>`) depending on blank lines, and
+ * Rosey's base.json extract and CC's ProseMirror serializer disagree on which —
+ * so without this every list entry reads as stale.
+ *
+ * Only unwrap when the <li> has exactly one direct-child <p>: that's the
+ * ambiguous case (could have come from either form). Two or more <p>s are a
+ * genuine multi-paragraph item with no tight equivalent — both serializers
+ * produce it identically, so leave it untouched. Counting <p> children (rather
+ * than requiring the <p> be an only child) still unwraps items that also hold a
+ * nested sublist, e.g. `<li><p>x</p><ul>…</ul></li>`. DOM-based so it survives
+ * nesting and attributes; runs client-side only (all callers are injected).
+ */
+function unwrapLooseListItems(s: string): string {
+	if (!s.includes("<li")) return s;
+	const tpl = document.createElement("template");
+	tpl.innerHTML = s;
+	let changed = false;
+	for (const li of tpl.content.querySelectorAll("li")) {
+		const paras = [...li.children].filter((c) => c.tagName === "P");
+		if (paras.length === 1) {
+			paras[0].replaceWith(...Array.from(paras[0].childNodes));
+			changed = true;
+		}
+	}
+	return changed ? tpl.innerHTML : s;
+}
+
+/**
  * Normalize source for stale comparison: the live innerHTML and the stored
- * original/_base_original can differ in insignificant whitespace. Errs toward
+ * original/_base_original can differ in insignificant ways. Errs toward
  * false-negatives on purpose — the build-time _base_original is the backstop.
  *
  * Two HTML serializers meet here: Rosey extracts block-level source with
- * newlines between tags (`</p>\n<ul>`), while CC's ProseMirror re-serializes
- * the same content with none (`</p><ul>`). Collapsing inter-tag whitespace
- * first canonicalizes both to the same string; otherwise every block-level
- * entry reads as stale (and re-stales on each rebuild as write-locales resets
- * _base_original to the Rosey form).
+ * newlines between tags (`</p>\n<ul>`) and tight lists, while CC's ProseMirror
+ * re-serializes with none (`</p><ul>`) and loose lists (`<li><p>…</p></li>`).
+ * Unwrapping loose list items and collapsing inter-tag whitespace canonicalizes
+ * both to the same string; otherwise every block-level entry reads as stale
+ * (and re-stales on each rebuild as write-locales resets _base_original to the
+ * Rosey form).
  */
 export function normalizeSource(s: string): string {
-	return s
+	return unwrapLooseListItems(s)
 		.replace(/>\s+</g, "><")
 		.replace(/\s+/g, " ")
 		.trim();
