@@ -27,11 +27,9 @@ export function recountStale(): void {
 }
 
 /**
- * Normalize source text for stale comparison. The live DOM (`innerHTML`) and the
- * stored `original` / `_base_original` (from base.json or a prior client write)
- * can differ in insignificant whitespace, so collapse whitespace runs and trim
- * before comparing. This errs toward false-negatives, which is intentional: the
- * build-time `_base_original` signal stays the authoritative backstop.
+ * Normalize source for stale comparison: the live innerHTML and the stored
+ * original/_base_original can differ in insignificant whitespace. Errs toward
+ * false-negatives on purpose — the build-time _base_original is the backstop.
  */
 export function normalizeSource(s: string): string {
 	return s.replace(/\s+/g, " ").trim();
@@ -187,8 +185,8 @@ export function updateStaleList(): void {
 }
 
 export function markStaleElement(t: TrackedElement): void {
-	// data-rcc-stale excludes it from the translatable-region outline in
-	// hide-controls, so this orange stale outline shows instead of the yellow.
+	// data-rcc-stale drops the normal yellow outline (see hide-controls) so
+	// this amber one shows instead.
 	t.element.dataset.rccStale = "";
 	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
 	t.element.style.outlineOffset = "2px";
@@ -206,12 +204,10 @@ function unmarkStaleElement(t: TrackedElement): void {
 
 export function resolveStale(t: TrackedElement, file: CCFile): void {
 	if (!t.stale) return;
-	// Acknowledge the source text currently on the page as the reviewed source.
-	// Write both `original` and `_base_original` so the entry is self-consistent
-	// even when resolving a live edit before a build has refreshed _base_original
-	// from base.json — the next build reconciles _base_original harmlessly. Using
-	// the on-page source (not the stale t.baseOriginal) is what lets a live-only
-	// stale clear; post-build the two are equal anyway.
+	// Acknowledge the on-page source as reviewed. Write both original and
+	// _base_original so the entry is self-consistent even when resolving a live
+	// edit before a build; using the on-page source is what clears a live-only
+	// stale (post-build the two are equal anyway).
 	const current = t.originalContent;
 	log(
 		`[${t.roseyKey}] Resolving stale — original/_base_original ← page source`,

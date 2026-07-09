@@ -2,28 +2,19 @@
 // Hide CloudCannon on-page editing chrome while a translation locale is active
 // ---------------------------------------------------------------------------
 //
-// When RCC swaps in a clean translation clone, editing is only gone *inside*
-// that container. Every CC editable region outside it (nav, footer, other
-// components) stays live, so its control gizmos and highlight outlines keep
-// showing in the Visual Editor — off-target while translating.
-//
-// We hide that chrome purely with CSS, toggled by a single attribute:
-//   • `data-rcc-locale-active` on <html>       → set while a real locale is on
-//   • `data-rcc-translation-root` on the clone → marks the translatable region
-//
-// Only the control gizmos get `display:none`. The editable region elements
-// themselves wrap visible page content, so they only lose their outline — never
-// `display:none`, which would blank that content out.
+// The clean clone removes editing only *inside* the container; CC regions
+// outside it (nav, footer, other components) stay live and keep showing their
+// gizmos and outlines. This hides that chrome via CSS, toggled by two attrs:
+// data-rcc-locale-active on <html> and data-rcc-translation-root on the clone.
+// Only control gizmos get display:none — editable regions wrap visible
+// content, so they only lose their outline.
 
 const STYLE_ID = "rcc-hide-controls";
 
 const CSS = `
-/* Hide all CloudCannon control gizmos while a locale is active.
-   • editable-*-controls / editable-region-*  → editable-regions (Phase 1)
-   • c-cloudcannon-editor-overlay-*           → legacy data-cms-bind /
-     Bookshop overlay layer (Phase 2). RCC strips data-cms-bind from the clone
-     and pauses Bookshop, so no overlay in this family belongs to the
-     translatable region — hide the whole family page-wide. */
+/* Hide all CC control gizmos while a locale is active. The overlay family is
+   the Bookshop/data-cms-bind layer; RCC strips data-cms-bind and pauses
+   Bookshop, so none of it belongs to the translation root — hide page-wide. */
 html[data-rcc-locale-active] editable-array-item-controls,
 html[data-rcc-locale-active] editable-component-controls,
 html[data-rcc-locale-active] editable-region-button,
@@ -43,11 +34,9 @@ html[data-rcc-locale-active] :is(
 	outline: none !important;
 }
 
-/* Add a visible outline to the actual translatable regions (they carry no CC
-   outline of their own — cleanClone stripped the markup CC's CSS targets).
-   Reuse CC's OWN highlight variables so it matches the editor's yellowish
-   "highlighted" state; hex fallbacks cover the case where the host-injected
-   --ccve-* vars don't resolve at this scope. */
+/* Outline the translatable regions (cleanClone stripped the markup CC's own
+   CSS targets). Reuse CC's --ccve-* highlight vars to match its yellow
+   highlighted state; hex fallbacks cover when those vars don't resolve here. */
 html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]):not([data-rcc-stale]) {
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;

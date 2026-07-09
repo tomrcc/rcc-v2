@@ -13,10 +13,9 @@ export interface TrackedElement {
 	baseOriginal: string | null;
 	localeOriginal: string | null;
 	/**
-	 * Whether the element's Rosey key already has an entry in the current locale
-	 * file. Both states are editable; this only selects the write path on edit:
-	 * a missing entry creates a full {original, value, _base_original} object on
-	 * first edit, a present entry patches just `.value`.
+	 * Whether the key already has an entry in the current locale file. Selects
+	 * the write path on edit: missing → create a full {original, value,
+	 * _base_original} entry; present → patch just `.value`.
 	 */
 	hasLocaleEntry: boolean;
 }

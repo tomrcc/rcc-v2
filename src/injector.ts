@@ -1,23 +1,12 @@
 /**
- * Locale injector for CloudCannon Visual Editor.
+ * Locale injector for CloudCannon Visual Editor. Orchestration layer; the
+ * pieces live in sibling modules (clean-clone, bookshop, stale, ui/switcher,
+ * locales, state).
  *
- * Finds all [data-rosey] elements, injects a floating locale switcher,
- * and uses the CloudCannon live editing JS API to create inline editors
- * that read/write locale data directly.
- *
- * When a locale is selected the entire locale container is swapped out
- * of the DOM and replaced with a clean clone stripped of all CC editing
- * infrastructure. CC's MutationObserver auto-dehydrates the original
- * and ignores the inert clone. On teardown the original is swapped back
- * in and CC auto-restores all editing.
- *
- * Add data-rcc-ignore to any [data-rosey] element to opt it out.
- *
- * This module is the orchestration layer; the pieces it coordinates live in
- * sibling modules: clone-cleaning (clean-clone), Bookshop integration
- * (bookshop), the stale-translation model + panel (stale), the floating
- * switcher UI (ui/switcher), locale discovery (locales), and shared mutable
- * session state (state).
+ * On locale select, the container is swapped for a clean clone stripped of CC
+ * editing infra: CC's MutationObserver auto-dehydrates the detached original
+ * and ignores the inert clone; teardown swaps the original back and CC
+ * auto-restores editing. Add data-rcc-ignore to opt an element out.
  */
 
 import {
@@ -45,23 +34,16 @@ import {
 } from "./ui/hide-controls";
 import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
-// Injected by tsup at build time (see tsup.config.ts). Used for the always-on
-// "RCC loaded" banner so it's clear which build CloudCannon actually served.
+// Injected by tsup at build time (see tsup.config.ts) for the build banner.
 declare const __RCC_VERSION__: string;
 declare const __RCC_BUILD__: string;
 
-/**
- * Input configs captured from CC's editable infrastructure at init time.
- * Keyed by resolved Rosey key. Used to pass the exact same inputConfig
- * to createTextEditableRegion that CC uses for the original editors.
- */
+// inputConfig captured from CC's editors at init, keyed by Rosey key, so RCC's
+// editors reuse the same config CC used for the originals.
 const originalInputConfigs = new Map<string, Record<string, unknown>>();
 
-/**
- * Rosey keys whose original elements were source editables
- * (`data-editable="source"` / `EDITABLE-SOURCE`). Used to pass
- * `editableType: "content"` so CC applies the `_editables.content` toolbar.
- */
+// Rosey keys whose originals were source editables (data-editable="source" /
+// EDITABLE-SOURCE); passed as editableType: "content" for the right toolbar.
 const originalIsSource = new Set<string>();
 
 // ---------------------------------------------------------------------------
@@ -108,12 +90,8 @@ function resolveDisplayValue(data: any, t: TrackedElement): string {
 	return data?.value ?? data?.original ?? t.originalContent;
 }
 
-/**
- * An element whose source text is empty (or whitespace-only) has nothing to
- * translate. We skip wiring an editor for it and never write a locale entry —
- * it becomes translatable only once it gains source content (a rebuild or a
- * live source edit), at which point the normal new-entry path takes over.
- */
+// Empty/whitespace-only source has nothing to translate: no editor, no locale
+// entry. It becomes translatable once it gains content (rebuild or live edit).
 function isEmptySource(text: string): boolean {
 	return normalizeSource(text) === "";
 }
@@ -181,9 +159,8 @@ function teardownEditors(): void {
 			`originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`,
 	);
 
-	// Universal restore path (runs at the start of every switch). Clearing the
-	// flag here brings CC's editing chrome back for Original; a real-locale
-	// switch re-sets it after the clone swap below.
+	// Runs at the start of every switch: restores CC's editing chrome. A
+	// real-locale switch re-hides it after the clone swap.
 	setLocaleControlsHidden(false);
 
 	if (state.reconcileObserver) {
@@ -310,9 +287,8 @@ async function switchLocaleInner(
 
 	container.replaceWith(clone);
 	state.translationContainer = clone;
-	// Mark the clone as the translatable region so the control-hiding CSS can
-	// scope outlines to it (container-agnostic: works for [data-rcc] or the
-	// `main` fallback), then hide all CC editing chrome elsewhere on the page.
+	// Marks the translatable region so the control-hiding CSS can scope outlines
+	// to it (works for [data-rcc] or the `main` fallback).
 	clone.setAttribute("data-rcc-translation-root", "");
 	setLocaleControlsHidden(true);
 	log(`Swapped in clean translation container${rtl ? " (dir=rtl)" : ""}`);
@@ -347,8 +323,8 @@ async function switchLocaleInner(
 	let setupComplete = false;
 
 	// --- Phase 1: Parallel data fetch + stale detection --------------------
-	// Load all locale data in one batch so the stale list populates instantly
-	// instead of trickling in one-by-one during sequential editor creation.
+	// Batch-load all locale data so the stale list populates at once, not
+	// trickling in during sequential editor creation.
 
 	const dataResults = await Promise.all(
 		tracked.map((t) => file.data.get({ slug: t.roseyKey }).catch(() => null)),
@@ -367,14 +343,11 @@ async function switchLocaleInner(
 		const value = resolveDisplayValue(data, t);
 		resolvedValues[i] = value;
 
-		// Two independent stale signals, both gated on the per-entry opt-out
-		// (no _base_original ⇒ stale detection off for that entry):
-		//   • base — _base_original (last build's source) ≠ original
-		//   • live — the source text on the page *right now* ≠ original
-		// The live signal fires immediately on an in-session source edit, before
-		// any save/rebuild has refreshed _base_original. base.json can't do this:
-		// it's a build artifact of the same vintage as _base_original. Normalized
-		// compares avoid whitespace-only false positives.
+		// Two stale signals, gated on _base_original presence (its absence opts
+		// the entry out). base: last build's source (_base_original) ≠ original.
+		// live: the page's source text right now ≠ original — fires immediately
+		// on an in-session edit, before a rebuild refreshes _base_original.
+		// Normalized compares avoid whitespace-only false positives.
 		const staleEnabled =
 			t.hasLocaleEntry &&
 			data?._base_original != null &&
@@ -408,9 +381,8 @@ async function switchLocaleInner(
 	}
 
 	// --- Phase 2: Sequential editor creation --------------------------------
-	//
-	// setupEditor is reused by the reconcile pass below, so an element CC adds
-	// or re-keys after this initial pass gets wired up the same way.
+	// setupEditor is reused by the reconcile pass, so elements CC adds or
+	// re-keys later get wired the same way.
 
 	const setupEditor = async (
 		t: TrackedElement,
@@ -424,9 +396,8 @@ async function switchLocaleInner(
 
 			const isSource = originalIsSource.has(t.roseyKey);
 
-			// Suppress the onChange that setContent triggers on creation, so a
-			// reconcile-created editor (setupComplete already true) doesn't write
-			// its initial value straight back to the locale file.
+			// Suppress the onChange setContent fires on creation, so a
+			// reconcile-created editor doesn't write its initial value back.
 			let applying = true;
 			const editor = await cc.createTextEditableRegion(
 				t.element,
@@ -435,27 +406,20 @@ async function switchLocaleInner(
 					if (!setupComplete || applying) return;
 					if (content == null) return;
 
-					// No entry in the locale file yet — create a full one. We have
-					// everything needed: the resolved Rosey key, the original text
-					// captured from the page, and the typed translation. Seeding
-					// _base_original with the original makes stale detection work from
-					// this first save (it flips the moment the source text later
-					// changes), before write-locales has ever run for this key.
+					// No entry yet — create a full one. Seeding _base_original with
+					// the source makes stale detection work from this first save,
+					// before write-locales has ever run for this key.
 					if (!t.hasLocaleEntry) {
-						// Never create an entry for an empty source — there's nothing to
-						// translate. This mirrors the editor-creation skip below; it's
-						// kept here too so the "no empty originals" rule holds at the
-						// write site regardless of how onChange was reached.
+						// Enforce "no empty originals" at the write site too.
 						if (isEmptySource(t.originalContent)) return;
 						log(`[${t.roseyKey}] onChange → creating new locale entry`);
-						// Optimistically flip before the await so a rapid follow-up
-						// keystroke takes the ".value" path instead of double-creating.
+						// Flip before the await so a rapid follow-up keystroke takes
+						// the ".value" path instead of double-creating.
 						t.hasLocaleEntry = true;
 						t.baseOriginal = t.originalContent;
 						t.localeOriginal = t.originalContent;
-						// DIAGNOSTIC (new-key persistence): await + read back so we can
-						// tell a rejected set() from a set() that resolves but never
-						// materialises the new top-level key in the file's data model.
+						// Diagnostic: await + read back to tell a rejected set() from
+						// one that resolves but never materialises the new key.
 						try {
 							await file.data.set({
 								slug: t.roseyKey,
@@ -526,10 +490,8 @@ async function switchLocaleInner(
 
 	if (myGeneration !== state.switchGeneration) return;
 
-	// Yield one microtask so any onChange still queued from the setContent calls
-	// above drains while setupComplete is false and the gate suppresses it. Only
-	// then open the gate, so an editor's initial value can't be written back to
-	// the locale file as if it were a user edit.
+	// Yield a microtask so any onChange queued by the setContent calls
+	// above drains while the gate is still closed, then open the gate.
 	await Promise.resolve();
 	setupComplete = true;
 	log(`Setup complete for "${locale}" (generation ${myGeneration})`);
@@ -566,12 +528,9 @@ async function switchLocaleInner(
 	dataset.addEventListener("change", state.activeDatasetListener);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
-	// CC can insert a [data-rosey] element (a new array item) or stamp its
-	// data-rosey-ns from instance_value:UUID a tick after the switch pass. The
-	// initial gate above runs once, so re-run it on DOM changes: wire an editor
-	// for any element that doesn't have one yet, whether or not its
-	// (possibly newly-stamped) key already has a locale entry — the editor's
-	// onChange creates the entry on first edit.
+	// CC can insert a [data-rosey] element (new array item) or stamp its
+	// data-rosey-ns a tick after the switch pass. The initial pass runs once,
+	// so re-run it on DOM changes to wire any element that lacks an editor.
 
 	const reconcileElement = async (el: HTMLElement): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
@@ -580,10 +539,8 @@ async function switchLocaleInner(
 
 		let t = tracked.find((x) => x.element === el);
 
-		// Already wired and unchanged — nothing to do. An element with an editor
-		// is fully set up regardless of whether its key has a locale entry yet.
-		// (No log here: this is the common case and fires once per element per
-		// reconcile pass — logging it drowns the console.)
+		// Already wired and unchanged — nothing to do (an element with an editor
+		// is fully set up whether or not its key has a locale entry yet).
 		if (t && t.roseyKey === key && t.editor) return;
 
 		if (!t) {
@@ -594,12 +551,10 @@ async function switchLocaleInner(
 				// The element's resolved key changed under us (e.g. CC re-rendered a
 				// cloned array item with its real _uuid). If an editor already exists
 				// it is NOT torn down/rebound below (createTextEditableRegion has no
-				// destroy()), so it stays bound to the old key — suspected mystery #3.
+				// destroy()), so it stays bound to the old key.
 				log(
 					`reconcile: RE-KEY "${t.roseyKey}" → "${key}"` +
-						(t.editor
-							? ` — editor ALREADY EXISTS, will NOT re-wire (stale editor stays bound to old key; suspected mystery #3 cause)`
-							: ""),
+						(t.editor ? ` — editor ALREADY EXISTS, will NOT re-wire` : ""),
 				);
 			}
 			t.roseyKey = key;
@@ -663,8 +618,7 @@ async function init(): Promise<void> {
 	}
 	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	// Always-visible (not verbose-gated) so you can confirm CC loaded this exact
-	// build — the timestamp is stamped at `npm run build`.
+	// Always-on (not verbose-gated) so you can confirm which build CC served.
 	console.log(`RCC: v${__RCC_VERSION__} loaded (built ${__RCC_BUILD__})`);
 
 	const container =

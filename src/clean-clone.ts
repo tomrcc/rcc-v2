@@ -21,9 +21,8 @@ export function inferElementType(el: HTMLElement): "span" | "block" {
 }
 
 /**
- * Strip all CC editing infrastructure from a detached DOM tree.
- * Because the tree is not in the document, there is no MutationObserver,
- * no connectedCallback, and no race conditions.
+ * Strip all CC editing infrastructure from a detached DOM tree. Detached, so
+ * no MutationObserver, connectedCallback, or race conditions.
  */
 export function cleanClone(root: HTMLElement): void {
 	stripCCAttributes(root);
@@ -39,11 +38,9 @@ export function cleanClone(root: HTMLElement): void {
 }
 
 /**
- * Remove Bookshop live-editing comment markers from the clone.
- * Bookshop's runtime uses XPath to scan the document for
- * `<!--bookshop-live ...-->` comments and re-renders component HTML
- * between them. Stripping these prevents Bookshop from overwriting
- * RCC's translation editors.
+ * Remove Bookshop's <!--bookshop-live--> markers from the clone. Bookshop
+ * XPath-scans for them and re-renders the HTML between them, which would
+ * overwrite RCC's editors.
  */
 function stripBookshopComments(root: HTMLElement): void {
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
@@ -70,8 +67,8 @@ function stripCCAttributes(el: HTMLElement): void {
 		}
 	}
 
-	// cloneNode captures CC's live ProseMirror state; drop it so the clone isn't
-	// natively editable. RCC re-adds it on [data-rosey] editors.
+	// cloneNode captures CC's live ProseMirror state; drop it so the clone
+	// isn't natively editable (RCC re-adds it on [data-rosey] editors).
 	el.removeAttribute("contenteditable");
 	el.classList.remove("ProseMirror");
 }

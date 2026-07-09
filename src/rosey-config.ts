@@ -2,13 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Values read from a Rosey config file / environment, mapped to camelCase.
- * Mirrors Rosey's own keys (snake_case in the file): `source`, `dest`, `tag`,
- * `separator`, `default_language`, `languages`, `locales`.
- *
- * Note the terminology vs RCC: Rosey's `source` is the SSG build output dir
- * (RCC's "build dir"), Rosey's `languages` is the list of locale codes (RCC's
- * "locales"), and Rosey's `locales` is the locale-files *directory*.
+ * Rosey config values, camelCased from Rosey's snake_case keys. Note the
+ * terminology mismatch with RCC: Rosey `source` = RCC build dir, Rosey
+ * `languages` = RCC locales, Rosey `locales` = the locale-files directory.
  */
 export interface RoseyConfig {
 	/** SSG build output directory (RCC build dir). */
@@ -40,11 +36,7 @@ function splitList(inner: string): string[] {
 		.filter(Boolean);
 }
 
-/**
- * Read a single top-level `key: value` scalar. Deliberately minimal — it only
- * understands flat top-level scalars (which is all the keys we need are), the
- * same approach the rest of the CLI already uses for cloudcannon.config.
- */
+/** Read a single top-level `key: value` scalar. Flat top-level only. */
 function yamlScalar(raw: string, key: string): string | undefined {
 	const m = new RegExp(`^${key}:[ \\t]+(.+?)[ \\t]*$`, "m").exec(raw);
 	if (!m) return undefined;
@@ -153,9 +145,8 @@ function readEnv(env: NodeJS.ProcessEnv): RoseyConfig {
 }
 
 /**
- * Resolve Rosey config from file then environment, with env overriding the
- * file — matching Rosey's own precedence. CLI flags sit above this and are
- * applied by each caller (`flag ?? resolved.value`).
+ * Resolve config from file then env (env wins), matching Rosey's precedence.
+ * CLI flags sit above this, applied by each caller (`flag ?? resolved.value`).
  */
 export function resolveRoseyConfig(
 	cwd: string = process.cwd(),

@@ -45,17 +45,12 @@ export function resumeBookshop(): void {
 }
 
 /**
- * Bookshop's graftTrees does fine-grained DOM diffing: it preserves element
- * nodes when only text content changed and replaces the minimal subtree.
- * Because data-cms-bind sits on component wrapper elements that graftTrees
- * keeps in place, the CC editor sees the *same* DOM references it already
- * tracked — but the overlay nodes were destroyed during the swap-out. CC
- * won't recreate overlays for elements it already "knows."
- *
- * Stripping data-cms-bind forces a shallow-clone mismatch in graftTrees on
- * the next Bookshop render: the virtual DOM has the attribute, the real DOM
- * doesn't → the element is replaced with a fresh node → CC sees a new
- * element → refreshInterface() creates overlays.
+ * Bookshop's graftTrees diffs the DOM and keeps element nodes when only text
+ * changed. data-cms-bind sits on those kept wrapper nodes, so after a swap CC
+ * sees the same references it already tracked and won't recreate the overlays
+ * that were destroyed during swap-out. Stripping data-cms-bind forces a
+ * mismatch on the next render (vDOM has it, real DOM doesn't) → the node is
+ * replaced → CC treats it as new → refreshInterface() rebuilds overlays.
  */
 export function stripCmsBindForRerender(container: HTMLElement): void {
 	const bound = container.querySelectorAll("[data-cms-bind]");
