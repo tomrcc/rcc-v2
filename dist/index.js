@@ -182,133 +182,6 @@ function replaceCustomElements(root) {
   }
 }
 
-// src/state.ts
-var tracked = [];
-var state = {
-  currentLocale: null,
-  api: null,
-  originalContainer: null,
-  translationContainer: null,
-  activeDataset: null,
-  activeDatasetListener: null,
-  // Separate "delete" listener: Clear/Discard of pending changes fires delete,
-  // not change, and must revert the page even over a focused editor.
-  activeDatasetDeleteListener: null,
-  activeFile: null,
-  // Watches the translation container for [data-rosey] elements CC adds or
-  // re-keys after the initial switch pass (new array items, late-stamped ns).
-  reconcileObserver: null,
-  reconcileScheduled: false,
-  // Guards against stale onChange fires: createTextEditableRegion has no
-  // destroy(), so old editors stay alive. Each onChange captures its
-  // generation; mismatches are no-ops.
-  switchGeneration: 0,
-  /** True while an async locale switch is running. Blocks re-entrant clicks. */
-  switchInProgress: false,
-  /** Cached count of stale tracked entries; drives the FAB stale badge. */
-  staleCount: 0
-};
-
-// src/diagnostics.ts
-var P = "RCC-DIAG:";
-var teardown = null;
-function stamp() {
-  return `+${Math.round(performance.now())}ms`;
-}
-function trunc(s, n = 80) {
-  return s.length > n ? `${s.slice(0, n)}\u2026(${s.length})` : s;
-}
-function norm(s) {
-  return s.replace(/\s+/g, " ").trim();
-}
-async function dumpDiverged(label, file) {
-  const rows = [];
-  for (const t of tracked) {
-    let persisted = null;
-    try {
-      persisted = await file.data.get({ slug: t.roseyKey });
-    } catch (err) {
-      rows.push(`  [${t.roseyKey}] get() threw: ${err}`);
-      continue;
-    }
-    const onPage = t.element.innerHTML;
-    const modelValue = persisted?.value ?? persisted?.original ?? "";
-    if (norm(onPage) === norm(modelValue)) continue;
-    rows.push(
-      `  [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} stale=${t.stale}
-      onPage    = ${JSON.stringify(trunc(onPage))}
-      model.get = ${persisted == null ? "<null / no entry>" : trunc(JSON.stringify(persisted), 200)}`
-    );
-  }
-  if (rows.length === 0) {
-    console.log(
-      `${P} ${label}: all ${tracked.length} keys in sync (page == model)`
-    );
-    return;
-  }
-  console.log(
-    `%c${P} ${label}: ${rows.length}/${tracked.length} DIVERGED (page != model)`,
-    "color:#c0392b;font-weight:bold"
-  );
-  for (const row of rows) console.log(row);
-}
-function installDiagnostics(dataset, file) {
-  teardown?.();
-  const targets = [
-    ["dataset", dataset],
-    ["file", file]
-  ];
-  const registered = [];
-  const seen = /* @__PURE__ */ new Map();
-  let scheduled = false;
-  const flush = () => {
-    scheduled = false;
-    const summary = [...seen.entries()].map(([k, n]) => `${k}\xD7${n}`).join(", ");
-    seen.clear();
-    console.log(
-      `%c${P} EVENTS @ ${stamp()}: ${summary}`,
-      "color:#2980b9;font-weight:bold"
-    );
-    void dumpDiverged("after events", file);
-  };
-  const onEvent = (name) => {
-    seen.set(name, (seen.get(name) ?? 0) + 1);
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(flush);
-  };
-  for (const [name, target] of targets) {
-    if (typeof target?.addEventListener !== "function") {
-      console.log(`${P} ${name} has no addEventListener \u2014 cannot observe it`);
-      continue;
-    }
-    for (const event of ["change", "delete"]) {
-      const label = `${name}:${event}`;
-      const listener = () => onEvent(label);
-      target.addEventListener(event, listener);
-      registered.push([target, event, listener]);
-    }
-  }
-  window.__rccDiag = () => {
-    console.log(`${P} manual probe @ ${stamp()}`);
-    void dumpDiverged("manual __rccDiag()", file);
-  };
-  console.log(
-    `${P} installed. Type a translation, hit Clear, watch for an EVENTS line. If nothing fires, run window.__rccDiag() to read the model directly.`
-  );
-  void dumpDiverged("baseline", file);
-  teardown = () => {
-    for (const [target, event, listener] of registered) {
-      target.removeEventListener(event, listener);
-    }
-    registered.length = 0;
-  };
-}
-function uninstallDiagnostics() {
-  teardown?.();
-  teardown = null;
-}
-
 // src/locales.ts
 var RTL_LOCALES = /* @__PURE__ */ new Set([
   "ar",
@@ -364,6 +237,33 @@ function resolveRoseyKey(el) {
   nsParts.reverse();
   return [...nsParts, localKey].join(":");
 }
+
+// src/state.ts
+var tracked = [];
+var state = {
+  currentLocale: null,
+  api: null,
+  originalContainer: null,
+  translationContainer: null,
+  activeDataset: null,
+  activeDatasetListener: null,
+  // Separate "delete" listener: Clear/Discard of pending changes fires delete,
+  // not change, and must revert the page even over a focused editor.
+  activeDatasetDeleteListener: null,
+  activeFile: null,
+  // Watches the translation container for [data-rosey] elements CC adds or
+  // re-keys after the initial switch pass (new array items, late-stamped ns).
+  reconcileObserver: null,
+  reconcileScheduled: false,
+  // Guards against stale onChange fires: createTextEditableRegion has no
+  // destroy(), so old editors stay alive. Each onChange captures its
+  // generation; mismatches are no-ops.
+  switchGeneration: 0,
+  /** True while an async locale switch is running. Blocks re-entrant clicks. */
+  switchInProgress: false,
+  /** Cached count of stale tracked entries; drives the FAB stale badge. */
+  staleCount: 0
+};
 
 // src/stale.ts
 var STALE_AMBER = "#f59e0b";
@@ -1128,7 +1028,6 @@ function teardownEditors() {
     `teardownEditors: translationContainer=${!!state.translationContainer}, originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`
   );
   setLocaleControlsHidden(false);
-  uninstallDiagnostics();
   if (state.reconcileObserver) {
     state.reconcileObserver.disconnect();
     state.reconcileObserver = null;
@@ -1391,7 +1290,6 @@ async function switchLocaleInner(locale, myGeneration) {
   state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
   dataset.addEventListener("change", state.activeDatasetListener);
   dataset.addEventListener("delete", state.activeDatasetDeleteListener);
-  installDiagnostics(dataset, file);
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
@@ -1454,7 +1352,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:39:42.893Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:46:44.577Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
