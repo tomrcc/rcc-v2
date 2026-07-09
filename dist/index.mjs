@@ -283,7 +283,7 @@ function recountStale() {
   updateStaleList();
 }
 function normalizeSource(s) {
-  return s.replace(/\s+/g, " ").trim();
+  return s.replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
   return text.length > max ? `${text.slice(0, max)}\u2026` : text;

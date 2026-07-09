@@ -30,9 +30,19 @@ export function recountStale(): void {
  * Normalize source for stale comparison: the live innerHTML and the stored
  * original/_base_original can differ in insignificant whitespace. Errs toward
  * false-negatives on purpose — the build-time _base_original is the backstop.
+ *
+ * Two HTML serializers meet here: Rosey extracts block-level source with
+ * newlines between tags (`</p>\n<ul>`), while CC's ProseMirror re-serializes
+ * the same content with none (`</p><ul>`). Collapsing inter-tag whitespace
+ * first canonicalizes both to the same string; otherwise every block-level
+ * entry reads as stale (and re-stales on each rebuild as write-locales resets
+ * _base_original to the Rosey form).
  */
 export function normalizeSource(s: string): string {
-	return s.replace(/\s+/g, " ").trim();
+	return s
+		.replace(/>\s+</g, "><")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
 function truncateText(text: string, max: number): string {
