@@ -212,35 +212,42 @@ var teardown = null;
 function stamp() {
   return `+${Math.round(performance.now())}ms`;
 }
-function trunc(s, n = 100) {
+function trunc(s, n = 80) {
   return s.length > n ? `${s.slice(0, n)}\u2026(${s.length})` : s;
 }
 function norm(s) {
   return s.replace(/\s+/g, " ").trim();
 }
-async function dumpState(label, file) {
-  console.log(
-    `%c${P} ${label} @ ${stamp()} \u2014 locale=${state.currentLocale}, tracked=${tracked.length}`,
-    "color:#c0392b;font-weight:bold"
-  );
+async function dumpDiverged(label, file) {
+  const rows = [];
   for (const t of tracked) {
-    let persisted = "<not-read>";
+    let persisted = null;
     try {
       persisted = await file.data.get({ slug: t.roseyKey });
     } catch (err) {
-      persisted = `<get threw: ${err}>`;
+      rows.push(`  [${t.roseyKey}] get() threw: ${err}`);
+      continue;
     }
     const onPage = t.element.innerHTML;
     const modelValue = persisted?.value ?? persisted?.original ?? "";
-    const diverged = norm(onPage) !== norm(modelValue);
-    console.log(
-      `${P}   [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} stale=${t.stale} diverged=${diverged}`
-    );
-    console.log(`${P}       onPage    = ${JSON.stringify(trunc(onPage))}`);
-    console.log(
-      `${P}       model.get = ${persisted == null ? "<null / no entry>" : trunc(JSON.stringify(persisted), 240)}`
+    if (norm(onPage) === norm(modelValue)) continue;
+    rows.push(
+      `  [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} stale=${t.stale}
+      onPage    = ${JSON.stringify(trunc(onPage))}
+      model.get = ${persisted == null ? "<null / no entry>" : trunc(JSON.stringify(persisted), 200)}`
     );
   }
+  if (rows.length === 0) {
+    console.log(
+      `${P} ${label}: all ${tracked.length} keys in sync (page == model)`
+    );
+    return;
+  }
+  console.log(
+    `%c${P} ${label}: ${rows.length}/${tracked.length} DIVERGED (page != model)`,
+    "color:#c0392b;font-weight:bold"
+  );
+  for (const row of rows) console.log(row);
 }
 function installDiagnostics(dataset, file) {
   teardown?.();
@@ -248,32 +255,45 @@ function installDiagnostics(dataset, file) {
     ["dataset", dataset],
     ["file", file]
   ];
-  const events = ["change", "delete"];
   const registered = [];
+  const seen = /* @__PURE__ */ new Map();
+  let scheduled = false;
+  const flush = () => {
+    scheduled = false;
+    const summary = [...seen.entries()].map(([k, n]) => `${k}\xD7${n}`).join(", ");
+    seen.clear();
+    console.log(
+      `%c${P} EVENTS @ ${stamp()}: ${summary}`,
+      "color:#2980b9;font-weight:bold"
+    );
+    void dumpDiverged("after events", file);
+  };
+  const onEvent = (name) => {
+    seen.set(name, (seen.get(name) ?? 0) + 1);
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(flush);
+  };
   for (const [name, target] of targets) {
     if (typeof target?.addEventListener !== "function") {
       console.log(`${P} ${name} has no addEventListener \u2014 cannot observe it`);
       continue;
     }
-    for (const event of events) {
-      const listener = () => {
-        console.log(
-          `%c${P} EVENT "${event}" on ${name} @ ${stamp()}`,
-          "color:#2980b9;font-weight:bold"
-        );
-        void dumpState(`after ${name}:${event}`, file);
-      };
+    for (const event of ["change", "delete"]) {
+      const label = `${name}:${event}`;
+      const listener = () => onEvent(label);
       target.addEventListener(event, listener);
       registered.push([target, event, listener]);
     }
   }
   window.__rccDiag = () => {
-    void dumpState("manual __rccDiag()", file);
+    console.log(`${P} manual probe @ ${stamp()}`);
+    void dumpDiverged("manual __rccDiag()", file);
   };
   console.log(
-    `${P} installed \u2014 listening for change/delete on dataset+file. Type a translation, hit Clear, then watch for EVENT lines (and run window.__rccDiag() to read the model directly).`
+    `${P} installed. Type a translation, hit Clear, watch for an EVENTS line. If nothing fires, run window.__rccDiag() to read the model directly.`
   );
-  void dumpState("baseline (setup complete)", file);
+  void dumpDiverged("baseline", file);
   teardown = () => {
     for (const [target, event, listener] of registered) {
       target.removeEventListener(event, listener);
@@ -1398,7 +1418,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:16:46.833Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:27:35.830Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

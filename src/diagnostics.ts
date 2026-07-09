@@ -5,82 +5,85 @@
  * and then hits Clear/Discard in CloudCannon, does anything fire that RCC could
  * hook to revert the page — and does file.data.get() return reverted data?
  *
- * Always-on (own "RCC-DIAG:" prefix, not gated behind data-rcc-verbose) so it's
- * visible while testing. Delete this module and its wiring in injector.ts once
- * we've picked a route.
+ * Kept deliberately quiet: event bursts are coalesced into one dump, and each
+ * dump prints ONLY keys where the page and the model diverge (during typing
+ * they match, so it's silent; after Clear the edited key should light up).
+ * Always-on ("RCC-DIAG:" prefix). Delete this module + its wiring in
+ * injector.ts once we've picked a route.
  */
 
-import { state, tracked } from "./state";
+import { tracked } from "./state";
 import type { CCDataset, CCFile } from "./types";
 
 const P = "RCC-DIAG:";
 
-// Anything with addEventListener; the CC file/dataset both expose change/delete.
 type Emitter = {
 	addEventListener(event: string, listener: () => void): void;
 	removeEventListener(event: string, listener: () => void): void;
 };
 
-// Cleanup for the previous install, so re-switching locales doesn't stack
-// duplicate listeners (createTextEditableRegion has no destroy, but ours does).
 let teardown: (() => void) | null = null;
 
 function stamp(): string {
 	return `+${Math.round(performance.now())}ms`;
 }
 
-function trunc(s: string, n = 100): string {
+function trunc(s: string, n = 80): string {
 	return s.length > n ? `${s.slice(0, n)}…(${s.length})` : s;
 }
 
-// Light whitespace-collapse so "diverged" doesn't trip on formatting noise.
+// Whitespace-collapse so "diverged" doesn't trip on formatting noise.
 function norm(s: string): string {
 	return s.replace(/\s+/g, " ").trim();
 }
 
 /**
- * Dump every tracked key: what's on the page (what the user sees) vs what
- * file.data.get() returns right now (the model's current value). If the model
- * reverted on Clear but the page didn't, diverged=true tells us a re-read fix
- * would work. If the model DIDN'T revert, we need a different signal.
+ * Print only the interesting keys: those where what's on the page differs from
+ * what file.data.get() returns right now. Returns how many diverged so callers
+ * can note "N diverged" even when the list is short.
  */
-async function dumpState(label: string, file: CCFile): Promise<void> {
-	console.log(
-		`%c${P} ${label} @ ${stamp()} — locale=${state.currentLocale}, tracked=${tracked.length}`,
-		"color:#c0392b;font-weight:bold",
-	);
+async function dumpDiverged(label: string, file: CCFile): Promise<void> {
+	const rows: string[] = [];
 	for (const t of tracked) {
-		let persisted: unknown = "<not-read>";
+		let persisted: unknown = null;
 		try {
 			persisted = await file.data.get({ slug: t.roseyKey });
 		} catch (err) {
-			persisted = `<get threw: ${err}>`;
+			rows.push(`  [${t.roseyKey}] get() threw: ${err}`);
+			continue;
 		}
 		const onPage = t.element.innerHTML;
 		const modelValue =
 			(persisted as { value?: string; original?: string } | null)?.value ??
 			(persisted as { original?: string } | null)?.original ??
 			"";
-		const diverged = norm(onPage) !== norm(modelValue);
-		console.log(
-			`${P}   [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} ` +
-				`stale=${t.stale} diverged=${diverged}`,
-		);
-		console.log(`${P}       onPage    = ${JSON.stringify(trunc(onPage))}`);
-		console.log(
-			`${P}       model.get = ${
-				persisted == null
-					? "<null / no entry>"
-					: trunc(JSON.stringify(persisted), 240)
-			}`,
+		if (norm(onPage) === norm(modelValue)) continue; // in sync — skip
+
+		rows.push(
+			`  [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} ` +
+				`stale=${t.stale}\n` +
+				`      onPage    = ${JSON.stringify(trunc(onPage))}\n` +
+				`      model.get = ${
+					persisted == null
+						? "<null / no entry>"
+						: trunc(JSON.stringify(persisted), 200)
+				}`,
 		);
 	}
+
+	if (rows.length === 0) {
+		console.log(
+			`${P} ${label}: all ${tracked.length} keys in sync (page == model)`,
+		);
+		return;
+	}
+	console.log(
+		`%c${P} ${label}: ${rows.length}/${tracked.length} DIVERGED (page != model)`,
+		"color:#c0392b;font-weight:bold",
+	);
+	for (const row of rows) console.log(row);
 }
 
-/**
- * Install change/delete listeners on BOTH the dataset and the resolved file,
- * plus a manual window.__rccDiag() dump. Call after editor setup completes.
- */
 export function installDiagnostics(dataset: CCDataset, file: CCFile): void {
 	teardown?.();
 
@@ -88,39 +91,54 @@ export function installDiagnostics(dataset: CCDataset, file: CCFile): void {
 		["dataset", dataset as unknown as Emitter],
 		["file", file as unknown as Emitter],
 	];
-	const events = ["change", "delete"];
 	const registered: Array<[Emitter, string, () => void]> = [];
+
+	// Coalesce event bursts: many change events (own-write echo) collapse into
+	// one dump per frame. Track which event names fired for the compact line.
+	const seen = new Map<string, number>();
+	let scheduled = false;
+	const flush = () => {
+		scheduled = false;
+		const summary = [...seen.entries()].map(([k, n]) => `${k}×${n}`).join(", ");
+		seen.clear();
+		console.log(
+			`%c${P} EVENTS @ ${stamp()}: ${summary}`,
+			"color:#2980b9;font-weight:bold",
+		);
+		void dumpDiverged("after events", file);
+	};
+	const onEvent = (name: string) => {
+		seen.set(name, (seen.get(name) ?? 0) + 1);
+		if (scheduled) return;
+		scheduled = true;
+		requestAnimationFrame(flush);
+	};
 
 	for (const [name, target] of targets) {
 		if (typeof target?.addEventListener !== "function") {
 			console.log(`${P} ${name} has no addEventListener — cannot observe it`);
 			continue;
 		}
-		for (const event of events) {
-			const listener = () => {
-				console.log(
-					`%c${P} EVENT "${event}" on ${name} @ ${stamp()}`,
-					"color:#2980b9;font-weight:bold",
-				);
-				void dumpState(`after ${name}:${event}`, file);
-			};
+		for (const event of ["change", "delete"]) {
+			const label = `${name}:${event}`;
+			const listener = () => onEvent(label);
 			target.addEventListener(event, listener);
 			registered.push([target, event, listener]);
 		}
 	}
 
-	// Manual probe: after clicking Clear, run window.__rccDiag() in the console
-	// to see the model's current values even if no event fired.
+	// Manual probe: after clicking Clear, run window.__rccDiag() to force a dump
+	// even if no event fired.
 	(window as Window & { __rccDiag?: () => void }).__rccDiag = () => {
-		void dumpState("manual __rccDiag()", file);
+		console.log(`${P} manual probe @ ${stamp()}`);
+		void dumpDiverged("manual __rccDiag()", file);
 	};
 
 	console.log(
-		`${P} installed — listening for change/delete on dataset+file. ` +
-			`Type a translation, hit Clear, then watch for EVENT lines (and run ` +
-			`window.__rccDiag() to read the model directly).`,
+		`${P} installed. Type a translation, hit Clear, watch for an EVENTS line. ` +
+			`If nothing fires, run window.__rccDiag() to read the model directly.`,
 	);
-	void dumpState("baseline (setup complete)", file);
+	void dumpDiverged("baseline", file);
 
 	teardown = () => {
 		for (const [target, event, listener] of registered) {
@@ -130,7 +148,6 @@ export function installDiagnostics(dataset: CCDataset, file: CCFile): void {
 	};
 }
 
-/** Detach listeners (call from teardownEditors). */
 export function uninstallDiagnostics(): void {
 	teardown?.();
 	teardown = null;
