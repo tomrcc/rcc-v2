@@ -311,6 +311,8 @@ export function injectSwitcher(
 	stalePanel.appendChild(panelItems);
 
 	const resolveAllBtn = document.createElement("button");
+	resolveAllBtn.type = "button";
+	resolveAllBtn.setAttribute("aria-label", "Mark all as reviewed");
 	resolveAllBtn.dataset.rccResolveAll = "";
 	Object.assign(resolveAllBtn.style, {
 		display: "none",
@@ -327,7 +329,7 @@ export function injectSwitcher(
 		transition: "background 0.15s",
 		fontFamily: "system-ui, sans-serif",
 	});
-	resolveAllBtn.textContent = "Resolve all";
+	resolveAllBtn.textContent = "Mark all as reviewed";
 	resolveAllBtn.addEventListener("mouseenter", () => {
 		resolveAllBtn.style.background = "#d97706";
 	});

@@ -56,6 +56,40 @@ function truncateText(text: string, max: number): string {
 	return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+function outOfDateLabel(n: number): string {
+	return `${n} translation${n === 1 ? "" : "s"} out of date`;
+}
+
+// Holds the panel's brief "all caught up" state after the last item clears.
+let caughtUpTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showCaughtUp(panel: HTMLElement): void {
+	const count = panel.querySelector<HTMLElement>("[data-rcc-panel-count]");
+	if (count) count.textContent = "All caught up";
+
+	const list = panel.querySelector<HTMLElement>("[data-rcc-stale-items]");
+	if (list) {
+		list.innerHTML = "";
+		const done = document.createElement("div");
+		done.textContent = "✓ Nothing needs review";
+		Object.assign(done.style, {
+			padding: "8px",
+			fontSize: "12px",
+			color: "#16a34a",
+			textAlign: "center",
+		});
+		list.appendChild(done);
+	}
+
+	const resolveAll = panel.querySelector<HTMLElement>("[data-rcc-resolve-all]");
+	if (resolveAll) resolveAll.style.display = "none";
+
+	caughtUpTimer = setTimeout(() => {
+		panel.style.display = "none";
+		caughtUpTimer = null;
+	}, 1600);
+}
+
 export function updateStaleList(): void {
 	const panel = document.getElementById("rcc-stale-panel");
 
@@ -86,8 +120,18 @@ export function updateStaleList(): void {
 			const ch = submenu.querySelector<HTMLElement>("[data-rcc-stale-chevron]");
 			if (ch) ch.style.transform = "rotate(0deg)";
 		}
-		if (panel) panel.style.display = "none";
+		// Celebrate briefly if the panel was open when the last item cleared;
+		// otherwise just hide it.
+		if (panel && !caughtUpTimer) {
+			if (panel.style.display !== "none") showCaughtUp(panel);
+			else panel.style.display = "none";
+		}
 		return;
+	}
+
+	if (caughtUpTimer) {
+		clearTimeout(caughtUpTimer);
+		caughtUpTimer = null;
 	}
 
 	if (submenu) {
@@ -95,13 +139,13 @@ export function updateStaleList(): void {
 		const countEl = submenu.querySelector<HTMLElement>(
 			"[data-rcc-stale-count]",
 		);
-		if (countEl) countEl.textContent = `${staleItems.length} out of date`;
+		if (countEl) countEl.textContent = outOfDateLabel(staleItems.length);
 	}
 
 	if (!panel) return;
 
 	const panelCount = panel.querySelector<HTMLElement>("[data-rcc-panel-count]");
-	if (panelCount) panelCount.textContent = `${staleItems.length} out of date`;
+	if (panelCount) panelCount.textContent = outOfDateLabel(staleItems.length);
 
 	const list = panel.querySelector<HTMLElement>("[data-rcc-stale-items]");
 	if (!list) return;
@@ -129,6 +173,8 @@ export function updateStaleList(): void {
 		});
 
 		const scrollBtn = document.createElement("button");
+		scrollBtn.type = "button";
+		scrollBtn.setAttribute("aria-label", `Go to “${textPreview}”`);
 		Object.assign(scrollBtn.style, {
 			display: "flex",
 			alignItems: "center",
@@ -155,30 +201,43 @@ export function updateStaleList(): void {
 		scrollBtn.appendChild(preview);
 		scrollBtn.addEventListener("click", () => {
 			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
+			// Drop the caret straight into the editor; preventScroll so the smooth
+			// scroll above owns the movement instead of a competing jump.
+			t.element.focus({ preventScroll: true });
 		});
 
 		const resolveBtn = document.createElement("button");
+		resolveBtn.type = "button";
+		resolveBtn.title = "Mark as reviewed";
+		resolveBtn.setAttribute("aria-label", "Mark as reviewed");
 		Object.assign(resolveBtn.style, {
 			display: "flex",
 			alignItems: "center",
 			justifyContent: "center",
-			padding: "0 6px",
+			padding: "0 8px",
 			border: "none",
+			borderRadius: "4px",
 			cursor: "pointer",
 			background: "transparent",
-			color: "#d1d5db",
-			transition: "color 0.15s",
+			// Darker than before so it reads as a control, not decoration.
+			color: "#94a3b8",
+			transition: "color 0.15s, background 0.15s",
 			flexShrink: "0",
 		});
 		resolveBtn.innerHTML =
-			'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
-		resolveBtn.title = "Mark as reviewed";
-		resolveBtn.addEventListener("mouseenter", () => {
+			'<svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+		const resolveHi = () => {
 			resolveBtn.style.color = STALE_AMBER;
-		});
-		resolveBtn.addEventListener("mouseleave", () => {
-			resolveBtn.style.color = "#d1d5db";
-		});
+			resolveBtn.style.background = "#fde68a";
+		};
+		const resolveLo = () => {
+			resolveBtn.style.color = "#94a3b8";
+			resolveBtn.style.background = "transparent";
+		};
+		resolveBtn.addEventListener("mouseenter", resolveHi);
+		resolveBtn.addEventListener("mouseleave", resolveLo);
+		resolveBtn.addEventListener("focus", resolveHi);
+		resolveBtn.addEventListener("blur", resolveLo);
 		resolveBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			if (state.activeFile) resolveStale(t, state.activeFile);
