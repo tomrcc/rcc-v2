@@ -1,6 +1,6 @@
 import { log } from "./logger";
 import { state, tracked } from "./state";
-import type { CCFile, TrackedElement } from "./types";
+import type { CCFile, LocaleEntryData, TrackedElement } from "./types";
 
 // ---------------------------------------------------------------------------
 // Stale translation indicators
@@ -191,13 +191,6 @@ export function markStaleElement(t: TrackedElement): void {
 	t.element.style.outline = `2px dashed ${STALE_AMBER}`;
 	t.element.style.outlineOffset = "2px";
 	t.element.style.backgroundColor = STALE_AMBER_BG;
-}
-
-/** Shape of a locale entry as returned by file.data.get for a single key. */
-interface LocaleEntryData {
-	original?: string;
-	value?: string;
-	_base_original?: string;
 }
 
 /**

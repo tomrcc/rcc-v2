@@ -20,10 +20,29 @@ export interface TrackedElement {
 	hasLocaleEntry: boolean;
 }
 
+/** A single entry in a Rosey locale file. */
+export interface LocaleEntry {
+	original: string;
+	value: string;
+	/** Source text as of the last build; powers stale detection. RCC-only field. */
+	_base_original?: string;
+}
+
+/**
+ * A locale entry as read back from the CC data API: any field may be absent
+ * (partial writes, newly-created entries) and the whole entry may be null.
+ */
+export type LocaleEntryData = Partial<LocaleEntry>;
+
 export interface CCFile {
 	data: {
-		get(opts?: { slug?: string }): Promise<any>;
-		set(opts: { slug: string; value: any }): Promise<any>;
+		get(opts?: { slug?: string }): Promise<LocaleEntryData | null>;
+		// slug can address the whole entry (value is a LocaleEntry) or a single
+		// field like `key.value` (value is a string).
+		set(opts: {
+			slug: string;
+			value: string | LocaleEntry | LocaleEntryData;
+		}): Promise<unknown>;
 	};
 }
 

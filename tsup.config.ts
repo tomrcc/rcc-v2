@@ -3,12 +3,11 @@ import { defineConfig } from "tsup";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf8"));
 
-// Stamped into the client bundle so the editor can confirm which build CC
-// actually loaded (test sites install from github:tomrcc/rcc-v2, so only
-// pushed commits are served). The timestamp changes every build by design.
+// Stamped into the client bundle so the editor can confirm the connector
+// version CC actually loaded (test sites install from github:tomrcc/rcc-v2, so
+// only pushed commits are served).
 const buildDefine = {
 	__RCC_VERSION__: JSON.stringify(pkg.version),
-	__RCC_BUILD__: JSON.stringify(new Date().toISOString()),
 };
 
 export default defineConfig([

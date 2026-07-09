@@ -14,13 +14,11 @@ import {
 	resumeBookshop,
 	stripCmsBindForRerender,
 } from "./bookshop";
-import { cleanClone, inferElementType, isBlockType } from "./clean-clone";
+import { cleanClone, resolveElementType } from "./clean-clone";
 import { discoverLocales, isRtlLocale } from "./locales";
 import { log, warn } from "./logger";
 import { resolveRoseyKey } from "./rosey-key";
 import {
-	computeStale,
-	markStaleElement,
 	normalizeSource,
 	recountStale,
 	refreshStale,
@@ -29,7 +27,13 @@ import {
 	updateStaleList,
 } from "./stale";
 import { state, tracked } from "./state";
-import type { CCApi, CCDataset, CCFile, TrackedElement } from "./types";
+import type {
+	CCApi,
+	CCDataset,
+	CCFile,
+	LocaleEntryData,
+	TrackedElement,
+} from "./types";
 import {
 	injectHideControlsStyle,
 	setLocaleControlsHidden,
@@ -38,7 +42,9 @@ import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
 // Injected by tsup at build time (see tsup.config.ts) for the build banner.
 declare const __RCC_VERSION__: string;
-declare const __RCC_BUILD__: string;
+
+// Translatable elements: tagged with data-rosey, not opted out via data-rcc-ignore.
+const TRANSLATABLE_SELECTOR = "[data-rosey]:not([data-rcc-ignore])";
 
 // inputConfig captured from CC's editors at init, keyed by Rosey key, so RCC's
 // editors reuse the same config CC used for the originals.
@@ -60,9 +66,7 @@ function newTrackedEntry(
 		element,
 		roseyKey,
 		originalContent: element.innerHTML,
-		inferredType: isBlockType(element.dataset.type)
-			? "block"
-			: inferElementType(element),
+		inferredType: resolveElementType(element),
 		focused: false,
 		stale: false,
 		baseOriginal: null,
@@ -73,9 +77,7 @@ function newTrackedEntry(
 
 function trackElements(scope: Element): void {
 	tracked.length = 0;
-	const elements = scope.querySelectorAll<HTMLElement>(
-		"[data-rosey]:not([data-rcc-ignore])",
-	);
+	const elements = scope.querySelectorAll<HTMLElement>(TRANSLATABLE_SELECTOR);
 	for (const el of elements) {
 		const roseyKey = resolveRoseyKey(el);
 		if (!roseyKey) continue;
@@ -88,7 +90,10 @@ function trackElements(scope: Element): void {
  * Pick the text to display in an editor: the saved translation, else the
  * source recorded in the locale file, else the source text on the page.
  */
-function resolveDisplayValue(data: any, t: TrackedElement): string {
+function resolveDisplayValue(
+	data: LocaleEntryData | null | undefined,
+	t: TrackedElement,
+): string {
 	return data?.value ?? data?.original ?? t.originalContent;
 }
 
@@ -129,7 +134,7 @@ async function fetchInputConfig(
 
 async function prescanOriginals(container: HTMLElement): Promise<void> {
 	const elements = container.querySelectorAll<HTMLElement>(
-		"[data-rosey]:not([data-rcc-ignore])",
+		TRANSLATABLE_SELECTOR,
 	);
 
 	for (const el of elements) {
@@ -351,16 +356,14 @@ async function switchLocaleInner(
 		const t = tracked[i];
 		const data = dataResults[i];
 		t.hasLocaleEntry = data != null;
-		const value = resolveDisplayValue(data, t);
-		resolvedValues[i] = value;
-
-		t.stale = computeStale(t, data);
 		t.baseOriginal = data?._base_original ?? null;
 		t.localeOriginal = data?.original ?? null;
 
+		const value = resolveDisplayValue(data, t);
+		resolvedValues[i] = value;
 		t.element.innerHTML = value;
 
-		if (t.stale) markStaleElement(t);
+		refreshStale(t, data);
 	}
 	recountStale();
 	const missingKeys = tracked
@@ -413,8 +416,6 @@ async function switchLocaleInner(
 						t.hasLocaleEntry = true;
 						t.baseOriginal = t.originalContent;
 						t.localeOriginal = t.originalContent;
-						// Diagnostic: await + read back to tell a rejected set() from
-						// one that resolves but never materialises the new key.
 						try {
 							await file.data.set({
 								slug: t.roseyKey,
@@ -424,18 +425,8 @@ async function switchLocaleInner(
 									_base_original: t.originalContent,
 								},
 							});
-							const readback = await file.data
-								.get({ slug: t.roseyKey })
-								.catch(() => null);
-							log(
-								`[${t.roseyKey}] set(new entry) resolved — readback=${
-									readback == null
-										? "<null> — model did NOT accept the new key"
-										: JSON.stringify(readback).slice(0, 120)
-								}`,
-							);
 						} catch (err) {
-							warn(`[${t.roseyKey}] set(new entry) REJECTED:`, err);
+							warn(`[${t.roseyKey}] failed to create locale entry:`, err);
 						}
 						return;
 					}
@@ -598,7 +589,7 @@ async function switchLocaleInner(
 			)
 				return;
 			const els = state.translationContainer.querySelectorAll<HTMLElement>(
-				"[data-rosey]:not([data-rcc-ignore])",
+				TRANSLATABLE_SELECTOR,
 			);
 			for (const el of els) void reconcileElement(el);
 		});
@@ -629,8 +620,9 @@ async function init(): Promise<void> {
 	}
 	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	// Always-on (not verbose-gated) so you can confirm which build CC served.
-	console.log(`RCC: v${__RCC_VERSION__} loaded (built ${__RCC_BUILD__})`);
+	// Always-on (not verbose-gated) so you can confirm the connector loaded and
+	// which version CC served.
+	console.log(`RCC: v${__RCC_VERSION__} loaded`);
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??
@@ -655,7 +647,7 @@ async function init(): Promise<void> {
 	if (locales.length === 0) return;
 
 	const elementCount = container.querySelectorAll<HTMLElement>(
-		"[data-rosey]:not([data-rcc-ignore])",
+		TRANSLATABLE_SELECTOR,
 	).length;
 
 	if (elementCount === 0) {

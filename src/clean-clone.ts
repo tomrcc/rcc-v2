@@ -12,12 +12,20 @@ const BLOCK_LEVEL_SELECTOR =
 	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 
 /** Rosey/CC `data-type` hints that force a block (vs span) editor. */
-export function isBlockType(dataType: string | null | undefined): boolean {
+function isBlockType(dataType: string | null | undefined): boolean {
 	return dataType === "block" || dataType === "text";
 }
 
-export function inferElementType(el: HTMLElement): "span" | "block" {
+function inferElementType(el: HTMLElement): "span" | "block" {
 	return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
+}
+
+/**
+ * Block vs span for an element: an explicit `data-type` hint wins, otherwise
+ * infer from whether it contains block-level children.
+ */
+export function resolveElementType(el: HTMLElement): "span" | "block" {
+	return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
 }
 
 /**
@@ -78,12 +86,8 @@ function replaceCustomElements(root: HTMLElement): void {
 		const els = root.querySelectorAll(tag);
 		for (const el of els) {
 			let replacementTag = "div";
-			if (tag === "EDITABLE-TEXT") {
-				const dataType = el.getAttribute("data-type");
-				const hasBlockChildren =
-					el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-				replacementTag =
-					isBlockType(dataType) || hasBlockChildren ? "div" : "span";
+			if (tag === "EDITABLE-TEXT" && el instanceof HTMLElement) {
+				replacementTag = resolveElementType(el) === "block" ? "div" : "span";
 			}
 			const replacement = document.createElement(replacementTag);
 			for (const attr of Array.from(el.attributes)) {

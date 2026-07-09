@@ -266,7 +266,7 @@ function buildPostbuildBlock(answers) {
       `#   2. Create/update locale files at ${roseyDir}/locales/{code}.json`
     );
     lines.push(
-      `#   3. Write a locale manifest array to ${buildDir}/_rcc/locales.json`
+      `#   3. Write a locale manifest object { "locales": [...] } to ${buildDir}/_rcc/locales.json`
     );
     lines.push(
       `# npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir}`
@@ -414,8 +414,11 @@ function removeSourceFromJson(content, source) {
   return `${JSON.stringify(config, null, 2)}
 `;
 }
-function removeSourceKey(ctx, _answers) {
-  if (!ctx.ccSource || ctx.ccSource === "." || ctx.ccSource === "/") return;
+function hasRealSource(ctx) {
+  return !!ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/";
+}
+function removeSourceKey(ctx) {
+  if (!hasRealSource(ctx)) return;
   if (!ctx.ccConfigPath) return;
   const source = ctx.ccSource.replace(/\/+$/, "");
   const raw = import_node_fs3.default.readFileSync(ctx.ccConfigPath, "utf-8");
@@ -439,10 +442,10 @@ function removeSourceKey(ctx, _answers) {
     `\u2713  Removed \`source: ${ctx.ccSource}\` and updated paths in ${import_node_path3.default.basename(ctx.ccConfigPath)}`
   );
 }
-function buildDataConfigYaml(answers, indent) {
-  return answers.locales.map(
+function buildDataConfigYaml(locales, roseyDir, indent) {
+  return locales.map(
     (locale) => `${indent}locales_${locale}:
-${indent}  path: ${answers.roseyDir}/locales/${locale}.json`
+${indent}  path: ${roseyDir}/locales/${locale}.json`
   ).join("\n");
 }
 function buildCollectionsConfigYaml(answers, indent) {
@@ -491,7 +494,12 @@ function buildCollectionsConfigJson(answers) {
       _inputs: {
         value: { type: "html", label: "Translation", cascade: true },
         original: { hidden: true, cascade: true },
-        _base_original: { disabled: true, cascade: true }
+        _base_original: {
+          disabled: true,
+          hidden: false,
+          label: "Original Text",
+          cascade: true
+        }
       }
     }
   };
@@ -528,10 +536,11 @@ function updateYamlConfig(content, answers) {
   if (missingDataLocales.length > 0) {
     const blockEnd = findYamlBlockEnd(result, "data_config");
     const indent = detectIndent(result, "data_config") || "  ";
-    const newEntries = missingDataLocales.map(
-      (l) => `${indent}locales_${l}:
-${indent}  path: ${answers.roseyDir}/locales/${l}.json`
-    ).join("\n");
+    const newEntries = buildDataConfigYaml(
+      missingDataLocales,
+      answers.roseyDir,
+      indent
+    );
     if (blockEnd === -1) {
       result = `${result.trimEnd()}
 data_config:
@@ -585,7 +594,7 @@ function updateJsonConfig(content, answers) {
 function buildFreshYamlConfig(answers) {
   const lines = [];
   lines.push("data_config:");
-  lines.push(buildDataConfigYaml(answers, "  "));
+  lines.push(buildDataConfigYaml(answers.locales, answers.roseyDir, "  "));
   if (answers.exposeAsCollection) {
     lines.push("collections_config:");
     lines.push(buildCollectionsConfigYaml(answers, "  "));
@@ -679,12 +688,16 @@ function printInstructions(answers, options) {
 // src/cli/init/detect.ts
 var import_node_fs4 = __toESM(require("fs"));
 var import_node_path4 = __toESM(require("path"));
-var CC_CONFIG_CANDIDATES = [
+
+// src/cc-config-files.ts
+var CC_CONFIG_FILES = [
   { file: "cloudcannon.config.yml", format: "yml" },
   { file: "cloudcannon.config.yaml", format: "yaml" },
   { file: "cloudcannon.config.json", format: "json" },
   { file: "cloudcannon.config.cjs", format: "cjs" }
 ];
+
+// src/cli/init/detect.ts
 var BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
 var LOCK_FILES = [
   { file: "pnpm-lock.yaml", pm: "pnpm" },
@@ -711,7 +724,7 @@ function detectProject(cwd = process.cwd()) {
   let ccConfigPath = null;
   let ccConfigFormat = null;
   let ccSource = null;
-  for (const candidate of CC_CONFIG_CANDIDATES) {
+  for (const candidate of CC_CONFIG_FILES) {
     const full = import_node_path4.default.join(cwd, candidate.file);
     if (fileExists(full)) {
       ccConfigPath = full;
@@ -916,7 +929,7 @@ async function run2(argv) {
   }
   console.log("");
   if (flags.yes) {
-    const locales2 = flags.locales ?? rosey.languages;
+    const locales2 = (flags.locales ?? rosey.languages)?.map((l) => l.trim().toLowerCase()).filter(Boolean);
     if (!locales2 || locales2.length === 0) {
       console.error(
         "Error: locales are required in non-interactive mode (--yes). Pass --locales, or set `languages` in your rosey config."
@@ -946,7 +959,7 @@ async function run2(argv) {
     console.log("");
     installDependencies(ctx);
     writePostbuild(ctx, answers2);
-    removeSourceKey(ctx, answers2);
+    removeSourceKey(ctx);
     updateCloudCannonConfig(ctx, answers2);
     printInstructions(answers2, { bookshopDetected: ctx.bookshopDetected });
     return;
@@ -1032,7 +1045,8 @@ async function run2(argv) {
   if (ctx.postbuildExists) {
     console.log("\n  Existing .cloudcannon/postbuild found.");
     console.log("  The following Rosey commands will be appended:\n");
-    const preview = buildPostbuildPreview(answers);
+    const preview = `# Rosey
+${buildPostbuildBlock(answers)}`;
     for (const line of preview.split("\n")) {
       console.log(`    ${line}`);
     }
@@ -1040,7 +1054,7 @@ async function run2(argv) {
     writePostbuildFile = await askConfirm("Append these commands?", true);
   }
   let shouldRemoveSource = false;
-  if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+  if (hasRealSource(ctx)) {
     shouldRemoveSource = await askConfirm(
       `Your config has \`source: ${ctx.ccSource}\`. This must be removed for locale files to work. Remove it and update all affected paths?`,
       true
@@ -1055,41 +1069,14 @@ async function run2(argv) {
     console.log("  Skipped .cloudcannon/postbuild (user declined).");
   }
   if (shouldRemoveSource) {
-    removeSourceKey(ctx, answers);
-  } else if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+    removeSourceKey(ctx);
+  } else if (hasRealSource(ctx)) {
     console.log(
       "\n\u26A0  `source` key was not removed. Locale editing may not work until it is removed manually."
     );
   }
   updateCloudCannonConfig(ctx, answers);
   printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
-}
-function buildPostbuildPreview(answers) {
-  const {
-    buildDir,
-    roseyDir,
-    locales,
-    useBuiltinWriteLocales,
-    contentAtRoot,
-    defaultLanguage
-  } = answers;
-  const langFlag = ` --default-language ${defaultLanguage}`;
-  const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
-  const lines = ["# Rosey"];
-  if (useBuiltinWriteLocales) {
-    lines.push(`npx rosey generate --source ${buildDir}`);
-    lines.push(
-      `npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir} --locales ${locales.join(",")}`
-    );
-  } else {
-    lines.push(`npx rosey generate --source ${buildDir}`);
-    lines.push("# TODO: Add your custom locale generation script here");
-  }
-  lines.push(`mv ./${buildDir} ./_untranslated_site`);
-  lines.push(
-    `npx rosey build --source _untranslated_site --dest ${buildDir}${langFlag}${rootFlag} --exclusions "\\.(html?)$"`
-  );
-  return lines.join("\n");
 }
 
 // src/cli/write-locales.ts
@@ -1185,45 +1172,41 @@ async function writeLocales(options) {
   const manifestPath = import_node_path6.default.join(rccDir, "locales.json");
   await import_node_fs5.default.promises.writeFile(manifestPath, JSON.stringify(manifest));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
-  await validateDataConfig(locales);
+  await validateDataConfig(locales, roseyDir);
 }
-var CC_CONFIG_PATHS = [
-  "cloudcannon.config.yml",
-  "cloudcannon.config.yaml",
-  "cloudcannon.config.json",
-  "cloudcannon.config.cjs"
-];
 async function readCCConfig() {
-  for (const p of CC_CONFIG_PATHS) {
+  for (const { file } of CC_CONFIG_FILES) {
     try {
-      const raw = await import_node_fs5.default.promises.readFile(p, "utf-8");
-      return { raw, path: p };
+      const raw = await import_node_fs5.default.promises.readFile(file, "utf-8");
+      return { raw, path: file };
     } catch {
     }
   }
   return null;
 }
-async function validateDataConfig(locales) {
+async function validateDataConfig(locales, roseyDir) {
   const config = await readCCConfig();
   if (!config) return;
   const missing = [];
   for (const locale of locales) {
-    const key = `locales_${locale}`;
-    if (!config.raw.includes(key)) {
-      missing.push(locale);
-    }
+    const present = new RegExp(`(^|\\s)locales_${locale}:`, "m").test(
+      config.raw
+    );
+    if (!present) missing.push(locale);
   }
   if (missing.length > 0) {
     console.warn(
       `RCC: Missing data_config entries in ${config.path}. Add:
-` + missing.map((l) => `  locales_${l}:
-    path: rosey/locales/${l}.json`).join("\n")
+` + missing.map(
+        (l) => `  locales_${l}:
+    path: ${roseyDir}/locales/${l}.json`
+      ).join("\n")
     );
   }
 }
 
 // src/cli/write-locales.ts
-function run3(argv) {
+async function run3(argv) {
   let source;
   let locales;
   let dest;
@@ -1233,14 +1216,14 @@ function run3(argv) {
     if ((arg === "--source" || arg === "-s") && argv[i + 1]) {
       source = argv[++i];
     } else if ((arg === "--locales" || arg === "-l") && argv[i + 1]) {
-      locales = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+      locales = argv[++i].split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     } else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
       dest = argv[++i];
     } else if (arg === "--keep-unused") {
       keepUnused = true;
     } else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: rcc-v2 write-locales [options]\n\nValues fall back to ROSEY_* env vars, then a rosey.{yml,yaml,json} config\nfile (CLI flags > env > config file), matching Rosey.\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: dir of the config's `locales`, else rosey)\n  -l, --locales <codes>  Comma-separated locale codes (default: config `languages`, else auto-detect)\n  -d, --dest <dir>       Build output dir for the manifest (default: config `source`)\n  --keep-unused          Preserve locale keys not in base.json (useful during migration)\n  -h, --help             Show this help message\n"
+        "Usage: rosey-cloudcannon-connector write-locales [options]\n\nValues fall back to ROSEY_* env vars, then a rosey.{yml,yaml,json} config\nfile (CLI flags > env > config file), matching Rosey.\n\nOptions:\n  -s, --source <dir>     Rosey directory (default: dir of the config's `locales`, else rosey)\n  -l, --locales <codes>  Comma-separated locale codes (default: config `languages`, else auto-detect)\n  -d, --dest <dir>       Build output dir for the manifest (default: config `source`)\n  --keep-unused          Preserve locale keys not in base.json (useful during migration)\n  -h, --help             Show this help message\n"
       );
       process.exit(0);
     }
@@ -1255,7 +1238,7 @@ function run3(argv) {
     );
     process.exit(1);
   }
-  writeLocales({
+  await writeLocales({
     roseyDir,
     locales: resolvedLocales,
     dest: resolvedDest,
@@ -1287,4 +1270,7 @@ if (!handler) {
   printUsage();
   process.exit(1);
 }
-handler(args.slice(1));
+Promise.resolve(handler(args.slice(1))).catch((err) => {
+  console.error("RCC:", err instanceof Error ? err.message : err);
+  process.exit(1);
+});

@@ -1,6 +1,8 @@
 import path from "node:path";
 import { resolveRoseyConfig } from "../../rosey-config";
 import {
+	buildPostbuildBlock,
+	hasRealSource,
 	installDependencies,
 	printInstructions,
 	removeSourceKey,
@@ -147,7 +149,10 @@ export async function run(argv: string[]): Promise<void> {
 	// ── Headless mode (--yes) ───────────────────────────────────────
 
 	if (flags.yes) {
-		const locales = flags.locales ?? rosey.languages;
+		// flags.locales is already normalized; config `languages` may not be.
+		const locales = (flags.locales ?? rosey.languages)
+			?.map((l) => l.trim().toLowerCase())
+			.filter(Boolean);
 		if (!locales || locales.length === 0) {
 			console.error(
 				"Error: locales are required in non-interactive mode (--yes). " +
@@ -181,7 +186,7 @@ export async function run(argv: string[]): Promise<void> {
 
 		installDependencies(ctx);
 		writePostbuild(ctx, answers);
-		removeSourceKey(ctx, answers);
+		removeSourceKey(ctx);
 		updateCloudCannonConfig(ctx, answers);
 		printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
 		return;
@@ -286,7 +291,8 @@ export async function run(argv: string[]): Promise<void> {
 	if (ctx.postbuildExists) {
 		console.log("\n  Existing .cloudcannon/postbuild found.");
 		console.log("  The following Rosey commands will be appended:\n");
-		const preview = buildPostbuildPreview(answers);
+		// Render exactly what writePostbuild appends (the "# Rosey"-headed block).
+		const preview = `# Rosey\n${buildPostbuildBlock(answers)}`;
 		for (const line of preview.split("\n")) {
 			console.log(`    ${line}`);
 		}
@@ -295,7 +301,7 @@ export async function run(argv: string[]): Promise<void> {
 	}
 
 	let shouldRemoveSource = false;
-	if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+	if (hasRealSource(ctx)) {
 		shouldRemoveSource = await askConfirm(
 			`Your config has \`source: ${ctx.ccSource}\`. This must be removed for locale files to work. Remove it and update all affected paths?`,
 			true,
@@ -317,8 +323,8 @@ export async function run(argv: string[]): Promise<void> {
 	}
 
 	if (shouldRemoveSource) {
-		removeSourceKey(ctx, answers);
-	} else if (ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/") {
+		removeSourceKey(ctx);
+	} else if (hasRealSource(ctx)) {
 		console.log(
 			"\n⚠  `source` key was not removed. Locale editing may not work until it is removed manually.",
 		);
@@ -327,36 +333,4 @@ export async function run(argv: string[]): Promise<void> {
 	updateCloudCannonConfig(ctx, answers);
 
 	printInstructions(answers, { bookshopDetected: ctx.bookshopDetected });
-}
-
-function buildPostbuildPreview(answers: WizardAnswers): string {
-	const {
-		buildDir,
-		roseyDir,
-		locales,
-		useBuiltinWriteLocales,
-		contentAtRoot,
-		defaultLanguage,
-	} = answers;
-	const langFlag = ` --default-language ${defaultLanguage}`;
-	const rootFlag = contentAtRoot ? " --default-language-at-root" : "";
-
-	const lines: string[] = ["# Rosey"];
-
-	if (useBuiltinWriteLocales) {
-		lines.push(`npx rosey generate --source ${buildDir}`);
-		lines.push(
-			`npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir} --locales ${locales.join(",")}`,
-		);
-	} else {
-		lines.push(`npx rosey generate --source ${buildDir}`);
-		lines.push("# TODO: Add your custom locale generation script here");
-	}
-
-	lines.push(`mv ./${buildDir} ./_untranslated_site`);
-	lines.push(
-		`npx rosey build --source _untranslated_site --dest ${buildDir}${langFlag}${rootFlag} --exclusions "\\.(html?)$"`,
-	);
-
-	return lines.join("\n");
 }

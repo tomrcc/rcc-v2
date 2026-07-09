@@ -46,7 +46,7 @@ export function installDependencies(ctx: ProjectContext): void {
 
 // ── Postbuild script ────────────────────────────────────────────────
 
-function buildPostbuildBlock(answers: WizardAnswers): string {
+export function buildPostbuildBlock(answers: WizardAnswers): string {
 	const {
 		buildDir,
 		roseyDir,
@@ -75,7 +75,7 @@ function buildPostbuildBlock(answers: WizardAnswers): string {
 			`#   2. Create/update locale files at ${roseyDir}/locales/{code}.json`,
 		);
 		lines.push(
-			`#   3. Write a locale manifest array to ${buildDir}/_rcc/locales.json`,
+			`#   3. Write a locale manifest object { "locales": [...] } to ${buildDir}/_rcc/locales.json`,
 		);
 		lines.push(
 			`# npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir}`,
@@ -248,11 +248,19 @@ function removeSourceFromJson(content: string, source: string): string {
 	return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function removeSourceKey(
+/**
+ * True when the config declares a real `source` subdirectory that must be
+ * removed (and its paths rewritten) for locale editing to work. A root source
+ * (`.`/`/`) or none needs no rewrite.
+ */
+export function hasRealSource(
 	ctx: ProjectContext,
-	_answers: WizardAnswers,
-): void {
-	if (!ctx.ccSource || ctx.ccSource === "." || ctx.ccSource === "/") return;
+): ctx is ProjectContext & { ccSource: string } {
+	return !!ctx.ccSource && ctx.ccSource !== "." && ctx.ccSource !== "/";
+}
+
+export function removeSourceKey(ctx: ProjectContext): void {
+	if (!hasRealSource(ctx)) return;
 	if (!ctx.ccConfigPath) return;
 
 	const source = ctx.ccSource.replace(/\/+$/, "");
@@ -281,11 +289,15 @@ export function removeSourceKey(
 
 // ── CloudCannon config ──────────────────────────────────────────────
 
-function buildDataConfigYaml(answers: WizardAnswers, indent: string): string {
-	return answers.locales
+function buildDataConfigYaml(
+	locales: string[],
+	roseyDir: string,
+	indent: string,
+): string {
+	return locales
 		.map(
 			(locale) =>
-				`${indent}locales_${locale}:\n${indent}  path: ${answers.roseyDir}/locales/${locale}.json`,
+				`${indent}locales_${locale}:\n${indent}  path: ${roseyDir}/locales/${locale}.json`,
 		)
 		.join("\n");
 }
@@ -343,7 +355,12 @@ function buildCollectionsConfigJson(
 			_inputs: {
 				value: { type: "html", label: "Translation", cascade: true },
 				original: { hidden: true, cascade: true },
-				_base_original: { disabled: true, cascade: true },
+				_base_original: {
+					disabled: true,
+					hidden: false,
+					label: "Original Text",
+					cascade: true,
+				},
 			},
 		},
 	};
@@ -401,12 +418,11 @@ function updateYamlConfig(content: string, answers: WizardAnswers): string {
 		const blockEnd = findYamlBlockEnd(result, "data_config");
 		const indent = detectIndent(result, "data_config") || "  ";
 
-		const newEntries = missingDataLocales
-			.map(
-				(l) =>
-					`${indent}locales_${l}:\n${indent}  path: ${answers.roseyDir}/locales/${l}.json`,
-			)
-			.join("\n");
+		const newEntries = buildDataConfigYaml(
+			missingDataLocales,
+			answers.roseyDir,
+			indent,
+		);
 
 		if (blockEnd === -1) {
 			result = `${result.trimEnd()}\ndata_config:\n${newEntries}\n`;
@@ -463,7 +479,7 @@ function buildFreshYamlConfig(answers: WizardAnswers): string {
 	const lines: string[] = [];
 
 	lines.push("data_config:");
-	lines.push(buildDataConfigYaml(answers, "  "));
+	lines.push(buildDataConfigYaml(answers.locales, answers.roseyDir, "  "));
 
 	if (answers.exposeAsCollection) {
 		lines.push("collections_config:");

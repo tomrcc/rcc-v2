@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CC_CONFIG_FILES } from "../../cc-config-files";
 
 export interface ProjectContext {
 	ccConfigPath: string | null;
@@ -14,16 +15,6 @@ export interface ProjectContext {
 	postbuildContent: string | null;
 	bookshopDetected: boolean;
 }
-
-const CC_CONFIG_CANDIDATES: {
-	file: string;
-	format: ProjectContext["ccConfigFormat"];
-}[] = [
-	{ file: "cloudcannon.config.yml", format: "yml" },
-	{ file: "cloudcannon.config.yaml", format: "yaml" },
-	{ file: "cloudcannon.config.json", format: "json" },
-	{ file: "cloudcannon.config.cjs", format: "cjs" },
-];
 
 const BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
 
@@ -55,7 +46,7 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 	let ccConfigPath: string | null = null;
 	let ccConfigFormat: ProjectContext["ccConfigFormat"] = null;
 	let ccSource: string | null = null;
-	for (const candidate of CC_CONFIG_CANDIDATES) {
+	for (const candidate of CC_CONFIG_FILES) {
 		const full = path.join(cwd, candidate.file);
 		if (fileExists(full)) {
 			ccConfigPath = full;

@@ -62,7 +62,7 @@ CloudCannon supports [staging workflows](https://cloudcannon.com/documentation/g
 
 This keeps the live site clean while giving editors a full preview environment for translation work.
 
-> **Tip:** CloudCannon's staging workflow guide shows how to [gate the postbuild behind an environment variable](https://cloudcannon.com/documentation/guides/staging-workflow-guide) so expensive steps only run on production. However, the connector needs the Rosey postbuild to run for locale switching to work in the Visual Editor — so most teams will want the postbuild running on both branches.
+> **Tip:** CloudCannon's staging workflow guide shows how to [gate the postbuild behind an environment variable](https://cloudcannon.com/documentation/guides/staging-workflow-guide) so expensive steps only run on production. What the connector actually needs on the editing branch is the **locale files and the `/_rcc/locales.json` manifest** — i.e. the `write-locales` step and its `--dest` output. The final `rosey build` step (which generates the translated per-locale pages) is *not* required for the Visual Editor switcher, so it's safe to gate that heavier step behind an env var and keep only `rosey generate` + `write-locales` running on the staging branch.
 
 ### Connector behaviour
 

@@ -121,6 +121,9 @@ function isBlockType(dataType) {
 function inferElementType(el) {
   return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
 }
+function resolveElementType(el) {
+  return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
+}
 function cleanClone(root) {
   stripCCAttributes(root);
   root.querySelectorAll("*").forEach((el) => {
@@ -162,10 +165,8 @@ function replaceCustomElements(root) {
     const els = root.querySelectorAll(tag);
     for (const el of els) {
       let replacementTag = "div";
-      if (tag === "EDITABLE-TEXT") {
-        const dataType = el.getAttribute("data-type");
-        const hasBlockChildren = el.querySelector(BLOCK_LEVEL_SELECTOR) !== null;
-        replacementTag = isBlockType(dataType) || hasBlockChildren ? "div" : "span";
+      if (tag === "EDITABLE-TEXT" && el instanceof HTMLElement) {
+        replacementTag = resolveElementType(el) === "block" ? "div" : "span";
       }
       const replacement = document.createElement(replacementTag);
       for (const attr of Array.from(el.attributes)) {
@@ -951,6 +952,7 @@ function injectSwitcher(locales, onSelect) {
 }
 
 // src/injector.ts
+var TRANSLATABLE_SELECTOR = "[data-rosey]:not([data-rcc-ignore])";
 var originalInputConfigs = /* @__PURE__ */ new Map();
 var originalIsSource = /* @__PURE__ */ new Set();
 function newTrackedEntry(element, roseyKey) {
@@ -958,7 +960,7 @@ function newTrackedEntry(element, roseyKey) {
     element,
     roseyKey,
     originalContent: element.innerHTML,
-    inferredType: isBlockType(element.dataset.type) ? "block" : inferElementType(element),
+    inferredType: resolveElementType(element),
     focused: false,
     stale: false,
     baseOriginal: null,
@@ -968,9 +970,7 @@ function newTrackedEntry(element, roseyKey) {
 }
 function trackElements(scope) {
   tracked.length = 0;
-  const elements = scope.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
-  );
+  const elements = scope.querySelectorAll(TRANSLATABLE_SELECTOR);
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
     if (!roseyKey) continue;
@@ -1004,7 +1004,7 @@ async function fetchInputConfig(el) {
 }
 async function prescanOriginals(container) {
   const elements = container.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
+    TRANSLATABLE_SELECTOR
   );
   for (const el of elements) {
     const roseyKey = resolveRoseyKey(el);
@@ -1157,13 +1157,12 @@ async function switchLocaleInner(locale, myGeneration) {
     const t = tracked[i];
     const data = dataResults[i];
     t.hasLocaleEntry = data != null;
-    const value = resolveDisplayValue(data, t);
-    resolvedValues[i] = value;
-    t.stale = computeStale(t, data);
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
+    const value = resolveDisplayValue(data, t);
+    resolvedValues[i] = value;
     t.element.innerHTML = value;
-    if (t.stale) markStaleElement(t);
+    refreshStale(t, data);
   }
   recountStale();
   const missingKeys = tracked.filter((t) => !t.hasLocaleEntry).map((t) => t.roseyKey);
@@ -1202,12 +1201,8 @@ async function switchLocaleInner(locale, myGeneration) {
                   _base_original: t.originalContent
                 }
               });
-              const readback = await file.data.get({ slug: t.roseyKey }).catch(() => null);
-              log(
-                `[${t.roseyKey}] set(new entry) resolved \u2014 readback=${readback == null ? "<null> \u2014 model did NOT accept the new key" : JSON.stringify(readback).slice(0, 120)}`
-              );
             } catch (err) {
-              warn(`[${t.roseyKey}] set(new entry) REJECTED:`, err);
+              warn(`[${t.roseyKey}] failed to create locale entry:`, err);
             }
             return;
           }
@@ -1327,7 +1322,7 @@ async function switchLocaleInner(locale, myGeneration) {
       if (myGeneration !== state.switchGeneration || !state.translationContainer)
         return;
       const els = state.translationContainer.querySelectorAll(
-        "[data-rosey]:not([data-rcc-ignore])"
+        TRANSLATABLE_SELECTOR
       );
       for (const el of els) void reconcileElement(el);
     });
@@ -1350,7 +1345,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:46:44.577Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
@@ -1362,7 +1357,7 @@ async function init() {
   const locales = excluded ? allLocales.filter((l) => !excluded.has(l)) : allLocales;
   if (locales.length === 0) return;
   const elementCount = container.querySelectorAll(
-    "[data-rosey]:not([data-rcc-ignore])"
+    TRANSLATABLE_SELECTOR
   ).length;
   if (elementCount === 0) {
     warn("No translatable elements found (missing data-rosey attributes)");

@@ -2,7 +2,7 @@ import path from "node:path";
 import { resolveRoseyConfig } from "../rosey-config";
 import { writeLocales } from "../write-locales";
 
-export function run(argv: string[]): void {
+export async function run(argv: string[]): Promise<void> {
 	// CLI flags are the top precedence layer; left undefined when not passed so
 	// they can fall back to env vars / the Rosey config file below.
 	let source: string | undefined;
@@ -17,7 +17,7 @@ export function run(argv: string[]): void {
 		} else if ((arg === "--locales" || arg === "-l") && argv[i + 1]) {
 			locales = argv[++i]
 				.split(",")
-				.map((s) => s.trim())
+				.map((s) => s.trim().toLowerCase())
 				.filter(Boolean);
 		} else if ((arg === "--dest" || arg === "-d") && argv[i + 1]) {
 			dest = argv[++i];
@@ -25,7 +25,7 @@ export function run(argv: string[]): void {
 			keepUnused = true;
 		} else if (arg === "--help" || arg === "-h") {
 			console.log(
-				"Usage: rcc-v2 write-locales [options]\n\n" +
+				"Usage: rosey-cloudcannon-connector write-locales [options]\n\n" +
 					"Values fall back to ROSEY_* env vars, then a rosey.{yml,yaml,json} config\n" +
 					"file (CLI flags > env > config file), matching Rosey.\n\n" +
 					"Options:\n" +
@@ -58,7 +58,7 @@ export function run(argv: string[]): void {
 		process.exit(1);
 	}
 
-	writeLocales({
+	await writeLocales({
 		roseyDir,
 		locales: resolvedLocales,
 		dest: resolvedDest,

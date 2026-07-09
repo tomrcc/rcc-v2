@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CC_CONFIG_FILES } from "./cc-config-files";
+import type { LocaleEntry } from "./types";
 
 export interface WriteLocalesOptions {
 	roseyDir?: string;
@@ -20,12 +22,6 @@ interface BaseJsonKey {
 interface BaseJson {
 	version: number;
 	keys: Record<string, BaseJsonKey>;
-}
-
-interface LocaleEntry {
-	original: string;
-	value: string;
-	_base_original?: string;
 }
 
 /** Treat null/undefined and whitespace-only strings as empty. */
@@ -146,19 +142,12 @@ export async function writeLocales(
 	await fs.promises.writeFile(manifestPath, JSON.stringify(manifest));
 	console.log(`RCC: Wrote locale manifest → ${manifestPath}`);
 
-	await validateDataConfig(locales);
+	await validateDataConfig(locales, roseyDir);
 }
 
 // ---------------------------------------------------------------------------
 // CloudCannon config reading
 // ---------------------------------------------------------------------------
-
-const CC_CONFIG_PATHS = [
-	"cloudcannon.config.yml",
-	"cloudcannon.config.yaml",
-	"cloudcannon.config.json",
-	"cloudcannon.config.cjs",
-];
 
 interface CCConfigResult {
 	raw: string;
@@ -166,10 +155,10 @@ interface CCConfigResult {
 }
 
 async function readCCConfig(): Promise<CCConfigResult | null> {
-	for (const p of CC_CONFIG_PATHS) {
+	for (const { file } of CC_CONFIG_FILES) {
 		try {
-			const raw = await fs.promises.readFile(p, "utf-8");
-			return { raw, path: p };
+			const raw = await fs.promises.readFile(file, "utf-8");
+			return { raw, path: file };
 		} catch {}
 	}
 	return null;
@@ -179,23 +168,30 @@ async function readCCConfig(): Promise<CCConfigResult | null> {
 // Data config validation
 // ---------------------------------------------------------------------------
 
-async function validateDataConfig(locales: string[]): Promise<void> {
+async function validateDataConfig(
+	locales: string[],
+	roseyDir: string,
+): Promise<void> {
 	const config = await readCCConfig();
 	if (!config) return;
 
 	const missing: string[] = [];
 	for (const locale of locales) {
-		const key = `locales_${locale}`;
-		if (!config.raw.includes(key)) {
-			missing.push(locale);
-		}
+		// Anchored `locales_<code>:` match so `en` doesn't match `locales_en_GB`
+		// (and vice-versa), and a bare mention in a comment doesn't count.
+		const present = new RegExp(`(^|\\s)locales_${locale}:`, "m").test(
+			config.raw,
+		);
+		if (!present) missing.push(locale);
 	}
 
 	if (missing.length > 0) {
 		console.warn(
 			`RCC: Missing data_config entries in ${config.path}. Add:\n` +
 				missing
-					.map((l) => `  locales_${l}:\n    path: rosey/locales/${l}.json`)
+					.map(
+						(l) => `  locales_${l}:\n    path: ${roseyDir}/locales/${l}.json`,
+					)
 					.join("\n"),
 		);
 	}

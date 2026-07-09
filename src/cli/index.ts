@@ -5,7 +5,7 @@ import { run as writeLocales } from "./write-locales";
 const COMMANDS: Record<string, (argv: string[]) => void | Promise<void>> = {
 	"add-skills": addSkills,
 	"write-locales": writeLocales,
-	init: init,
+	init,
 };
 
 function printUsage(): void {
@@ -34,4 +34,7 @@ if (!handler) {
 	process.exit(1);
 }
 
-handler(args.slice(1));
+Promise.resolve(handler(args.slice(1))).catch((err) => {
+	console.error("RCC:", err instanceof Error ? err.message : err);
+	process.exit(1);
+});

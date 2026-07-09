@@ -55,12 +55,21 @@ Landed/uncommitted changes for in-editor translation of evolving content:
 **Remaining (client-side):** the injector still hardcodes the `data-rosey` tag and `:` separator, and locale-dataset naming (`locales_*`) — these can't read `rosey.yml` at runtime, so they'd need the resolved `tag`/`separator` surfaced via the build-time manifest (`_rcc/locales.json`) and read by `resolveRoseyKey()` / selectors. Feeds item 1's discovery.
 
 ### 6. Live-stale normalization is text-oriented
-**Where:** `normalizeSource()` in `injector.ts`.
+**Where:** `normalizeSource()` in `stale.ts`.
 **Now:** collapses whitespace runs + trims, then compares as strings. Good for plain text and simple inline markup; intentionally errs toward false-negatives (the build signal is the backstop).
 **Watch for:** if `data-rosey` is used on richer HTML blocks, attribute-order or markup-only differences between the live `innerHTML` and the stored/base.json `original` could cause false positives, or markup-only source changes could be missed. If rich-HTML tagging grows, consider comparing `textContent` or a structural normalization.
 
+### 7. Elegance refactors deferred from pre-ship review (2026-07-09)
+Catalogued during the pre-ship code review; deferred to avoid churn right before prod.
+- **Decompose `injectSwitcher`** (`ui/switcher.ts`, ~490 lines) into `createFab` / `createPopover` / `createStalePanel` / `setupDrag`, and extract the shared viewport-clamp positioner used by both `positionPopover` and `positionStalePanel`.
+- **Move `updateStaleList`'s DOM construction** (`stale.ts`) into `src/ui/`, leaving `stale.ts` as pure logic. Consider consolidating the switcher's inline `Object.assign(style, …)` into a stylesheet like `hide-controls.ts`.
+- **Re-key correctness gap:** `createTextEditableRegion` has no `destroy()`, so a re-keyed element keeps its editor bound to the old key (`injector.ts` `reconcileElement`, currently only logged).
+- **Partial-failure hardening:** early returns after `pauseBookshop()` / the post-clone-swap in `switchLocaleInner` can leave Bookshop paused or the page showing a hidden-controls clone with no editors; add recovery/teardown on those paths.
+- **Simplify `forceBookshopRerender`** (`bookshop.ts`) — the rAF-vs-`setTimeout` branching is hard to follow.
+- **`logger.isVerbose()` memoizes on first call** — if `data-rcc-verbose` is added after init, verbose never turns on. Re-check per call or document.
+
 ---
 
-## Open questions carried from `rcc-notes.md` / `docs-notes.md`
-- Confirm the staging-vs-production editing story for the Connector (collection URL prefixing, no env vars in CC config) and correct the docs if the "incompatible with staging" claim is wrong.
+## Open questions carried from `rcc-notes.md`
+- ~~Confirm the staging-vs-production editing story and correct the docs if the "incompatible with staging" claim is wrong.~~ **Done (2026-07-09):** `docs/incremental-translation.md` now states the connector needs the locale files + manifest (`write-locales`), not the full `rosey build`, on the editing branch.
 - Verify `data-rosey-attr` / `data-rosey-attr-value` semantics (attr value links to a Rosey key, not a literal) before leaning on it in docs.

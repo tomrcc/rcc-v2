@@ -1,6 +1,16 @@
 // src/write-locales.ts
 import fs from "fs";
 import path from "path";
+
+// src/cc-config-files.ts
+var CC_CONFIG_FILES = [
+  { file: "cloudcannon.config.yml", format: "yml" },
+  { file: "cloudcannon.config.yaml", format: "yaml" },
+  { file: "cloudcannon.config.json", format: "json" },
+  { file: "cloudcannon.config.cjs", format: "cjs" }
+];
+
+// src/write-locales.ts
 function isEmptyText(s) {
   return s == null || s.trim() === "";
 }
@@ -88,39 +98,35 @@ async function writeLocales(options) {
   const manifestPath = path.join(rccDir, "locales.json");
   await fs.promises.writeFile(manifestPath, JSON.stringify(manifest));
   console.log(`RCC: Wrote locale manifest \u2192 ${manifestPath}`);
-  await validateDataConfig(locales);
+  await validateDataConfig(locales, roseyDir);
 }
-var CC_CONFIG_PATHS = [
-  "cloudcannon.config.yml",
-  "cloudcannon.config.yaml",
-  "cloudcannon.config.json",
-  "cloudcannon.config.cjs"
-];
 async function readCCConfig() {
-  for (const p of CC_CONFIG_PATHS) {
+  for (const { file } of CC_CONFIG_FILES) {
     try {
-      const raw = await fs.promises.readFile(p, "utf-8");
-      return { raw, path: p };
+      const raw = await fs.promises.readFile(file, "utf-8");
+      return { raw, path: file };
     } catch {
     }
   }
   return null;
 }
-async function validateDataConfig(locales) {
+async function validateDataConfig(locales, roseyDir) {
   const config = await readCCConfig();
   if (!config) return;
   const missing = [];
   for (const locale of locales) {
-    const key = `locales_${locale}`;
-    if (!config.raw.includes(key)) {
-      missing.push(locale);
-    }
+    const present = new RegExp(`(^|\\s)locales_${locale}:`, "m").test(
+      config.raw
+    );
+    if (!present) missing.push(locale);
   }
   if (missing.length > 0) {
     console.warn(
       `RCC: Missing data_config entries in ${config.path}. Add:
-` + missing.map((l) => `  locales_${l}:
-    path: rosey/locales/${l}.json`).join("\n")
+` + missing.map(
+        (l) => `  locales_${l}:
+    path: ${roseyDir}/locales/${l}.json`
+      ).join("\n")
     );
   }
 }
