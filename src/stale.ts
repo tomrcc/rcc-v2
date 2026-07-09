@@ -76,7 +76,7 @@ function showCaughtUp(panel: HTMLElement): void {
 			padding: "8px",
 			fontSize: "12px",
 			color: "#16a34a",
-			textAlign: "center",
+			textAlign: "left",
 		});
 		list.appendChild(done);
 	}
@@ -200,10 +200,10 @@ export function updateStaleList(): void {
 
 		scrollBtn.appendChild(preview);
 		scrollBtn.addEventListener("click", () => {
-			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
-			// Drop the caret straight into the editor; preventScroll so the smooth
-			// scroll above owns the movement instead of a competing jump.
+			// Focus first (preventScroll) then scroll: placing the caret mid-scroll
+			// cancels a smooth scroll partway, so focusing up front lets it finish.
 			t.element.focus({ preventScroll: true });
+			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
 		});
 
 		const resolveBtn = document.createElement("button");
