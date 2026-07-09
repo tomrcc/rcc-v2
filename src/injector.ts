@@ -15,6 +15,7 @@ import {
 	stripCmsBindForRerender,
 } from "./bookshop";
 import { cleanClone, inferElementType, isBlockType } from "./clean-clone";
+import { installDiagnostics, uninstallDiagnostics } from "./diagnostics";
 import { discoverLocales, isRtlLocale } from "./locales";
 import { log, warn } from "./logger";
 import { resolveRoseyKey } from "./rosey-key";
@@ -162,6 +163,8 @@ function teardownEditors(): void {
 	// Runs at the start of every switch: restores CC's editing chrome. A
 	// real-locale switch re-hides it after the clone swap.
 	setLocaleControlsHidden(false);
+
+	uninstallDiagnostics();
 
 	if (state.reconcileObserver) {
 		state.reconcileObserver.disconnect();
@@ -526,6 +529,9 @@ async function switchLocaleInner(
 		);
 	};
 	dataset.addEventListener("change", state.activeDatasetListener);
+
+	// TEMP: diagnostics for the "clear pending translation" edge case.
+	installDiagnostics(dataset, file);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (new array item) or stamp its

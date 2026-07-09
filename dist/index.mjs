@@ -180,6 +180,110 @@ function replaceCustomElements(root) {
   }
 }
 
+// src/state.ts
+var tracked = [];
+var state = {
+  currentLocale: null,
+  api: null,
+  originalContainer: null,
+  translationContainer: null,
+  activeDataset: null,
+  activeDatasetListener: null,
+  activeFile: null,
+  // Watches the translation container for [data-rosey] elements CC adds or
+  // re-keys after the initial switch pass (new array items, late-stamped ns).
+  reconcileObserver: null,
+  reconcileScheduled: false,
+  // Guards against stale onChange fires: createTextEditableRegion has no
+  // destroy(), so old editors stay alive. Each onChange captures its
+  // generation; mismatches are no-ops.
+  switchGeneration: 0,
+  /** True while an async locale switch is running. Blocks re-entrant clicks. */
+  switchInProgress: false,
+  /** Cached count of stale tracked entries; drives the FAB stale badge. */
+  staleCount: 0
+};
+
+// src/diagnostics.ts
+var P = "RCC-DIAG:";
+var teardown = null;
+function stamp() {
+  return `+${Math.round(performance.now())}ms`;
+}
+function trunc(s, n = 100) {
+  return s.length > n ? `${s.slice(0, n)}\u2026(${s.length})` : s;
+}
+function norm(s) {
+  return s.replace(/\s+/g, " ").trim();
+}
+async function dumpState(label, file) {
+  console.log(
+    `%c${P} ${label} @ ${stamp()} \u2014 locale=${state.currentLocale}, tracked=${tracked.length}`,
+    "color:#c0392b;font-weight:bold"
+  );
+  for (const t of tracked) {
+    let persisted = "<not-read>";
+    try {
+      persisted = await file.data.get({ slug: t.roseyKey });
+    } catch (err) {
+      persisted = `<get threw: ${err}>`;
+    }
+    const onPage = t.element.innerHTML;
+    const modelValue = persisted?.value ?? persisted?.original ?? "";
+    const diverged = norm(onPage) !== norm(modelValue);
+    console.log(
+      `${P}   [${t.roseyKey}] focused=${t.focused} hasEntry=${t.hasLocaleEntry} stale=${t.stale} diverged=${diverged}`
+    );
+    console.log(`${P}       onPage    = ${JSON.stringify(trunc(onPage))}`);
+    console.log(
+      `${P}       model.get = ${persisted == null ? "<null / no entry>" : trunc(JSON.stringify(persisted), 240)}`
+    );
+  }
+}
+function installDiagnostics(dataset, file) {
+  teardown?.();
+  const targets = [
+    ["dataset", dataset],
+    ["file", file]
+  ];
+  const events = ["change", "delete"];
+  const registered = [];
+  for (const [name, target] of targets) {
+    if (typeof target?.addEventListener !== "function") {
+      console.log(`${P} ${name} has no addEventListener \u2014 cannot observe it`);
+      continue;
+    }
+    for (const event of events) {
+      const listener = () => {
+        console.log(
+          `%c${P} EVENT "${event}" on ${name} @ ${stamp()}`,
+          "color:#2980b9;font-weight:bold"
+        );
+        void dumpState(`after ${name}:${event}`, file);
+      };
+      target.addEventListener(event, listener);
+      registered.push([target, event, listener]);
+    }
+  }
+  window.__rccDiag = () => {
+    void dumpState("manual __rccDiag()", file);
+  };
+  console.log(
+    `${P} installed \u2014 listening for change/delete on dataset+file. Type a translation, hit Clear, then watch for EVENT lines (and run window.__rccDiag() to read the model directly).`
+  );
+  void dumpState("baseline (setup complete)", file);
+  teardown = () => {
+    for (const [target, event, listener] of registered) {
+      target.removeEventListener(event, listener);
+    }
+    registered.length = 0;
+  };
+}
+function uninstallDiagnostics() {
+  teardown?.();
+  teardown = null;
+}
+
 // src/locales.ts
 var RTL_LOCALES = /* @__PURE__ */ new Set([
   "ar",
@@ -235,37 +339,6 @@ function resolveRoseyKey(el) {
   nsParts.reverse();
   return [...nsParts, localKey].join(":");
 }
-
-// src/state.ts
-var tracked = [];
-var state = {
-  currentLocale: null,
-  api: null,
-  originalContainer: null,
-  translationContainer: null,
-  activeDataset: null,
-  activeDatasetListener: null,
-  activeFile: null,
-  /**
-   * Watches the active translation container for [data-rosey] elements that CC
-   * adds or re-keys after the initial switch pass (e.g. a newly inserted array
-   * item, or an element whose data-rosey-ns is stamped from instance_value:UUID
-   * a tick after insertion). Without this, editor setup would only ever run once
-   * during switchLocaleInner and miss those elements.
-   */
-  reconcileObserver: null,
-  reconcileScheduled: false,
-  /**
-   * Guards against stale ProseMirror onChange fires. createTextEditableRegion
-   * has no destroy() so old editors stay alive and fire when the DOM changes.
-   * Each onChange closure captures its generation; mismatches are no-ops.
-   */
-  switchGeneration: 0,
-  /** True while an async locale switch is running. Blocks re-entrant clicks. */
-  switchInProgress: false,
-  /** Cached count of stale tracked entries; drives the FAB stale badge. */
-  staleCount: 0
-};
 
 // src/stale.ts
 var STALE_AMBER = "#f59e0b";
@@ -447,12 +520,9 @@ function resolveStale(t, file) {
 // src/ui/hide-controls.ts
 var STYLE_ID = "rcc-hide-controls";
 var CSS = `
-/* Hide all CloudCannon control gizmos while a locale is active.
-   \u2022 editable-*-controls / editable-region-*  \u2192 editable-regions (Phase 1)
-   \u2022 c-cloudcannon-editor-overlay-*           \u2192 legacy data-cms-bind /
-     Bookshop overlay layer (Phase 2). RCC strips data-cms-bind from the clone
-     and pauses Bookshop, so no overlay in this family belongs to the
-     translatable region \u2014 hide the whole family page-wide. */
+/* Hide all CC control gizmos while a locale is active. The overlay family is
+   the Bookshop/data-cms-bind layer; RCC strips data-cms-bind and pauses
+   Bookshop, so none of it belongs to the translation root \u2014 hide page-wide. */
 html[data-rcc-locale-active] editable-array-item-controls,
 html[data-rcc-locale-active] editable-component-controls,
 html[data-rcc-locale-active] editable-region-button,
@@ -472,11 +542,9 @@ html[data-rcc-locale-active] :is(
 	outline: none !important;
 }
 
-/* Add a visible outline to the actual translatable regions (they carry no CC
-   outline of their own \u2014 cleanClone stripped the markup CC's CSS targets).
-   Reuse CC's OWN highlight variables so it matches the editor's yellowish
-   "highlighted" state; hex fallbacks cover the case where the host-injected
-   --ccve-* vars don't resolve at this scope. */
+/* Outline the translatable regions (cleanClone stripped the markup CC's own
+   CSS targets). Reuse CC's --ccve-* highlight vars to match its yellow
+   highlighted state; hex fallbacks cover when those vars don't resolve here. */
 html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]):not([data-rcc-stale]) {
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
@@ -1016,6 +1084,7 @@ function teardownEditors() {
     `teardownEditors: translationContainer=${!!state.translationContainer}, originalContainer=${!!state.originalContainer}, tracked=${tracked.length}`
   );
   setLocaleControlsHidden(false);
+  uninstallDiagnostics();
   if (state.reconcileObserver) {
     state.reconcileObserver.disconnect();
     state.reconcileObserver = null;
@@ -1264,6 +1333,7 @@ async function switchLocaleInner(locale, myGeneration) {
     );
   };
   dataset.addEventListener("change", state.activeDatasetListener);
+  installDiagnostics(dataset, file);
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
@@ -1276,7 +1346,7 @@ async function switchLocaleInner(locale, myGeneration) {
     } else {
       if (t.roseyKey !== key) {
         log(
-          `reconcile: RE-KEY "${t.roseyKey}" \u2192 "${key}"` + (t.editor ? ` \u2014 editor ALREADY EXISTS, will NOT re-wire (stale editor stays bound to old key; suspected mystery #3 cause)` : "")
+          `reconcile: RE-KEY "${t.roseyKey}" \u2192 "${key}"` + (t.editor ? ` \u2014 editor ALREADY EXISTS, will NOT re-wire` : "")
         );
       }
       t.roseyKey = key;
@@ -1326,7 +1396,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-08T09:13:37.070Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:16:46.833Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();
