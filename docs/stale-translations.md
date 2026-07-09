@@ -17,7 +17,7 @@ A translation is **stale** when the current source text differs from `original` 
 - **Build signal** — `_base_original` (the source as of the last build) differs from `original`. This is persisted in the locale file, so it surfaces whenever the page is opened.
 - **Live signal** — the source text on the page *right now* differs from `original`. This catches an in-session source edit **immediately**, before any save or rebuild has refreshed `_base_original`. (Reading `base.json` instead wouldn't help here — it's a build artifact of the same vintage as `_base_original`. The only pre-rebuild source of truth is the rendered page itself.)
 
-Both comparisons are whitespace-normalized to avoid spurious flags, and both are skipped for entries with no `_base_original` (see [Opting out](#opting-out)).
+Both comparisons normalize the HTML before comparing, to avoid spurious flags from insignificant serialization differences: Rosey's `base.json` extract and CloudCannon's editor serialize the same content differently (whitespace between tags, and tight vs loose markdown lists — `<li>x</li>` vs `<li><p>x</p></li>`). Normalization collapses that whitespace and unwraps single-paragraph list items so the two forms compare equal. Both comparisons are also skipped for entries with no `_base_original` (see [Opting out](#opting-out)).
 
 ### Example
 

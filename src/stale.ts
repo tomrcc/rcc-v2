@@ -26,54 +26,26 @@ export function recountStale(): void {
 	updateStaleList();
 }
 
-/**
- * Collapse a markdown "loose" list item to its "tight" equivalent by unwrapping
- * a single <p> wrapping the item's text. Markdown renders a list tight
- * (`<li>x</li>`) or loose (`<li><p>x</p></li>`) depending on blank lines, and
- * Rosey's base.json extract and CC's ProseMirror serializer disagree on which —
- * so without this every list entry reads as stale.
- *
- * Only unwrap when the <li> has exactly one direct-child <p>: that's the
- * ambiguous case (could have come from either form). Two or more <p>s are a
- * genuine multi-paragraph item with no tight equivalent — both serializers
- * produce it identically, so leave it untouched. Counting <p> children (rather
- * than requiring the <p> be an only child) still unwraps items that also hold a
- * nested sublist, e.g. `<li><p>x</p><ul>…</ul></li>`. DOM-based so it survives
- * nesting and attributes; runs client-side only (all callers are injected).
- *
- * Must run AFTER inter-tag whitespace is collapsed: Rosey pretty-prints
- * `<li>\n<p>x</p>\n</li>`, and unwrapping the <p> first would strand those
- * newlines as text inside the <li> (`<li> x </li>`) where `>\s+<` can no longer
- * reach them — reintroducing a mismatch against ProseMirror's clean `<li>x</li>`.
- */
+// Unwrap a loose list item (`<li><p>x</p></li>`) to its tight form (`<li>x</li>`)
+// so Rosey and ProseMirror, which disagree on tight/loose, compare equal. Skip
+// items with 2+ <p>s — those are real multi-paragraph items both serializers
+// agree on. Must run after inter-tag whitespace is collapsed (see normalizeSource).
 function unwrapLooseListItems(s: string): string {
 	if (!s.includes("<li")) return s;
 	const tpl = document.createElement("template");
 	tpl.innerHTML = s;
-	let changed = false;
 	for (const li of tpl.content.querySelectorAll("li")) {
 		const paras = [...li.children].filter((c) => c.tagName === "P");
-		if (paras.length === 1) {
+		if (paras.length === 1)
 			paras[0].replaceWith(...Array.from(paras[0].childNodes));
-			changed = true;
-		}
 	}
-	return changed ? tpl.innerHTML : s;
+	// Always re-serialize so both compared strings get the same DOM round-trip.
+	return tpl.innerHTML;
 }
 
-/**
- * Normalize source for stale comparison: the live innerHTML and the stored
- * original/_base_original can differ in insignificant ways. Errs toward
- * false-negatives on purpose — the build-time _base_original is the backstop.
- *
- * Two HTML serializers meet here: Rosey extracts block-level source with
- * newlines between tags (`</p>\n<ul>`) and tight lists, while CC's ProseMirror
- * re-serializes with none (`</p><ul>`) and loose lists (`<li><p>…</p></li>`).
- * Unwrapping loose list items and collapsing inter-tag whitespace canonicalizes
- * both to the same string; otherwise every block-level entry reads as stale
- * (and re-stales on each rebuild as write-locales resets _base_original to the
- * Rosey form).
- */
+// Canonicalize the two HTML serializers (Rosey's base.json vs CC's ProseMirror)
+// so insignificant differences don't read as stale. Order matters: collapse
+// inter-tag whitespace first, then unwrap loose lists. See docs/stale-translations.md.
 export function normalizeSource(s: string): string {
 	return unwrapLooseListItems(s.replace(/>\s+</g, "><"))
 		.replace(/\s+/g, " ")
@@ -136,9 +108,10 @@ export function updateStaleList(): void {
 	list.innerHTML = "";
 
 	for (const t of staleItems) {
+		// Key is only a fallback when the element has no visible text.
 		const textPreview = truncateText(
 			t.element.textContent?.trim() || t.roseyKey,
-			40,
+			48,
 		);
 
 		const row = document.createElement("div");
@@ -158,14 +131,13 @@ export function updateStaleList(): void {
 		const scrollBtn = document.createElement("button");
 		Object.assign(scrollBtn.style, {
 			display: "flex",
-			flexDirection: "column",
-			gap: "1px",
+			alignItems: "center",
 			flex: "1",
 			minWidth: "0",
-			padding: "5px 6px",
+			padding: "7px 8px",
 			border: "none",
 			cursor: "pointer",
-			fontSize: "11px",
+			fontSize: "12px",
 			textAlign: "left",
 			background: "transparent",
 			color: "#1e293b",
@@ -180,12 +152,7 @@ export function updateStaleList(): void {
 		});
 		preview.textContent = textPreview;
 
-		const keyEl = document.createElement("span");
-		Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
-		keyEl.textContent = t.roseyKey;
-
 		scrollBtn.appendChild(preview);
-		scrollBtn.appendChild(keyEl);
 		scrollBtn.addEventListener("click", () => {
 			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
 		});

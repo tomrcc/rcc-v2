@@ -288,15 +288,12 @@ function unwrapLooseListItems(s) {
   if (!s.includes("<li")) return s;
   const tpl = document.createElement("template");
   tpl.innerHTML = s;
-  let changed = false;
   for (const li of tpl.content.querySelectorAll("li")) {
     const paras = [...li.children].filter((c) => c.tagName === "P");
-    if (paras.length === 1) {
+    if (paras.length === 1)
       paras[0].replaceWith(...Array.from(paras[0].childNodes));
-      changed = true;
-    }
   }
-  return changed ? tpl.innerHTML : s;
+  return tpl.innerHTML;
 }
 function normalizeSource(s) {
   return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/\s+/g, " ").trim();
@@ -349,7 +346,7 @@ function updateStaleList() {
   for (const t of staleItems) {
     const textPreview = truncateText(
       t.element.textContent?.trim() || t.roseyKey,
-      40
+      48
     );
     const row = document.createElement("div");
     Object.assign(row.style, {
@@ -367,14 +364,13 @@ function updateStaleList() {
     const scrollBtn = document.createElement("button");
     Object.assign(scrollBtn.style, {
       display: "flex",
-      flexDirection: "column",
-      gap: "1px",
+      alignItems: "center",
       flex: "1",
       minWidth: "0",
-      padding: "5px 6px",
+      padding: "7px 8px",
       border: "none",
       cursor: "pointer",
-      fontSize: "11px",
+      fontSize: "12px",
       textAlign: "left",
       background: "transparent",
       color: "#1e293b",
@@ -387,11 +383,7 @@ function updateStaleList() {
       whiteSpace: "nowrap"
     });
     preview.textContent = textPreview;
-    const keyEl = document.createElement("span");
-    Object.assign(keyEl.style, { fontSize: "9px", color: "#9ca3af" });
-    keyEl.textContent = t.roseyKey;
     scrollBtn.appendChild(preview);
-    scrollBtn.appendChild(keyEl);
     scrollBtn.addEventListener("click", () => {
       t.element.scrollIntoView({ behavior: "smooth", block: "center" });
     });
