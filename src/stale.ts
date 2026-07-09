@@ -193,12 +193,61 @@ export function markStaleElement(t: TrackedElement): void {
 	t.element.style.backgroundColor = STALE_AMBER_BG;
 }
 
-function unmarkStaleElement(t: TrackedElement): void {
+/** Shape of a locale entry as returned by file.data.get for a single key. */
+interface LocaleEntryData {
+	original?: string;
+	value?: string;
+	_base_original?: string;
+}
+
+/**
+ * The two stale signals, gated on _base_original presence (its absence opts the
+ * entry out). base: last build's source (_base_original) ≠ original. live: the
+ * page's source text right now ≠ original — fires immediately on an in-session
+ * edit, before a rebuild refreshes _base_original. Normalized compares avoid
+ * whitespace-only false positives. Requires t.hasLocaleEntry to be current.
+ */
+export function computeStale(
+	t: TrackedElement,
+	data: LocaleEntryData | null | undefined,
+): boolean {
+	const staleEnabled =
+		t.hasLocaleEntry && data?._base_original != null && data?.original != null;
+	if (!staleEnabled) return false;
+	const normalizedOriginal = normalizeSource(data?.original ?? "");
+	const baseStale =
+		normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
+	const liveStale = normalizeSource(t.originalContent) !== normalizedOriginal;
+	return baseStale || liveStale;
+}
+
+/** Clear the stale flag and its on-page marking without recounting. */
+export function clearStaleMarking(t: TrackedElement): void {
 	t.stale = false;
 	delete t.element.dataset.rccStale;
 	t.element.style.outline = "";
 	t.element.style.outlineOffset = "";
 	t.element.style.backgroundColor = "";
+}
+
+/**
+ * Re-evaluate one element's stale state from fresh data and update its marking.
+ * Batch callers should recountStale() once after the loop.
+ */
+export function refreshStale(
+	t: TrackedElement,
+	data: LocaleEntryData | null | undefined,
+): void {
+	if (computeStale(t, data)) {
+		t.stale = true;
+		markStaleElement(t);
+	} else {
+		clearStaleMarking(t);
+	}
+}
+
+function unmarkStaleElement(t: TrackedElement): void {
+	clearStaleMarking(t);
 	recountStale();
 }
 

@@ -18,6 +18,9 @@ export const state = {
 
 	activeDataset: null as CCDataset | null,
 	activeDatasetListener: null as (() => void) | null,
+	// Separate "delete" listener: Clear/Discard of pending changes fires delete,
+	// not change, and must revert the page even over a focused editor.
+	activeDatasetDeleteListener: null as (() => void) | null,
 	activeFile: null as CCFile | null,
 
 	// Watches the translation container for [data-rosey] elements CC adds or

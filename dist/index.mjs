@@ -189,6 +189,9 @@ var state = {
   translationContainer: null,
   activeDataset: null,
   activeDatasetListener: null,
+  // Separate "delete" listener: Clear/Discard of pending changes fires delete,
+  // not change, and must revert the page even over a focused editor.
+  activeDatasetDeleteListener: null,
   activeFile: null,
   // Watches the translation container for [data-rosey] elements CC adds or
   // re-keys after the initial switch pass (new array items, late-stamped ns).
@@ -516,12 +519,31 @@ function markStaleElement(t) {
   t.element.style.outlineOffset = "2px";
   t.element.style.backgroundColor = STALE_AMBER_BG;
 }
-function unmarkStaleElement(t) {
+function computeStale(t, data) {
+  const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
+  if (!staleEnabled) return false;
+  const normalizedOriginal = normalizeSource(data?.original ?? "");
+  const baseStale = normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
+  const liveStale = normalizeSource(t.originalContent) !== normalizedOriginal;
+  return baseStale || liveStale;
+}
+function clearStaleMarking(t) {
   t.stale = false;
   delete t.element.dataset.rccStale;
   t.element.style.outline = "";
   t.element.style.outlineOffset = "";
   t.element.style.backgroundColor = "";
+}
+function refreshStale(t, data) {
+  if (computeStale(t, data)) {
+    t.stale = true;
+    markStaleElement(t);
+  } else {
+    clearStaleMarking(t);
+  }
+}
+function unmarkStaleElement(t) {
+  clearStaleMarking(t);
   recountStale();
 }
 function resolveStale(t, file) {
@@ -1110,14 +1132,23 @@ function teardownEditors() {
     state.reconcileObserver = null;
   }
   state.reconcileScheduled = false;
-  if (state.activeDataset && state.activeDatasetListener) {
-    state.activeDataset.removeEventListener(
-      "change",
-      state.activeDatasetListener
-    );
+  if (state.activeDataset) {
+    if (state.activeDatasetListener) {
+      state.activeDataset.removeEventListener(
+        "change",
+        state.activeDatasetListener
+      );
+    }
+    if (state.activeDatasetDeleteListener) {
+      state.activeDataset.removeEventListener(
+        "delete",
+        state.activeDatasetDeleteListener
+      );
+    }
   }
   state.activeDataset = null;
   state.activeDatasetListener = null;
+  state.activeDatasetDeleteListener = null;
   state.activeFile = null;
   for (const t of tracked) t.editor = void 0;
   tracked.length = 0;
@@ -1229,11 +1260,7 @@ async function switchLocaleInner(locale, myGeneration) {
     t.hasLocaleEntry = data != null;
     const value = resolveDisplayValue(data, t);
     resolvedValues[i] = value;
-    const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
-    const normalizedOriginal = normalizeSource(data?.original ?? "");
-    const baseStale = staleEnabled && normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
-    const liveStale = staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
-    t.stale = baseStale || liveStale;
+    t.stale = computeStale(t, data);
     t.baseOriginal = data?._base_original ?? null;
     t.localeOriginal = data?.original ?? null;
     t.element.innerHTML = value;
@@ -1327,8 +1354,7 @@ async function switchLocaleInner(locale, myGeneration) {
   await Promise.resolve();
   setupComplete = true;
   log(`Setup complete for "${locale}" (generation ${myGeneration})`);
-  state.activeDataset = dataset;
-  state.activeDatasetListener = async () => {
+  const resyncEditors = async (opts) => {
     if (myGeneration !== state.switchGeneration) return;
     const freshFile = await resolveFile(dataset);
     if (!freshFile) return;
@@ -1336,7 +1362,7 @@ async function switchLocaleInner(locale, myGeneration) {
     let skipped = 0;
     for (const t of tracked) {
       if (!t.editor) continue;
-      if (t.focused) {
+      if (!opts.force && t.focused) {
         skipped++;
         continue;
       }
@@ -1344,15 +1370,25 @@ async function switchLocaleInner(locale, myGeneration) {
         const data = await freshFile.data.get({ slug: t.roseyKey });
         t.hasLocaleEntry = data != null;
         t.editor.setContent(resolveDisplayValue(data, t));
+        if (opts.force) {
+          t.baseOriginal = data?._base_original ?? null;
+          t.localeOriginal = data?.original ?? null;
+          refreshStale(t, data);
+        }
         updated++;
       } catch {
       }
     }
+    if (opts.force) recountStale();
     log(
-      `Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`
+      `${opts.force ? "Delete" : "Change"} event: updated ${updated} editors` + (skipped ? `, skipped ${skipped} (focused)` : "")
     );
   };
+  state.activeDataset = dataset;
+  state.activeDatasetListener = () => void resyncEditors({ force: false });
+  state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
   dataset.addEventListener("change", state.activeDatasetListener);
+  dataset.addEventListener("delete", state.activeDatasetDeleteListener);
   installDiagnostics(dataset, file);
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
@@ -1416,7 +1452,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:27:35.830Z"})`);
+  console.log(`RCC: v${"0.0.1"} loaded (built ${"2026-07-09T03:39:42.893Z"})`);
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

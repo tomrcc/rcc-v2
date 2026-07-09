@@ -20,9 +20,11 @@ import { discoverLocales, isRtlLocale } from "./locales";
 import { log, warn } from "./logger";
 import { resolveRoseyKey } from "./rosey-key";
 import {
+	computeStale,
 	markStaleElement,
 	normalizeSource,
 	recountStale,
+	refreshStale,
 	resolveStale,
 	updateStaleBadge,
 	updateStaleList,
@@ -172,14 +174,23 @@ function teardownEditors(): void {
 	}
 	state.reconcileScheduled = false;
 
-	if (state.activeDataset && state.activeDatasetListener) {
-		state.activeDataset.removeEventListener(
-			"change",
-			state.activeDatasetListener,
-		);
+	if (state.activeDataset) {
+		if (state.activeDatasetListener) {
+			state.activeDataset.removeEventListener(
+				"change",
+				state.activeDatasetListener,
+			);
+		}
+		if (state.activeDatasetDeleteListener) {
+			state.activeDataset.removeEventListener(
+				"delete",
+				state.activeDatasetDeleteListener,
+			);
+		}
 	}
 	state.activeDataset = null;
 	state.activeDatasetListener = null;
+	state.activeDatasetDeleteListener = null;
 	state.activeFile = null;
 
 	for (const t of tracked) t.editor = undefined;
@@ -346,23 +357,7 @@ async function switchLocaleInner(
 		const value = resolveDisplayValue(data, t);
 		resolvedValues[i] = value;
 
-		// Two stale signals, gated on _base_original presence (its absence opts
-		// the entry out). base: last build's source (_base_original) ≠ original.
-		// live: the page's source text right now ≠ original — fires immediately
-		// on an in-session edit, before a rebuild refreshes _base_original.
-		// Normalized compares avoid whitespace-only false positives.
-		const staleEnabled =
-			t.hasLocaleEntry &&
-			data?._base_original != null &&
-			data?.original != null;
-		const normalizedOriginal = normalizeSource(data?.original ?? "");
-		const baseStale =
-			staleEnabled &&
-			normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
-		const liveStale =
-			staleEnabled && normalizeSource(t.originalContent) !== normalizedOriginal;
-
-		t.stale = baseStale || liveStale;
+		t.stale = computeStale(t, data);
 		t.baseOriginal = data?._base_original ?? null;
 		t.localeOriginal = data?.original ?? null;
 
@@ -501,8 +496,12 @@ async function switchLocaleInner(
 
 	// --- Listen for external data changes -----------------------------------
 
-	state.activeDataset = dataset;
-	state.activeDatasetListener = async () => {
+	// Re-pull every editor's value from the file and apply it. Shared by the
+	// dataset "change" listener (external edits, own-write echo) and the
+	// "delete" listener (Clear/Discard of pending changes). On a delete we force
+	// focused editors too and re-evaluate stale: a discard must win over what's
+	// in the editor, and can roll an entry back to a stale — or absent — state.
+	const resyncEditors = async (opts: { force: boolean }): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
 		const freshFile = await resolveFile(dataset);
 		if (!freshFile) return;
@@ -511,7 +510,7 @@ async function switchLocaleInner(
 		let skipped = 0;
 		for (const t of tracked) {
 			if (!t.editor) continue;
-			if (t.focused) {
+			if (!opts.force && t.focused) {
 				skipped++;
 				continue;
 			}
@@ -519,16 +518,28 @@ async function switchLocaleInner(
 				const data = await freshFile.data.get({ slug: t.roseyKey });
 				t.hasLocaleEntry = data != null;
 				t.editor.setContent(resolveDisplayValue(data, t));
+				if (opts.force) {
+					t.baseOriginal = data?._base_original ?? null;
+					t.localeOriginal = data?.original ?? null;
+					refreshStale(t, data);
+				}
 				updated++;
 			} catch {
 				/* key may not exist in this locale yet */
 			}
 		}
+		if (opts.force) recountStale();
 		log(
-			`Change event: updated ${updated} editors${skipped ? `, skipped ${skipped} (focused)` : ""}`,
+			`${opts.force ? "Delete" : "Change"} event: updated ${updated} editors` +
+				(skipped ? `, skipped ${skipped} (focused)` : ""),
 		);
 	};
+
+	state.activeDataset = dataset;
+	state.activeDatasetListener = () => void resyncEditors({ force: false });
+	state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
 	dataset.addEventListener("change", state.activeDatasetListener);
+	dataset.addEventListener("delete", state.activeDatasetDeleteListener);
 
 	// TEMP: diagnostics for the "clear pending translation" edge case.
 	installDiagnostics(dataset, file);
