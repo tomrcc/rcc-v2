@@ -40,6 +40,11 @@ export function recountStale(): void {
  * than requiring the <p> be an only child) still unwraps items that also hold a
  * nested sublist, e.g. `<li><p>x</p><ul>…</ul></li>`. DOM-based so it survives
  * nesting and attributes; runs client-side only (all callers are injected).
+ *
+ * Must run AFTER inter-tag whitespace is collapsed: Rosey pretty-prints
+ * `<li>\n<p>x</p>\n</li>`, and unwrapping the <p> first would strand those
+ * newlines as text inside the <li> (`<li> x </li>`) where `>\s+<` can no longer
+ * reach them — reintroducing a mismatch against ProseMirror's clean `<li>x</li>`.
  */
 function unwrapLooseListItems(s: string): string {
 	if (!s.includes("<li")) return s;
@@ -70,8 +75,7 @@ function unwrapLooseListItems(s: string): string {
  * Rosey form).
  */
 export function normalizeSource(s: string): string {
-	return unwrapLooseListItems(s)
-		.replace(/>\s+</g, "><")
+	return unwrapLooseListItems(s.replace(/>\s+</g, "><"))
 		.replace(/\s+/g, " ")
 		.trim();
 }

@@ -297,7 +297,7 @@ function unwrapLooseListItems(s) {
   return changed ? tpl.innerHTML : s;
 }
 function normalizeSource(s) {
-  return unwrapLooseListItems(s).replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
+  return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
   return text.length > max ? `${text.slice(0, max)}\u2026` : text;
