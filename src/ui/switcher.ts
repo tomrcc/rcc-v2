@@ -1,5 +1,5 @@
 import { log } from "../logger";
-import { resolveStale, STALE_AMBER } from "../stale";
+import { resolveStale, STALE_AMBER, STALE_AMBER_TEXT } from "../stale";
 import { state, tracked } from "../state";
 
 // ---------------------------------------------------------------------------
@@ -11,7 +11,7 @@ const FAB_STORAGE_KEY = "rcc-fab-position";
 const CC_BLUE = "#034ad8";
 
 const TRANSLATE_ICON = [
-	'<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"',
+	'<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"',
 	` fill="none" stroke="${CC_BLUE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
 	'<path d="M4 5h8"/><path d="M8 5V3"/>',
 	'<path d="M4.5 5c1 4 4 8 7.5 10"/><path d="M12 5c-1 3-3 6-7.5 10"/>',
@@ -34,6 +34,19 @@ export function updateButtonStates(): void {
 			color: isActive ? "#ffffff" : "#1e293b",
 			fontWeight: isActive ? "600" : "400",
 		});
+		// Expose the active locale non-visually (it's otherwise colour-only).
+		if (isActive) btn.setAttribute("aria-current", "true");
+		else btn.removeAttribute("aria-current");
+	}
+
+	// Keep the FAB's accessible name in sync with the active locale (the on-FAB
+	// badge that shows it visually is aria-hidden).
+	const fabEl = document.getElementById("rcc-locale-switcher");
+	if (fabEl) {
+		const loc = state.currentLocale
+			? state.currentLocale.toUpperCase()
+			: "Original";
+		fabEl.setAttribute("aria-label", `Translation locale switcher — ${loc}`);
 	}
 
 	const badge = document.getElementById("rcc-fab-badge");
@@ -60,6 +73,13 @@ export function injectSwitcher(
 
 	const fab = document.createElement("div");
 	fab.id = "rcc-locale-switcher";
+	// Custom control, not a real <button> (it also drags), so wire up the ARIA
+	// and keyboard affordances a button would give for free.
+	fab.setAttribute("role", "button");
+	fab.tabIndex = 0;
+	fab.setAttribute("aria-haspopup", "true");
+	fab.setAttribute("aria-expanded", "false");
+	fab.setAttribute("aria-label", "Translation locale switcher");
 
 	const savedPos = (() => {
 		try {
@@ -101,6 +121,7 @@ export function injectSwitcher(
 	// Badge — shows active locale code on the FAB corner
 	const badge = document.createElement("div");
 	badge.id = "rcc-fab-badge";
+	badge.setAttribute("aria-hidden", "true");
 	Object.assign(badge.style, {
 		position: "absolute",
 		top: "-4px",
@@ -124,11 +145,12 @@ export function injectSwitcher(
 	// Stale badge — shows count of out-of-date translations
 	const staleBadge = document.createElement("div");
 	staleBadge.id = "rcc-stale-badge";
+	staleBadge.setAttribute("aria-hidden", "true");
 	Object.assign(staleBadge.style, {
 		position: "absolute",
 		bottom: "-4px",
 		right: "-4px",
-		background: STALE_AMBER,
+		background: STALE_AMBER_TEXT,
 		color: "#ffffff",
 		fontSize: "9px",
 		fontWeight: "700",
@@ -143,6 +165,25 @@ export function injectSwitcher(
 		pointerEvents: "none",
 	});
 	fab.appendChild(staleBadge);
+
+	// Visually-hidden live region so screen readers hear the stale count change
+	// (and "all caught up") without opening the panel. stale.ts writes to it.
+	const staleStatus = document.createElement("div");
+	staleStatus.id = "rcc-stale-status";
+	staleStatus.setAttribute("role", "status");
+	staleStatus.setAttribute("aria-live", "polite");
+	Object.assign(staleStatus.style, {
+		position: "absolute",
+		width: "1px",
+		height: "1px",
+		padding: "0",
+		margin: "-1px",
+		overflow: "hidden",
+		clip: "rect(0 0 0 0)",
+		whiteSpace: "nowrap",
+		border: "0",
+	});
+	fab.appendChild(staleStatus);
 
 	// --- Popover ----------------------------------------------------------
 
@@ -180,6 +221,7 @@ export function injectSwitcher(
 		locale: string | null,
 	): HTMLButtonElement {
 		const btn = document.createElement("button");
+		btn.type = "button";
 		btn.textContent = label;
 		btn.dataset.locale = locale ?? "";
 		Object.assign(btn.style, {
@@ -223,8 +265,14 @@ export function injectSwitcher(
 		const wrapper = document.createElement("div");
 		wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
 
-		const submenu = document.createElement("div");
+		const submenu = document.createElement("button");
+		submenu.type = "button";
 		submenu.dataset.rccStaleSubmenu = locale;
+		submenu.setAttribute("aria-expanded", "false");
+		submenu.setAttribute(
+			"aria-label",
+			`Out-of-date translations for ${locale.toUpperCase()}`,
+		);
 		Object.assign(submenu.style, {
 			display: "none",
 			alignItems: "center",
@@ -232,6 +280,11 @@ export function injectSwitcher(
 			cursor: "pointer",
 			padding: "4px 12px 2px",
 			userSelect: "none",
+			border: "none",
+			background: "transparent",
+			width: "100%",
+			textAlign: "left",
+			fontFamily: "system-ui, sans-serif",
 		});
 
 		const chevron = document.createElement("span");
@@ -240,19 +293,19 @@ export function injectSwitcher(
 			display: "inline-flex",
 			transition: "transform 0.2s",
 			transform: "rotate(0deg)",
-			color: STALE_AMBER,
+			color: STALE_AMBER_TEXT,
 			fontSize: "10px",
 			lineHeight: "1",
 		});
 		chevron.innerHTML =
-			'<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+			'<svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
 
 		const countLabel = document.createElement("span");
 		countLabel.dataset.rccStaleCount = "";
 		Object.assign(countLabel.style, {
 			fontWeight: "600",
 			fontSize: "10px",
-			color: STALE_AMBER,
+			color: STALE_AMBER_TEXT,
 			letterSpacing: "0.03em",
 		});
 
@@ -291,7 +344,7 @@ export function injectSwitcher(
 	Object.assign(panelHeader.style, {
 		fontWeight: "600",
 		fontSize: "11px",
-		color: STALE_AMBER,
+		color: STALE_AMBER_TEXT,
 		textTransform: "uppercase",
 		letterSpacing: "0.05em",
 		padding: "4px 8px 2px",
@@ -321,7 +374,7 @@ export function injectSwitcher(
 		padding: "6px 10px",
 		border: "none",
 		borderRadius: "5px",
-		background: STALE_AMBER,
+		background: STALE_AMBER_TEXT,
 		color: "#ffffff",
 		fontSize: "11px",
 		fontWeight: "600",
@@ -331,10 +384,10 @@ export function injectSwitcher(
 	});
 	resolveAllBtn.textContent = "Mark all as reviewed";
 	resolveAllBtn.addEventListener("mouseenter", () => {
-		resolveAllBtn.style.background = "#d97706";
+		resolveAllBtn.style.background = "#92400e";
 	});
 	resolveAllBtn.addEventListener("mouseleave", () => {
-		resolveAllBtn.style.background = STALE_AMBER;
+		resolveAllBtn.style.background = STALE_AMBER_TEXT;
 	});
 	resolveAllBtn.addEventListener("click", () => {
 		const stale = tracked.filter((t) => t.stale);
@@ -366,20 +419,26 @@ export function injectSwitcher(
 		stalePanel.style.visibility = "visible";
 	}
 
+	function setStaleToggleState(open: boolean) {
+		const submenu = document.querySelector<HTMLElement>(
+			`[data-rcc-stale-submenu="${state.currentLocale}"]`,
+		);
+		if (submenu) submenu.setAttribute("aria-expanded", String(open));
+		const chevron = submenu?.querySelector<HTMLElement>(
+			"[data-rcc-stale-chevron]",
+		);
+		if (chevron)
+			chevron.style.transform = open ? "rotate(90deg)" : "rotate(0deg)";
+	}
+
 	function openStalePanel() {
 		positionStalePanel();
-		const chevron = document.querySelector<HTMLElement>(
-			`[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`,
-		);
-		if (chevron) chevron.style.transform = "rotate(90deg)";
+		setStaleToggleState(true);
 	}
 
 	function closeStalePanel() {
 		stalePanel.style.display = "none";
-		const chevron = document.querySelector<HTMLElement>(
-			`[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`,
-		);
-		if (chevron) chevron.style.transform = "rotate(0deg)";
+		setStaleToggleState(false);
 	}
 
 	function toggleStalePanel() {
@@ -458,6 +517,14 @@ export function injectSwitcher(
 		}
 	});
 
+	// Keyboard: Enter/Space opens the popover (Space would otherwise scroll).
+	fab.addEventListener("keydown", (e: KeyboardEvent) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			togglePopover();
+		}
+	});
+
 	// Re-clamp on viewport resize
 	window.addEventListener("resize", () => {
 		const r = fab.getBoundingClientRect();
@@ -509,11 +576,15 @@ export function injectSwitcher(
 	function openPopover() {
 		positionPopover();
 		popoverOpen = true;
+		fab.setAttribute("aria-expanded", "true");
+		// Move focus into the menu so keyboard users land on the first locale.
+		popover.querySelector<HTMLButtonElement>("button[data-locale]")?.focus();
 	}
 
 	function closePopover() {
 		popover.style.display = "none";
 		popoverOpen = false;
+		fab.setAttribute("aria-expanded", "false");
 		closeStalePanel();
 	}
 
@@ -535,9 +606,12 @@ export function injectSwitcher(
 		closePopover();
 	});
 
-	// Close on Escape
+	// Close on Escape, returning focus to the FAB that opened it
 	document.addEventListener("keydown", (e: KeyboardEvent) => {
-		if (popoverOpen && e.key === "Escape") closePopover();
+		if (popoverOpen && e.key === "Escape") {
+			closePopover();
+			fab.focus();
+		}
 	});
 
 	// --- Mount ------------------------------------------------------------

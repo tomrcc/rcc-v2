@@ -266,6 +266,7 @@ var state = {
 
 // src/stale.ts
 var STALE_AMBER = "#f59e0b";
+var STALE_AMBER_TEXT = "#b45309";
 var STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
 function updateStaleBadge() {
   const badge = document.getElementById("rcc-stale-badge");
@@ -281,6 +282,16 @@ function recountStale() {
   state.staleCount = tracked.filter((t) => t.stale).length;
   updateStaleBadge();
   updateStaleList();
+  announceStaleStatus();
+}
+function announceStaleStatus() {
+  const region = document.getElementById("rcc-stale-status");
+  if (!region) return;
+  let msg = "";
+  if (state.currentLocale) {
+    msg = state.staleCount > 0 ? outOfDateLabel(state.staleCount) : "All translations up to date";
+  }
+  if (region.textContent !== msg) region.textContent = msg;
 }
 function unwrapLooseListItems(s) {
   if (!s.includes("<li")) return s;
@@ -511,9 +522,9 @@ function updateStaleList() {
       transition: "color 0.15s, background 0.15s",
       flexShrink: "0"
     });
-    resolveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+    resolveBtn.innerHTML = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
     const resolveHi = () => {
-      resolveBtn.style.color = STALE_AMBER;
+      resolveBtn.style.color = STALE_AMBER_TEXT;
       resolveBtn.style.background = "#fde68a";
     };
     const resolveLo = () => {
@@ -552,7 +563,7 @@ function updateStaleList() {
       flexShrink: "0",
       transition: "transform 0.15s"
     });
-    expandBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2 L8 6 L4 10"/></svg>';
+    expandBtn.innerHTML = '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2 L8 6 L4 10"/></svg>';
     let diffBuilt = false;
     expandBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -687,7 +698,7 @@ var FAB_SIZE = 48;
 var FAB_STORAGE_KEY = "rcc-fab-position";
 var CC_BLUE = "#034ad8";
 var TRANSLATE_ICON = [
-  '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"',
+  '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"',
   ` fill="none" stroke="${CC_BLUE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`,
   '<path d="M4 5h8"/><path d="M8 5V3"/>',
   '<path d="M4.5 5c1 4 4 8 7.5 10"/><path d="M12 5c-1 3-3 6-7.5 10"/>',
@@ -708,6 +719,13 @@ function updateButtonStates() {
       color: isActive ? "#ffffff" : "#1e293b",
       fontWeight: isActive ? "600" : "400"
     });
+    if (isActive) btn.setAttribute("aria-current", "true");
+    else btn.removeAttribute("aria-current");
+  }
+  const fabEl = document.getElementById("rcc-locale-switcher");
+  if (fabEl) {
+    const loc = state.currentLocale ? state.currentLocale.toUpperCase() : "Original";
+    fabEl.setAttribute("aria-label", `Translation locale switcher \u2014 ${loc}`);
   }
   const badge = document.getElementById("rcc-fab-badge");
   if (badge) {
@@ -722,6 +740,11 @@ function updateButtonStates() {
 function injectSwitcher(locales, onSelect) {
   const fab = document.createElement("div");
   fab.id = "rcc-locale-switcher";
+  fab.setAttribute("role", "button");
+  fab.tabIndex = 0;
+  fab.setAttribute("aria-haspopup", "true");
+  fab.setAttribute("aria-expanded", "false");
+  fab.setAttribute("aria-label", "Translation locale switcher");
   const savedPos = (() => {
     try {
       const raw = localStorage.getItem(FAB_STORAGE_KEY);
@@ -757,6 +780,7 @@ function injectSwitcher(locales, onSelect) {
   fab.innerHTML = TRANSLATE_ICON;
   const badge = document.createElement("div");
   badge.id = "rcc-fab-badge";
+  badge.setAttribute("aria-hidden", "true");
   Object.assign(badge.style, {
     position: "absolute",
     top: "-4px",
@@ -778,11 +802,12 @@ function injectSwitcher(locales, onSelect) {
   fab.appendChild(badge);
   const staleBadge = document.createElement("div");
   staleBadge.id = "rcc-stale-badge";
+  staleBadge.setAttribute("aria-hidden", "true");
   Object.assign(staleBadge.style, {
     position: "absolute",
     bottom: "-4px",
     right: "-4px",
-    background: STALE_AMBER,
+    background: STALE_AMBER_TEXT,
     color: "#ffffff",
     fontSize: "9px",
     fontWeight: "700",
@@ -797,6 +822,22 @@ function injectSwitcher(locales, onSelect) {
     pointerEvents: "none"
   });
   fab.appendChild(staleBadge);
+  const staleStatus = document.createElement("div");
+  staleStatus.id = "rcc-stale-status";
+  staleStatus.setAttribute("role", "status");
+  staleStatus.setAttribute("aria-live", "polite");
+  Object.assign(staleStatus.style, {
+    position: "absolute",
+    width: "1px",
+    height: "1px",
+    padding: "0",
+    margin: "-1px",
+    overflow: "hidden",
+    clip: "rect(0 0 0 0)",
+    whiteSpace: "nowrap",
+    border: "0"
+  });
+  fab.appendChild(staleStatus);
   const popover = document.createElement("div");
   popover.id = "rcc-locale-popover";
   Object.assign(popover.style, {
@@ -826,6 +867,7 @@ function injectSwitcher(locales, onSelect) {
   popover.appendChild(header);
   function makeLocaleButton(label, locale) {
     const btn = document.createElement("button");
+    btn.type = "button";
     btn.textContent = label;
     btn.dataset.locale = locale ?? "";
     Object.assign(btn.style, {
@@ -867,15 +909,26 @@ function injectSwitcher(locales, onSelect) {
   for (const locale of locales) {
     const wrapper = document.createElement("div");
     wrapper.appendChild(makeLocaleButton(locale.toUpperCase(), locale));
-    const submenu = document.createElement("div");
+    const submenu = document.createElement("button");
+    submenu.type = "button";
     submenu.dataset.rccStaleSubmenu = locale;
+    submenu.setAttribute("aria-expanded", "false");
+    submenu.setAttribute(
+      "aria-label",
+      `Out-of-date translations for ${locale.toUpperCase()}`
+    );
     Object.assign(submenu.style, {
       display: "none",
       alignItems: "center",
       gap: "4px",
       cursor: "pointer",
       padding: "4px 12px 2px",
-      userSelect: "none"
+      userSelect: "none",
+      border: "none",
+      background: "transparent",
+      width: "100%",
+      textAlign: "left",
+      fontFamily: "system-ui, sans-serif"
     });
     const chevron = document.createElement("span");
     chevron.dataset.rccStaleChevron = "";
@@ -883,17 +936,17 @@ function injectSwitcher(locales, onSelect) {
       display: "inline-flex",
       transition: "transform 0.2s",
       transform: "rotate(0deg)",
-      color: STALE_AMBER,
+      color: STALE_AMBER_TEXT,
       fontSize: "10px",
       lineHeight: "1"
     });
-    chevron.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
+    chevron.innerHTML = '<svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 1 L5.5 4 L2.5 7"/></svg>';
     const countLabel = document.createElement("span");
     countLabel.dataset.rccStaleCount = "";
     Object.assign(countLabel.style, {
       fontWeight: "600",
       fontSize: "10px",
-      color: STALE_AMBER,
+      color: STALE_AMBER_TEXT,
       letterSpacing: "0.03em"
     });
     submenu.appendChild(chevron);
@@ -926,7 +979,7 @@ function injectSwitcher(locales, onSelect) {
   Object.assign(panelHeader.style, {
     fontWeight: "600",
     fontSize: "11px",
-    color: STALE_AMBER,
+    color: STALE_AMBER_TEXT,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
     padding: "4px 8px 2px"
@@ -954,7 +1007,7 @@ function injectSwitcher(locales, onSelect) {
     padding: "6px 10px",
     border: "none",
     borderRadius: "5px",
-    background: STALE_AMBER,
+    background: STALE_AMBER_TEXT,
     color: "#ffffff",
     fontSize: "11px",
     fontWeight: "600",
@@ -964,10 +1017,10 @@ function injectSwitcher(locales, onSelect) {
   });
   resolveAllBtn.textContent = "Mark all as reviewed";
   resolveAllBtn.addEventListener("mouseenter", () => {
-    resolveAllBtn.style.background = "#d97706";
+    resolveAllBtn.style.background = "#92400e";
   });
   resolveAllBtn.addEventListener("mouseleave", () => {
-    resolveAllBtn.style.background = STALE_AMBER;
+    resolveAllBtn.style.background = STALE_AMBER_TEXT;
   });
   resolveAllBtn.addEventListener("click", () => {
     const stale = tracked.filter((t) => t.stale);
@@ -994,19 +1047,24 @@ function injectSwitcher(locales, onSelect) {
     stalePanel.style.left = `${left}px`;
     stalePanel.style.visibility = "visible";
   }
+  function setStaleToggleState(open) {
+    const submenu = document.querySelector(
+      `[data-rcc-stale-submenu="${state.currentLocale}"]`
+    );
+    if (submenu) submenu.setAttribute("aria-expanded", String(open));
+    const chevron = submenu?.querySelector(
+      "[data-rcc-stale-chevron]"
+    );
+    if (chevron)
+      chevron.style.transform = open ? "rotate(90deg)" : "rotate(0deg)";
+  }
   function openStalePanel() {
     positionStalePanel();
-    const chevron = document.querySelector(
-      `[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`
-    );
-    if (chevron) chevron.style.transform = "rotate(90deg)";
+    setStaleToggleState(true);
   }
   function closeStalePanel() {
     stalePanel.style.display = "none";
-    const chevron = document.querySelector(
-      `[data-rcc-stale-submenu="${state.currentLocale}"] [data-rcc-stale-chevron]`
-    );
-    if (chevron) chevron.style.transform = "rotate(0deg)";
+    setStaleToggleState(false);
   }
   function toggleStalePanel() {
     if (stalePanel.style.display !== "none") closeStalePanel();
@@ -1070,6 +1128,12 @@ function injectSwitcher(locales, onSelect) {
       togglePopover();
     }
   });
+  fab.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      togglePopover();
+    }
+  });
   window.addEventListener("resize", () => {
     const r = fab.getBoundingClientRect();
     const { x, y } = clampToViewport(r.left, r.top);
@@ -1105,10 +1169,13 @@ function injectSwitcher(locales, onSelect) {
   function openPopover() {
     positionPopover();
     popoverOpen = true;
+    fab.setAttribute("aria-expanded", "true");
+    popover.querySelector("button[data-locale]")?.focus();
   }
   function closePopover() {
     popover.style.display = "none";
     popoverOpen = false;
+    fab.setAttribute("aria-expanded", "false");
     closeStalePanel();
   }
   function togglePopover() {
@@ -1123,7 +1190,10 @@ function injectSwitcher(locales, onSelect) {
     closePopover();
   });
   document.addEventListener("keydown", (e) => {
-    if (popoverOpen && e.key === "Escape") closePopover();
+    if (popoverOpen && e.key === "Escape") {
+      closePopover();
+      fab.focus();
+    }
   });
   document.body.appendChild(fab);
   document.body.appendChild(popover);

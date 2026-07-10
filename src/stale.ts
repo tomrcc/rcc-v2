@@ -6,7 +6,11 @@ import type { CCFile, LocaleEntryData, TrackedElement } from "./types";
 // Stale translation indicators
 // ---------------------------------------------------------------------------
 
+// Bright amber for graphical accents (on-page outline, panel border, badge
+// fill). Too light for text — pairs with STALE_AMBER_TEXT for anything an
+// editor has to read, which meets WCAG AA contrast on white.
 export const STALE_AMBER = "#f59e0b";
+export const STALE_AMBER_TEXT = "#b45309";
 const STALE_AMBER_BG = "rgba(245, 158, 11, 0.08)";
 
 export function updateStaleBadge(): void {
@@ -24,6 +28,23 @@ export function recountStale(): void {
 	state.staleCount = tracked.filter((t) => t.stale).length;
 	updateStaleBadge();
 	updateStaleList();
+	announceStaleStatus();
+}
+
+// Announce the stale count to screen readers via the live region (built in the
+// switcher). The textContent guard means it only speaks when the status
+// actually changes, not on every recount.
+function announceStaleStatus(): void {
+	const region = document.getElementById("rcc-stale-status");
+	if (!region) return;
+	let msg = "";
+	if (state.currentLocale) {
+		msg =
+			state.staleCount > 0
+				? outOfDateLabel(state.staleCount)
+				: "All translations up to date";
+	}
+	if (region.textContent !== msg) region.textContent = msg;
 }
 
 // Unwrap a loose list item (`<li><p>x</p></li>`) to its tight form (`<li>x</li>`)
@@ -320,9 +341,9 @@ export function updateStaleList(): void {
 			flexShrink: "0",
 		});
 		resolveBtn.innerHTML =
-			'<svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
+			'<svg aria-hidden="true" width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.5 L4.5 9 L10 3"/></svg>';
 		const resolveHi = () => {
-			resolveBtn.style.color = STALE_AMBER;
+			resolveBtn.style.color = STALE_AMBER_TEXT;
 			resolveBtn.style.background = "#fde68a";
 		};
 		const resolveLo = () => {
@@ -365,7 +386,7 @@ export function updateStaleList(): void {
 			transition: "transform 0.15s",
 		});
 		expandBtn.innerHTML =
-			'<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2 L8 6 L4 10"/></svg>';
+			'<svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2 L8 6 L4 10"/></svg>';
 
 		let diffBuilt = false;
 		expandBtn.addEventListener("click", (e) => {
