@@ -492,8 +492,8 @@ function updateStaleList() {
     preview.textContent = textPreview;
     scrollBtn.appendChild(preview);
     scrollBtn.addEventListener("click", () => {
+      t.element.scrollIntoView({ block: "center" });
       t.element.focus({ preventScroll: true });
-      t.element.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     const resolveBtn = document.createElement("button");
     resolveBtn.type = "button";

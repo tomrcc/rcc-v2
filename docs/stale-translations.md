@@ -54,7 +54,12 @@ When viewing a locale in the Visual Editor, stale translations show:
 - **Amber dashed border** around the translatable element
 - **Warning badge** in the corner of the element with a tooltip showing the old and new source text
 - **Amber count badge** on the locale FAB showing the total number of stale translations for the current locale
-- **Stale items panel** — each locale button in the popover has a toggle that opens a list of all stale translations, with per-item "Mark as reviewed" buttons and a "Resolve all" button
+- **Stale items panel** — each locale button in the popover has a toggle that opens a list of all stale translations. Each item lets you:
+  - **Click the text** to scroll to that element on the page and drop the cursor into its editor.
+  - **Expand the chevron** to see *what changed* in the source — an inline word-level diff of the old vs current English, with added words highlighted and removed words struck through.
+  - **Click the checkmark** to mark that item as reviewed.
+
+  A **"Mark all as reviewed"** button at the bottom clears every item at once.
 
 ## Resolving stale translations
 
@@ -66,11 +71,11 @@ Making any edit to the translation automatically updates `original` to match `_b
 
 ### 2. Mark as reviewed
 
-Click the checkmark button next to a specific item in the stale panel. This updates `original` to match `_base_original` without changing the translation text — useful when the source change doesn't affect the translation (e.g. a typo fix in the English text that doesn't change the meaning).
+Click the checkmark button next to a specific item in the stale panel. This updates `original` to match `_base_original` without changing the translation text — useful when the source change doesn't affect the translation (e.g. a typo fix in the English text that doesn't change the meaning). Expand the item's chevron first to see exactly what changed before deciding.
 
-### 3. Resolve all
+### 3. Mark all as reviewed
 
-Click "Resolve all" in the stale panel to mark every stale translation in the current locale as reviewed at once.
+Click "Mark all as reviewed" in the stale panel to clear every stale translation in the current locale at once.
 
 After any of these actions, the stale indicator is removed and won't appear again until the source text changes once more.
 

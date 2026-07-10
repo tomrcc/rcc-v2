@@ -293,10 +293,12 @@ export function updateStaleList(): void {
 
 		scrollBtn.appendChild(preview);
 		scrollBtn.addEventListener("click", () => {
-			// Focus first (preventScroll) then scroll: placing the caret mid-scroll
-			// cancels a smooth scroll partway, so focusing up front lets it finish.
+			// Center first, THEN focus. CC's editor scrolls the caret into view on
+			// focus (async), which otherwise overrides our centering and leaves the
+			// element only just in view until a second click. Centering first means
+			// the caret is already visible, so that focus-scroll is a no-op.
+			t.element.scrollIntoView({ block: "center" });
 			t.element.focus({ preventScroll: true });
-			t.element.scrollIntoView({ behavior: "smooth", block: "center" });
 		});
 
 		const resolveBtn = document.createElement("button");
