@@ -304,6 +304,71 @@ function truncateText(text, max) {
 function outOfDateLabel(n) {
   return `${n} translation${n === 1 ? "" : "s"} out of date`;
 }
+function stripToText(html) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return (tmp.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+function diffWords(oldText, newText) {
+  const a = oldText ? oldText.split(" ") : [];
+  const b = newText ? newText.split(" ") : [];
+  const n = a.length;
+  const m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i2 = n - 1; i2 >= 0; i2--) {
+    for (let j2 = m - 1; j2 >= 0; j2--) {
+      dp[i2][j2] = a[i2] === b[j2] ? dp[i2 + 1][j2 + 1] + 1 : Math.max(dp[i2 + 1][j2], dp[i2][j2 + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      ops.push({ type: "equal", word: a[i] });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.push({ type: "removed", word: a[i++] });
+    } else {
+      ops.push({ type: "added", word: b[j++] });
+    }
+  }
+  while (i < n) ops.push({ type: "removed", word: a[i++] });
+  while (j < m) ops.push({ type: "added", word: b[j++] });
+  return ops;
+}
+function renderInlineDiff(container, oldText, newText) {
+  const runs = [];
+  for (const op of diffWords(oldText, newText)) {
+    const last = runs[runs.length - 1];
+    if (last && last.type === op.type) last.words.push(op.word);
+    else runs.push({ type: op.type, words: [op.word] });
+  }
+  runs.forEach((run, idx) => {
+    if (idx > 0) container.appendChild(document.createTextNode(" "));
+    const span = document.createElement("span");
+    span.textContent = run.words.join(" ");
+    if (run.type === "added") {
+      Object.assign(span.style, {
+        color: "#15803d",
+        background: "#dcfce7",
+        borderRadius: "2px"
+      });
+    } else if (run.type === "removed") {
+      Object.assign(span.style, {
+        color: "#9ca3af",
+        textDecoration: "line-through"
+      });
+    }
+    container.appendChild(span);
+  });
+}
+function currentSourceHtml(t) {
+  const old = normalizeSource(t.localeOriginal ?? "");
+  if (normalizeSource(t.originalContent) !== old) return t.originalContent;
+  return t.baseOriginal ?? t.originalContent;
+}
 var caughtUpTimer = null;
 function showCaughtUp(panel) {
   const count = panel.querySelector("[data-rcc-panel-count]");
@@ -382,6 +447,12 @@ function updateStaleList() {
       t.element.textContent?.trim() || t.roseyKey,
       48
     );
+    const itemWrap = document.createElement("div");
+    Object.assign(itemWrap.style, {
+      display: "flex",
+      flexDirection: "column",
+      borderRadius: "4px"
+    });
     const row = document.createElement("div");
     Object.assign(row.style, {
       display: "flex",
@@ -459,9 +530,63 @@ function updateStaleList() {
       e.stopPropagation();
       if (state.activeFile) resolveStale(t, state.activeFile);
     });
+    const diff = document.createElement("div");
+    Object.assign(diff.style, {
+      display: "none",
+      padding: "0 8px 8px",
+      fontSize: "11px",
+      lineHeight: "1.5",
+      wordBreak: "break-word"
+    });
+    const expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.setAttribute("aria-label", "Show what changed");
+    expandBtn.setAttribute("aria-expanded", "false");
+    Object.assign(expandBtn.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0 4px",
+      border: "none",
+      background: "transparent",
+      color: "#94a3b8",
+      cursor: "pointer",
+      flexShrink: "0",
+      transition: "transform 0.15s"
+    });
+    expandBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2 L8 6 L4 10"/></svg>';
+    let diffBuilt = false;
+    expandBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = diff.style.display === "none";
+      diff.style.display = open ? "block" : "none";
+      expandBtn.style.transform = open ? "rotate(90deg)" : "rotate(0deg)";
+      expandBtn.setAttribute("aria-expanded", String(open));
+      if (open && !diffBuilt) {
+        diffBuilt = true;
+        const label = document.createElement("div");
+        label.textContent = "Source change";
+        Object.assign(label.style, {
+          fontSize: "9px",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: "#9ca3af",
+          marginBottom: "3px"
+        });
+        diff.appendChild(label);
+        renderInlineDiff(
+          diff,
+          stripToText(t.localeOriginal ?? ""),
+          stripToText(currentSourceHtml(t))
+        );
+      }
+    });
     row.appendChild(scrollBtn);
+    row.appendChild(expandBtn);
     row.appendChild(resolveBtn);
-    list.appendChild(row);
+    itemWrap.appendChild(row);
+    itemWrap.appendChild(diff);
+    list.appendChild(itemWrap);
   }
   const resolveAllBtn = panel.querySelector(
     "[data-rcc-resolve-all]"
