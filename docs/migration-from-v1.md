@@ -231,7 +231,7 @@ npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --keep-unused --source rosey --dest dist
 ```
 
-4. Run your remap script — for each new key with an empty `value`, find an old key with the same `original` text and copy the `value` across
+4. Run a remap script you write — for each new key with an empty `value`, find an old key with the same `original` text and copy the `value` across, e.g.
 
 ```bash
 node scripts/remap-locale-keys.mjs
@@ -243,9 +243,9 @@ node scripts/remap-locale-keys.mjs
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 ```
 
-Old keys can be identified because they won't have `_base_original` set (only keys present in `base.json` receive this field).
+Old keys can be identified because they won't have `_base_original` set (only keys present in `base.json` receive this field) — that's the signal your remap script uses to tell new keys from stale ones.
 
-A sample migration script is included in the [rosey-astro-starter migration](https://github.com/CloudCannon/rosey-astro-starter) as `scripts/remap-locale-keys.mjs`.
+A ready-to-adapt sample lives in this repo at [`scripts/remap-locale-keys.mjs`](../scripts/remap-locale-keys.mjs). It matches new keys to old translations by source text; copy it into your site and tweak the matching rule if your migration is fuzzier. Pass `--dry-run` to preview before writing.
 
 ### 9. Verify
 

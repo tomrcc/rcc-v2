@@ -139,6 +139,10 @@ If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, o
 - **[Migrating from an Existing i18n System](docs/migrating-from-i18n.md)** — Migration guide for sites using Astro i18n, astro-i18next, or other translation systems
 - **[Migrating from v1](docs/migration-from-v1.md)** — Step-by-step guide for upgrading from RCC v1
 
+## Feedback
+
+Found a bug, hit a rough edge, or have a feature request? Please [open an issue](https://github.com/tomrcc/rcc-v2/issues). Where relevant, include your `rosey.{yml,yaml,json}` config, the CloudCannon build log, and steps to reproduce.
+
 ## Development
 
 ```bash
