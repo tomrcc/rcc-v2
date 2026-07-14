@@ -764,7 +764,9 @@ function injectSwitcher(locales, onSelect) {
     alignItems: "center",
     justifyContent: "center",
     boxShadow: "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)",
-    cursor: "grab",
+    // Primary action is click-to-open, so read as a button. Switches to
+    // "grabbing" only once a drag actually starts (see pointermove).
+    cursor: "pointer",
     userSelect: "none",
     touchAction: "none",
     transition: "box-shadow 0.2s",
@@ -1098,7 +1100,6 @@ function injectSwitcher(locales, onSelect) {
     fabStartX = r.left;
     fabStartY = r.top;
     fab.setPointerCapture(e.pointerId);
-    fab.style.cursor = "grabbing";
     fab.style.boxShadow = "0 4px 20px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.12)";
   });
   fab.addEventListener("pointermove", (e) => {
@@ -1107,6 +1108,7 @@ function injectSwitcher(locales, onSelect) {
     const dy = e.clientY - dragStartY;
     if (!hasDragged && Math.sqrt(dx * dx + dy * dy) < 5) return;
     hasDragged = true;
+    fab.style.cursor = "grabbing";
     const { x, y } = clampToViewport(fabStartX + dx, fabStartY + dy);
     fab.style.bottom = "auto";
     fab.style.right = "auto";
@@ -1120,7 +1122,7 @@ function injectSwitcher(locales, onSelect) {
   fab.addEventListener("pointerup", () => {
     if (!isDragging) return;
     isDragging = false;
-    fab.style.cursor = "grab";
+    fab.style.cursor = "pointer";
     fab.style.boxShadow = "0 2px 12px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1)";
     if (hasDragged) {
       saveFabPosition();
