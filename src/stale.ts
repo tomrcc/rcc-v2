@@ -68,13 +68,16 @@ function unwrapLooseListItems(s: string): string {
 // so insignificant differences don't read as stale. Order matters: collapse
 // inter-tag whitespace first, then unwrap loose lists. See docs/stale-translations.md.
 //
-// <br> is canonicalized because SSGs that emit XHTML-style void tags put `<br/>`
-// in base.json, while the DOM (and thus the live-source compare) always
-// serializes `<br>` — left alone, that mismatch is a false stale that can never
-// be cleared. The [^>]* also folds ProseMirror's `<br class="…trailingBreak">`.
+// <br> is folded to a SPACE (then whitespace collapses) so every way a line break
+// serializes compares equal: Rosey's rendered `<br>`/`<br/>` in base.json, a
+// plain-text editor emitting the break as a space, and a rich editor's `<br />`.
+// Left as a tag it's a permanent false stale that flip-flops each build (base
+// has `<br>`, the live editor a space). Trade-off: a break-only source change no
+// longer flags — acceptable, since word changes still do (and matter more). The
+// [^>]* also folds ProseMirror's `<br class="…trailingBreak">`.
 export function normalizeSource(s: string): string {
 	return unwrapLooseListItems(s.replace(/>\s+</g, "><"))
-		.replace(/<br\b[^>]*>/gi, "<br>")
+		.replace(/<br\b[^>]*>/gi, " ")
 		.replace(/\s+/g, " ")
 		.trim();
 }
@@ -91,7 +94,9 @@ function outOfDateLabel(n: number): string {
 // words an editor sees, not markup.
 function stripToText(html: string): string {
 	const tmp = document.createElement("div");
-	tmp.innerHTML = html;
+	// Fold <br> to a space first: textContent would otherwise drop it entirely,
+	// so a rendered line break wouldn't match the space a plain editor emits.
+	tmp.innerHTML = html.replace(/<br\b[^>]*>/gi, " ");
 	return (tmp.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 

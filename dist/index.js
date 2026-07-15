@@ -118,7 +118,7 @@ var CC_CUSTOM_ELEMENTS = [
 ];
 var BLOCK_LEVEL_SELECTOR = "address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 function isBlockType(dataType) {
-  return dataType === "block" || dataType === "text";
+  return dataType === "block";
 }
 function inferElementType(el) {
   return el.querySelector(BLOCK_LEVEL_SELECTOR) !== null ? "block" : "span";
@@ -307,7 +307,7 @@ function unwrapLooseListItems(s) {
   return tpl.innerHTML;
 }
 function normalizeSource(s) {
-  return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/<br\b[^>]*>/gi, "<br>").replace(/\s+/g, " ").trim();
+  return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/<br\b[^>]*>/gi, " ").replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
   return text.length > max ? `${text.slice(0, max)}\u2026` : text;
@@ -317,7 +317,7 @@ function outOfDateLabel(n) {
 }
 function stripToText(html) {
   const tmp = document.createElement("div");
-  tmp.innerHTML = html;
+  tmp.innerHTML = html.replace(/<br\b[^>]*>/gi, " ");
   return (tmp.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 function diffWords(oldText, newText) {

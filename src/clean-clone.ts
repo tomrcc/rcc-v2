@@ -11,9 +11,17 @@ const CC_CUSTOM_ELEMENTS = [
 const BLOCK_LEVEL_SELECTOR =
 	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 
-/** Rosey/CC `data-type` hints that force a block (vs span) editor. */
+/**
+ * Only `data-type="block"` forces a block editor. `data-type="text"` is INLINE
+ * rich text (headings, list items, single-line fields — all rendered via
+ * md.renderInline). Treating "text" as block made RCC mount a block ProseMirror
+ * editor on inline content, wrapping each run in
+ * `<p class="prosemirror-invalid-inline-el-wrapper">` and turning a `<br>` line
+ * break into an empty paragraph — visible as broken heading spacing in translated
+ * views (native CC edits these inline, so the Original view looked fine).
+ */
 function isBlockType(dataType: string | null | undefined): boolean {
-	return dataType === "block" || dataType === "text";
+	return dataType === "block";
 }
 
 function inferElementType(el: HTMLElement): "span" | "block" {
