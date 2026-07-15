@@ -67,4 +67,5 @@ A `data-rosey` element added to the source but not yet present in the locale fil
 ### Inline editors don't match expected toolbar options
 
 - The connector pre-scans `_inputs` config from the original container at init time. If your `_inputs` rules don't apply to elements inside the snapshot boundary, the connector won't pick them up.
-- Remember that `type` is always forced to `"html"` — only toolbar options (bold, italic, link, etc.) are inherited from your config.
+- Remember that `type` is always forced to `"html"` — only toolbar options (bold, italic, link, styles, snippets, etc.) are inherited from your config. Because they ride on `options`, forcing the `type` doesn't drop any controls.
+- The connector passes the original element's raw `data-type` as the editor's `elementType`, mirroring CloudCannon's native editor. This matters for the toolbar: an inline `styles` dropdown (accented-text styles) only renders on a `text`/`block` editor, not a bare `span`. If a heading shows its styles menu in the Original view but an empty toolbar in a locale view, check the element carries `data-type` (Astro helpers like `Heading.astro` emit `data-type="text"`); an element with no `data-type` falls back to inferred span/block, which can differ from what CC chose.

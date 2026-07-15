@@ -126,6 +126,9 @@ function inferElementType(el) {
 function resolveElementType(el) {
   return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
 }
+function resolveEditorElementType(el) {
+  return el.dataset.type ?? resolveElementType(el);
+}
 function cleanClone(root) {
   stripCCAttributes(root);
   root.querySelectorAll("*").forEach((el) => {
@@ -1214,7 +1217,7 @@ function newTrackedEntry(element, roseyKey) {
     element,
     roseyKey,
     originalContent: element.innerHTML,
-    inferredType: resolveElementType(element),
+    elementType: resolveEditorElementType(element),
     focused: false,
     stale: false,
     baseOriginal: null,
@@ -1467,7 +1470,7 @@ async function switchLocaleInner(locale, myGeneration) {
           }
         },
         {
-          elementType: t.inferredType,
+          elementType: t.elementType,
           ...isSource && { editableType: "content" },
           ...rccInputConfig != null && { inputConfig: rccInputConfig }
         }

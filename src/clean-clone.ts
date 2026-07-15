@@ -11,15 +11,8 @@ const CC_CUSTOM_ELEMENTS = [
 const BLOCK_LEVEL_SELECTOR =
 	"address, article, aside, blockquote, details, dialog, dd, div, dl, dt, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, li, main, nav, ol, p, pre, section, table, ul";
 
-/**
- * Only `data-type="block"` forces a block editor. `data-type="text"` is INLINE
- * rich text (headings, list items, single-line fields — all rendered via
- * md.renderInline). Treating "text" as block made RCC mount a block ProseMirror
- * editor on inline content, wrapping each run in
- * `<p class="prosemirror-invalid-inline-el-wrapper">` and turning a `<br>` line
- * break into an empty paragraph — visible as broken heading spacing in translated
- * views (native CC edits these inline, so the Original view looked fine).
- */
+// Only "block" is block-level. "text" is inline rich text; treating it as block
+// wraps inline runs in stray <p> and breaks heading spacing.
 function isBlockType(dataType: string | null | undefined): boolean {
 	return dataType === "block";
 }
@@ -30,10 +23,18 @@ function inferElementType(el: HTMLElement): "span" | "block" {
 
 /**
  * Block vs span for an element: an explicit `data-type` hint wins, otherwise
- * infer from whether it contains block-level children.
+ * infer from whether it contains block-level children. Used to pick a valid
+ * wrapper tag for the clone (div vs span).
  */
 export function resolveElementType(el: HTMLElement): "span" | "block" {
 	return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
+}
+
+// elementType for createTextEditableRegion. Pass the raw data-type like native
+// CC does — it drives which toolbar controls mount (a "span" editor has none).
+// Infer span/block only when there's no data-type to mirror.
+export function resolveEditorElementType(el: HTMLElement): string {
+	return el.dataset.type ?? resolveElementType(el);
 }
 
 /**

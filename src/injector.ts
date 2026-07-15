@@ -14,7 +14,7 @@ import {
 	resumeBookshop,
 	stripCmsBindForRerender,
 } from "./bookshop";
-import { cleanClone, resolveElementType } from "./clean-clone";
+import { cleanClone, resolveEditorElementType } from "./clean-clone";
 import { discoverLocales, isRtlLocale } from "./locales";
 import { log, warn } from "./logger";
 import { resolveRoseyKey } from "./rosey-key";
@@ -66,7 +66,7 @@ function newTrackedEntry(
 		element,
 		roseyKey,
 		originalContent: element.innerHTML,
-		inferredType: resolveElementType(element),
+		elementType: resolveEditorElementType(element),
 		focused: false,
 		stale: false,
 		baseOriginal: null,
@@ -443,7 +443,7 @@ async function switchLocaleInner(
 					}
 				},
 				{
-					elementType: t.inferredType,
+					elementType: t.elementType,
 					...(isSource && { editableType: "content" }),
 					...(rccInputConfig != null && { inputConfig: rccInputConfig }),
 				},
