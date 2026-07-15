@@ -89,12 +89,17 @@ function trackElements(scope: Element): void {
 /**
  * Pick the text to display in an editor: the saved translation, else the
  * source recorded in the locale file, else the source text on the page.
+ *
+ * Trimmed so legacy entries whose value/original still carry base.json's
+ * leading/trailing whitespace (written before write-locales normalized) don't
+ * render with a stray gap in the editor. ProseMirror re-saves it clean on the
+ * next edit; the trim never touches stale detection, which reads the raw fields.
  */
 function resolveDisplayValue(
 	data: LocaleEntryData | null | undefined,
 	t: TrackedElement,
 ): string {
-	return data?.value ?? data?.original ?? t.originalContent;
+	return (data?.value ?? data?.original ?? t.originalContent).trim();
 }
 
 // Empty/whitespace-only source has nothing to translate: no editor, no locale
@@ -623,6 +628,9 @@ async function init(): Promise<void> {
 	// Always-on (not verbose-gated) so you can confirm the connector loaded and
 	// which version CC served.
 	console.log(`RCC: v${__RCC_VERSION__} loaded`);
+	// TEMP prototype marker — remove before real commit. Confirms the
+	// text-based-liveStale build is what's actually running in the editor.
+	console.log("RCC[proto]: liveStale=visible-text");
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??

@@ -307,7 +307,7 @@ function unwrapLooseListItems(s) {
   return tpl.innerHTML;
 }
 function normalizeSource(s) {
-  return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/\s+/g, " ").trim();
+  return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/<br\b[^>]*>/gi, "<br>").replace(/\s+/g, " ").trim();
 }
 function truncateText(text, max) {
   return text.length > max ? `${text.slice(0, max)}\u2026` : text;
@@ -376,8 +376,8 @@ function renderInlineDiff(container, oldText, newText) {
   });
 }
 function currentSourceHtml(t) {
-  const old = normalizeSource(t.localeOriginal ?? "");
-  if (normalizeSource(t.originalContent) !== old) return t.originalContent;
+  if (stripToText(t.originalContent) !== stripToText(t.localeOriginal ?? ""))
+    return t.originalContent;
   return t.baseOriginal ?? t.originalContent;
 }
 var caughtUpTimer = null;
@@ -614,9 +614,9 @@ function markStaleElement(t) {
 function computeStale(t, data) {
   const staleEnabled = t.hasLocaleEntry && data?._base_original != null && data?.original != null;
   if (!staleEnabled) return false;
-  const normalizedOriginal = normalizeSource(data?.original ?? "");
-  const baseStale = normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
-  const liveStale = normalizeSource(t.originalContent) !== normalizedOriginal;
+  const original = data?.original ?? "";
+  const baseStale = normalizeSource(data?._base_original ?? "") !== normalizeSource(original);
+  const liveStale = stripToText(t.originalContent) !== stripToText(original);
   return baseStale || liveStale;
 }
 function clearStaleMarking(t) {
@@ -1233,7 +1233,7 @@ function trackElements(scope) {
   log(`Tracked ${tracked.length} translatable elements`);
 }
 function resolveDisplayValue(data, t) {
-  return data?.value ?? data?.original ?? t.originalContent;
+  return (data?.value ?? data?.original ?? t.originalContent).trim();
 }
 function isEmptySource(text) {
   return normalizeSource(text) === "";
@@ -1600,6 +1600,7 @@ async function init() {
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
   console.log(`RCC: v${"0.0.1"} loaded`);
+  console.log("RCC[proto]: liveStale=visible-text");
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

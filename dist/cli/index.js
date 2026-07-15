@@ -1088,6 +1088,9 @@ var import_node_path6 = __toESM(require("path"));
 function isEmptyText(s) {
   return s == null || s.trim() === "";
 }
+function normalizeStored(s) {
+  return s.replace(/<br\b[^>]*>/gi, "<br>").trim();
+}
 function sortKeys(obj) {
   return Object.fromEntries(
     Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))
@@ -1146,15 +1149,16 @@ async function writeLocales(options) {
         }
         continue;
       }
+      const normalizedOriginal = normalizeStored(entry.original);
       if (!existing[key]) {
         existing[key] = {
-          original: entry.original,
-          value: entry.original,
-          _base_original: entry.original
+          original: normalizedOriginal,
+          value: normalizedOriginal,
+          _base_original: normalizedOriginal
         };
         addedCount++;
       } else {
-        existing[key]._base_original = entry.original;
+        existing[key]._base_original = normalizedOriginal;
       }
     }
     await import_node_fs5.default.promises.writeFile(

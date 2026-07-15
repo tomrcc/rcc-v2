@@ -67,8 +67,14 @@ function unwrapLooseListItems(s: string): string {
 // Canonicalize the two HTML serializers (Rosey's base.json vs CC's ProseMirror)
 // so insignificant differences don't read as stale. Order matters: collapse
 // inter-tag whitespace first, then unwrap loose lists. See docs/stale-translations.md.
+//
+// <br> is canonicalized because SSGs that emit XHTML-style void tags put `<br/>`
+// in base.json, while the DOM (and thus the live-source compare) always
+// serializes `<br>` — left alone, that mismatch is a false stale that can never
+// be cleared. The [^>]* also folds ProseMirror's `<br class="…trailingBreak">`.
 export function normalizeSource(s: string): string {
 	return unwrapLooseListItems(s.replace(/>\s+</g, "><"))
+		.replace(/<br\b[^>]*>/gi, "<br>")
 		.replace(/\s+/g, " ")
 		.trim();
 }
@@ -160,10 +166,12 @@ function renderInlineDiff(
 }
 
 // The current source an out-of-date translation is measured against: the live
-// page source if that's what drifted, otherwise the last build's source.
+// page source if that's what drifted, otherwise the last build's source. The
+// drift check is text-based to match computeStale's live signal — a pure
+// serializer difference (ProseMirror vs Rosey) is not a real drift.
 function currentSourceHtml(t: TrackedElement): string {
-	const old = normalizeSource(t.localeOriginal ?? "");
-	if (normalizeSource(t.originalContent) !== old) return t.originalContent;
+	if (stripToText(t.originalContent) !== stripToText(t.localeOriginal ?? ""))
+		return t.originalContent;
 	return t.baseOriginal ?? t.originalContent;
 }
 
@@ -441,10 +449,23 @@ export function markStaleElement(t: TrackedElement): void {
 
 /**
  * The two stale signals, gated on _base_original presence (its absence opts the
- * entry out). base: last build's source (_base_original) ≠ original. live: the
- * page's source text right now ≠ original — fires immediately on an in-session
- * edit, before a rebuild refreshes _base_original. Normalized compares avoid
- * whitespace-only false positives. Requires t.hasLocaleEntry to be current.
+ * entry out). Requires t.hasLocaleEntry to be current.
+ *
+ * base: last build's source (_base_original) ≠ original. Both come from
+ * base.json, so ONE serializer (Rosey) produced both — a normalized-HTML compare
+ * is exact and catches formatting-only source edits (e.g. a word bolded).
+ *
+ * live: the page's source right now ≠ original — fires on an in-session source
+ * edit before a rebuild refreshes _base_original. Here the two sides come from
+ * DIFFERENT serializers: t.originalContent is CloudCannon's ProseMirror
+ * serialization of the live DOM; `original` is Rosey's rendered-HTML capture in
+ * base.json. They never agree byte-for-byte (inter-tag whitespace, <br/> vs <br>,
+ * attribute order, entity encoding, list tightness, and raw markdown for
+ * plain-typed inputs), so an HTML compare here manufactures false stales. We
+ * compare VISIBLE TEXT instead — the words an editor actually changed — which is
+ * robust to every serializer divergence by construction. The narrow cost: a
+ * source edit that only toggles inline formatting (same words) won't show as live
+ * stale, but baseStale still catches it on the next build.
  */
 export function computeStale(
 	t: TrackedElement,
@@ -453,10 +474,10 @@ export function computeStale(
 	const staleEnabled =
 		t.hasLocaleEntry && data?._base_original != null && data?.original != null;
 	if (!staleEnabled) return false;
-	const normalizedOriginal = normalizeSource(data?.original ?? "");
+	const original = data?.original ?? "";
 	const baseStale =
-		normalizeSource(data?._base_original ?? "") !== normalizedOriginal;
-	const liveStale = normalizeSource(t.originalContent) !== normalizedOriginal;
+		normalizeSource(data?._base_original ?? "") !== normalizeSource(original);
+	const liveStale = stripToText(t.originalContent) !== stripToText(original);
 	return baseStale || liveStale;
 }
 

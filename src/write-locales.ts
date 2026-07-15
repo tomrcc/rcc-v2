@@ -29,6 +29,20 @@ function isEmptyText(s: string | null | undefined): boolean {
 	return s == null || s.trim() === "";
 }
 
+// Conservative normalization for the strings RCC bakes into locale files. Rosey
+// copies source verbatim into base.json — leading/trailing whitespace (" X ",
+// "…\n  ") and XHTML-style `<br/>` — which then renders with a stray gap in the
+// Visual Editor and (for <br>) reads as perpetually stale against the DOM. We
+// trim the ends and canonicalize <br> to match what the browser produces.
+//
+// Deliberately narrower than stale.ts's normalizeSource: that one is a throwaway
+// compare key and collapses ALL internal whitespace; this mutates strings that
+// get rendered verbatim, so collapsing interior whitespace would corrupt
+// <pre>/<code>. Keep this to outer trim + <br> only.
+function normalizeStored(s: string): string {
+	return s.replace(/<br\b[^>]*>/gi, "<br>").trim();
+}
+
 function sortKeys(
 	obj: Record<string, LocaleEntry>,
 ): Record<string, LocaleEntry> {
@@ -110,15 +124,20 @@ export async function writeLocales(
 				}
 				continue;
 			}
+			const normalizedOriginal = normalizeStored(entry.original);
 			if (!existing[key]) {
 				existing[key] = {
-					original: entry.original,
-					value: entry.original,
-					_base_original: entry.original,
+					original: normalizedOriginal,
+					value: normalizedOriginal,
+					_base_original: normalizedOriginal,
 				};
 				addedCount++;
 			} else {
-				existing[key]._base_original = entry.original;
+				// Refresh the RCC-managed source-of-last-build. `original` (the review
+				// anchor) and `value` (the translation) are left untouched — stale
+				// detection re-normalizes both sides at compare time, so an untrimmed
+				// legacy `original` here never produces a false stale.
+				existing[key]._base_original = normalizedOriginal;
 			}
 		}
 
