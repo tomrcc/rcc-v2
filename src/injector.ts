@@ -66,7 +66,6 @@ function newTrackedEntry(
 		element,
 		roseyKey,
 		originalContent: element.innerHTML,
-		elementType: resolveEditorElementType(element),
 		focused: false,
 		stale: false,
 		baseOriginal: null,
@@ -399,6 +398,14 @@ async function switchLocaleInner(
 
 			const isSource = originalIsSource.has(t.roseyKey);
 
+			// Mirror CC's elementType so the locale toolbar matches the original. A
+			// rich-text/source input with no data-type must not fall to a plain-text
+			// span (see resolveEditorElementType).
+			const capturedType = inputConfig?.type;
+			const isRichText =
+				isSource || capturedType === "html" || capturedType === "markdown";
+			const elementType = resolveEditorElementType(t.element, isRichText);
+
 			// Suppress the onChange setContent fires on creation, so a
 			// reconcile-created editor doesn't write its initial value back.
 			let applying = true;
@@ -443,7 +450,7 @@ async function switchLocaleInner(
 					}
 				},
 				{
-					elementType: t.elementType,
+					elementType,
 					...(isSource && { editableType: "content" }),
 					...(rccInputConfig != null && { inputConfig: rccInputConfig }),
 				},

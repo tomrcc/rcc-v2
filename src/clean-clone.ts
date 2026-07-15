@@ -30,11 +30,22 @@ export function resolveElementType(el: HTMLElement): "span" | "block" {
 	return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
 }
 
-// elementType for createTextEditableRegion. Pass the raw data-type like native
-// CC does — it drives which toolbar controls mount (a "span" editor has none).
-// Infer span/block only when there's no data-type to mirror.
-export function resolveEditorElementType(el: HTMLElement): string {
-	return el.dataset.type ?? resolveElementType(el);
+/**
+ * elementType for createTextEditableRegion — it drives which toolbar controls
+ * mount (a "span" editor has none). An explicit data-type wins, mirroring native
+ * CC which passes it verbatim. With no data-type, mirror CC's default rule: rich
+ * text / source inputs get block (when the element holds block-level content) or
+ * text; everything else gets span. Keying off the input like CC — not off DOM
+ * shape alone — is what stops a toolbar-backed field from silently defaulting to
+ * a plain-text span.
+ */
+export function resolveEditorElementType(
+	el: HTMLElement,
+	isRichText: boolean,
+): string {
+	if (el.dataset.type) return el.dataset.type;
+	if (isRichText) return inferElementType(el) === "block" ? "block" : "text";
+	return "span";
 }
 
 /**

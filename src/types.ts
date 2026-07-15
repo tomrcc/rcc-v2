@@ -6,8 +6,6 @@ export interface TrackedElement {
 	element: HTMLElement;
 	roseyKey: string;
 	originalContent: string;
-	/** elementType passed to createTextEditableRegion (the raw data-type). */
-	elementType: string;
 	focused: boolean;
 	editor?: { setContent: (content?: string | null) => void };
 	stale: boolean;

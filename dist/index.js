@@ -126,8 +126,10 @@ function inferElementType(el) {
 function resolveElementType(el) {
   return isBlockType(el.dataset.type) ? "block" : inferElementType(el);
 }
-function resolveEditorElementType(el) {
-  return el.dataset.type ?? resolveElementType(el);
+function resolveEditorElementType(el, isRichText) {
+  if (el.dataset.type) return el.dataset.type;
+  if (isRichText) return inferElementType(el) === "block" ? "block" : "text";
+  return "span";
 }
 function cleanClone(root) {
   stripCCAttributes(root);
@@ -1217,7 +1219,6 @@ function newTrackedEntry(element, roseyKey) {
     element,
     roseyKey,
     originalContent: element.innerHTML,
-    elementType: resolveEditorElementType(element),
     focused: false,
     stale: false,
     baseOriginal: null,
@@ -1436,6 +1437,9 @@ async function switchLocaleInner(locale, myGeneration) {
       const inputConfig = originalInputConfigs.get(t.roseyKey);
       const rccInputConfig = inputConfig ? { ...inputConfig, type: "html" } : { type: "html" };
       const isSource = originalIsSource.has(t.roseyKey);
+      const capturedType = inputConfig?.type;
+      const isRichText = isSource || capturedType === "html" || capturedType === "markdown";
+      const elementType = resolveEditorElementType(t.element, isRichText);
       let applying = true;
       const editor = await cc.createTextEditableRegion(
         t.element,
@@ -1470,7 +1474,7 @@ async function switchLocaleInner(locale, myGeneration) {
           }
         },
         {
-          elementType: t.elementType,
+          elementType,
           ...isSource && { editableType: "content" },
           ...rccInputConfig != null && { inputConfig: rccInputConfig }
         }
