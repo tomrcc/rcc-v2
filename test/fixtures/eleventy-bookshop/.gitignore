@@ -1,0 +1,11 @@
+node_modules
+package-lock.json
+_site
+_untranslated_site
+.cache
+rosey/base.json
+rosey/base.urls.json
+# ar.json is intentionally NOT committed: it's created on build only because the
+# ROSEY_LANGUAGES env var overrides rosey.yml (which lists fr alone). Its
+# appearance is the proof the env layer won — see verify-locales.mjs.
+rosey/locales/ar.json

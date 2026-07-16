@@ -1,0 +1,38 @@
+source: /
+paths:
+  static: public
+  uploads: public
+
+# RCC reads these to discover the locale files and expose the switcher.
+# write-locales warns during the build if a locales_<code> entry is missing.
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_ar:
+    path: rosey/locales/ar.json
+
+# Full rich-text toolbar for the Markdown scenario. The Visual-Editor check
+# confirms every one of these buttons renders on the markdown (block) editable.
+_editables:
+  content:
+    bold: true
+    italic: true
+    underline: true
+    strike: true
+    subscript: true
+    superscript: true
+    code: true
+    format: p h2 h3 h4
+    blockquote: true
+    bulletedlist: true
+    numberedlist: true
+    indent: true
+    outdent: true
+    link: true
+    image: true
+    table: true
+    horizontalrule: true
+    removeformat: true
+    copyformatting: true
+    undo: true
+    redo: true

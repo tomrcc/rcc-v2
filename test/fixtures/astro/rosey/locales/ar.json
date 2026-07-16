@@ -1,0 +1,22 @@
+{
+  "index:heading": {
+    "original": "Welcome to the RCC test fixture",
+    "value": "مرحبًا بك في تجهيزة اختبار RCC",
+    "_base_original": "Welcome to the RCC test fixture"
+  },
+  "stale:uptodate": {
+    "original": "This translation is up to date.",
+    "value": "هذه الترجمة محدثة.",
+    "_base_original": "This translation is up to date."
+  },
+  "stale:changed": {
+    "original": "This sentence has not changed yet.",
+    "value": "لم تتغير هذه الجملة بعد.",
+    "_base_original": "This sentence has not changed yet."
+  },
+  "stale:untranslated": {
+    "original": "This one has no translation yet.",
+    "value": "",
+    "_base_original": "This one has no translation yet."
+  }
+}

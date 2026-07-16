@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 3-layer Rosey config resolution (CLI flag > env > rosey.yml):
+#   rosey.yml  : baseline — source (=_site), locales dir, separator, tag,
+#                default_language, languages ([fr])
+#   env var    : ROSEY_LANGUAGES overrides languages → adds ar (so ar.json,
+#                absent from the repo, is created on build)
+#   CLI flag   : --source sets the connector's Rosey (base.json) directory
+export ROSEY_LANGUAGES="[fr, ar]"
+
+npx rosey generate
+npx rosey-cloudcannon-connector write-locales --source rosey

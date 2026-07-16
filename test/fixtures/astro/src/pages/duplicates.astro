@@ -1,0 +1,14 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<!--
+  The same data-rosey key twice on one page. Rosey collapses them to a single
+  base.json key (total: 2). In the editor, editing one element must update the
+  other. The sibling with no data-rosey must stay uneditable.
+-->
+<Layout title="Duplicate keys" roseyRoot="duplicates">
+  <p data-rosey="shared">Edit me once and both copies update.</p>
+  <p data-rosey="shared">Edit me once and both copies update.</p>
+  <p>Sibling with no data-rosey — stays uneditable.</p>
+</Layout>

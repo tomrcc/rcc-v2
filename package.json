@@ -25,6 +25,12 @@
 				"types": "./dist/write-locales.d.ts",
 				"default": "./dist/write-locales.js"
 			}
+		},
+		"./internals": {
+			"import": {
+				"types": "./dist/internals.d.mts",
+				"default": "./dist/internals.mjs"
+			}
 		}
 	},
 	"bin": {
@@ -37,7 +43,12 @@
 	"scripts": {
 		"build": "rm -rf dist && tsup",
 		"dev": "tsup --watch",
-		"biome": "biome check --write"
+		"biome": "biome check --write",
+		"lint": "biome check",
+		"typecheck": "tsc --noEmit",
+		"test:unit": "node --test 'test/unit/*.test.mjs'",
+		"test:integration": "bash test/run-integration.sh",
+		"test": "npm run test:unit && npm run test:integration"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.4",

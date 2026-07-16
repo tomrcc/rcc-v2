@@ -1,0 +1,43 @@
+---
+export interface Props {
+  title: string;
+  // Rosey namespace root for this page — the first segment of every key on it.
+  roseyRoot: string;
+}
+const { title, roseyRoot } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <!--
+      data-rcc marks the subtree RCC clones and re-keys per locale. On switch to
+      an RTL locale (ar), the connector sets dir="rtl" on its clone itself — the
+      static markup stays lang="en".
+    -->
+    <div data-rcc>
+      <nav>
+        <a href="/">Home</a> · <a href="/nested/">Nested</a> ·
+        <a href="/duplicates/">Duplicates</a> · <a href="/markdown/">Markdown</a> ·
+        <a href="/stale/">Stale</a>
+      </nav>
+      <main data-rosey-root={roseyRoot}>
+        <slot />
+      </main>
+    </div>
+    <script>
+      // RCC only runs inside CloudCannon's Visual Editor. The static build ships
+      // the data-rosey attributes regardless; this wires live editing + the
+      // locale switcher on top of them. The console prints `RCC: v<version>
+      // loaded` — proof the local file: build (not github:tomrcc/rcc-v2) loaded.
+      if (window.inEditorMode) {
+        import("rosey-cloudcannon-connector");
+      }
+    </script>
+  </body>
+</html>

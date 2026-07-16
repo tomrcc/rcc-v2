@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Runs after `astro build`. CloudCannon runs this file verbatim on deploy; our
+# `npm run build` chains it too, so the integration test exercises the real
+# path. `rosey generate` scans the built HTML for data-rosey and writes
+# rosey/base.json; write-locales then merges base.json into the checked-in
+# locale files and emits dist/_rcc/locales.json.
+#
+# The translated-site step (`rosey build`) is intentionally omitted: RCC serves
+# locales client-side in the editor, and the assertions only need base.json +
+# the merged locale files.
+npx rosey generate --source dist
+npx rosey-cloudcannon-connector write-locales --source rosey --dest dist --locales fr,ar

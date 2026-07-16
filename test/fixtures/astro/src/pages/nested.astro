@@ -1,0 +1,17 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<!--
+  Exercises deep key resolution (src/rosey-key.ts): nested data-rosey-ns
+  wrappers under the data-rosey-root give keys like
+  `nested:section:card:title`.
+-->
+<Layout title="Nested keys" roseyRoot="nested">
+  <div data-rosey-ns="section">
+    <div data-rosey-ns="card">
+      <h1 data-rosey="title">Deeply namespaced heading</h1>
+      <p data-rosey="body">Its Rosey key is nested:section:card:body.</p>
+    </div>
+  </div>
+</Layout>

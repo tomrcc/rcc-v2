@@ -1,0 +1,32 @@
+{
+  "index:heading": {
+    "original": "Welcome to the RCC test fixture",
+    "value": "Bienvenue dans le fixture de test RCC",
+    "_base_original": "Welcome to the RCC test fixture"
+  },
+  "index:intro": {
+    "original": "A visual-editor smoke test for the Rosey CloudCannon connector.",
+    "value": "Un test de fumée d'éditeur visuel pour le connecteur Rosey CloudCannon.",
+    "_base_original": "A visual-editor smoke test for the Rosey CloudCannon connector."
+  },
+  "stale:uptodate": {
+    "original": "This translation is up to date.",
+    "value": "Cette traduction est à jour.",
+    "_base_original": "This translation is up to date."
+  },
+  "stale:changed": {
+    "original": "This sentence has not changed yet.",
+    "value": "Cette phrase n'a pas encore changé.",
+    "_base_original": "This sentence has not changed yet."
+  },
+  "stale:untranslated": {
+    "original": "This one has no translation yet.",
+    "value": "",
+    "_base_original": "This one has no translation yet."
+  },
+  "stale:removed_me": {
+    "original": "Obsolete key not present on any page.",
+    "value": "Clé obsolète absente de toute page.",
+    "_base_original": "Obsolete key not present on any page."
+  }
+}

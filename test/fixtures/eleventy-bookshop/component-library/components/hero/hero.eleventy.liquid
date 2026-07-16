@@ -1,0 +1,8 @@
+{% comment %}
+  data-rosey-ns from the block's _uuid gives per-instance keys like
+  index:hero-1:heading — the same UUID-namespace pattern real Bookshop sites use.
+{% endcomment %}
+<section data-rosey-ns="{{ _uuid }}">
+  <h1 data-rosey="heading">{{ heading }}</h1>
+  <p data-rosey="body">{{ body }}</p>
+</section>

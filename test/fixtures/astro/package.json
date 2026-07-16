@@ -1,0 +1,14 @@
+{
+  "name": "rcc-fixture-astro",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "astro build && bash .cloudcannon/postbuild",
+    "verify": "node verify-bundle.mjs && node verify-locales.mjs"
+  },
+  "dependencies": {
+    "astro": "^6.0.0",
+    "rosey": "^2.3.10",
+    "rosey-cloudcannon-connector": "file:../../.."
+  }
+}

@@ -1,0 +1,11 @@
+spec:
+  label: Hero
+  icon: flag
+blueprint:
+  _uuid:
+  heading: "Hero heading"
+  body: "Hero body text"
+_inputs:
+  _uuid:
+    hidden: true
+    instance_value: UUID

@@ -1,0 +1,10 @@
+source: /
+paths:
+  static: ""
+
+# RCC reads these to discover the locale files and expose the switcher.
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_ar:
+    path: rosey/locales/ar.json

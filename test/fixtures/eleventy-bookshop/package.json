@@ -1,0 +1,16 @@
+{
+  "name": "rcc-fixture-eleventy-bookshop",
+  "private": true,
+  "scripts": {
+    "build": "eleventy && bash .cloudcannon/postbuild",
+    "verify": "node verify-bundle.mjs && node verify-locales.mjs"
+  },
+  "dependencies": {
+    "@11ty/eleventy": "^3.0.0",
+    "@bookshop/eleventy-bookshop": "^3.12.0",
+    "@bookshop/eleventy-engine": "^3.12.0",
+    "js-yaml": "^4.1.0",
+    "rosey": "^2.3.10",
+    "rosey-cloudcannon-connector": "file:../../.."
+  }
+}

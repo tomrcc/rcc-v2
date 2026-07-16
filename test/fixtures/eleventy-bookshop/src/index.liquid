@@ -1,0 +1,25 @@
+---
+layout: false
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Eleventy + Bookshop fixture</title>
+  </head>
+  <body>
+    <div data-rcc>
+      <main data-rosey-root="index">
+        {% bookshop "hero" _uuid: "hero-1" heading: "Welcome to the Bookshop fixture" body: "Rendered by the Bookshop Eleventy engine." %}
+      </main>
+    </div>
+    <script>
+      // RCC only runs inside CloudCannon's Visual Editor. On a Bookshop site it
+      // also pauses/resumes Bookshop live editing across a locale switch (see
+      // src/bookshop.ts) — a runtime path validated by hand via CHECKLIST.md.
+      if (window.inEditorMode) {
+        import("rosey-cloudcannon-connector");
+      }
+    </script>
+  </body>
+</html>
