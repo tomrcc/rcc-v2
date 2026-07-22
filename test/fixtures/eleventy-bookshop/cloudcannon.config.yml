@@ -1,17 +1,17 @@
-source: /
+source: test/fixtures/eleventy-bookshop
 paths:
   static: ""
 
 # The Bookshop page, so it shows up in the Collection browser and opens in the
-# Visual Editor for the smoke test. `[slug]` is the filename (index → "/"),
-# matching Eleventy's output. Editing happens live via the data-rosey regions the
-# Bookshop component emits; the page itself is code-defined, so editor file
-# actions are off.
+# Visual Editor for the smoke test. Markdown file piped through _includes/
+# base.liquid; `[slug]` is the filename (index → "/"), matching Eleventy's output.
+# Editing happens live via the data-rosey regions the Bookshop component emits,
+# the title via the input below; the curated fixture isn't editor-extended.
 collections_config:
   pages:
     path: src
     glob:
-      - "*.liquid"
+      - "*.md"
     url: "/[slug]/"
     name: Pages
     icon: article
@@ -20,6 +20,11 @@ collections_config:
     disable_file_actions: true
     _enabled_editors:
       - visual
+    _inputs:
+      layout:
+        hidden: true
+      title:
+        type: text
 
 # RCC reads these to discover the locale files and expose the switcher.
 data_config:

@@ -1,16 +1,13 @@
----
-layout: false
----
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Eleventy + Bookshop fixture</title>
+    <title>{{ title }}</title>
   </head>
   <body>
     <div data-rcc>
-      <main data-rosey-root="index">
-        {% bookshop "hero" _uuid: "hero-1" heading: "Welcome to the Bookshop fixture" body: "Rendered by the Bookshop Eleventy engine." %}
+      <main data-rosey-root="{{ page.fileSlug | default: 'index' }}">
+        {{ content }}
       </main>
     </div>
     <script>

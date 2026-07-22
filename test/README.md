@@ -1,59 +1,81 @@
 # rcc-v2 tests
 
-Two layers, both offline and dependency-light (node built-ins only for the unit
-tests; SSG CLIs for the fixtures). No Playwright / headless browser — the live
-editor UI is gated on CloudCannon's proprietary runtime and is validated by hand
-against each fixture's `CHECKLIST.md`.
+Two automated layers, plus a separate manual pass:
 
-## Unit tests — `npm run test:unit`
+- **Unit** (`npm run test:unit`) — the pure locale/stale logic. Node built-ins, no deps.
+- **Integration** (`npm run test:integration`) — real per-fixture builds that assert on
+  the generated files. Headless; it never opens the editor.
+- **Manual** — walking each fixture's `CHECKLIST.md` in CloudCannon's Visual Editor. The
+  editor UI needs CC's runtime, so this pass is by hand (no Playwright) and is **not** part
+  of the automated suite.
 
-`node --test` over `test/unit/`. The pure logic stale detection and locale
-merging depend on:
+## Unit — `npm run test:unit`
+
+`node --test` over `test/unit/` (rebuilds `dist` first):
 
 - `write-locales.test.mjs` — entry creation, `_base_original` refresh, `<br>`/trim
-  normalization, unused/empty pruning, key sorting, manifest (imports the public
-  `./write-locales` node export).
-- `rosey-config.test.mjs` — `resolveRoseyConfig`: flow/block YAML lists, comment
-  stripping, quoting, env-over-file precedence (imports `./internals`).
-- `normalize-source.test.mjs` — `normalizeSource` DOM-free paths: `<br>`→space,
-  inter-tag collapse, trim (imports `./internals`).
+  normalization, unused/empty pruning, sorting, manifest.
+- `rosey-config.test.mjs` — `resolveRoseyConfig`: YAML flow/block lists, comments,
+  quoting, env-over-file precedence.
+- `normalize-source.test.mjs` — `normalizeSource` DOM-free paths.
+- `false-stale.test.mjs` — the write→compare seam: a `<br>`/whitespace-only
+  difference from a legacy `original` isn't stale; a real word change is.
 
-`./internals` is a test-only node entry (`src/internals.ts`) that re-exports the
-otherwise CLI-/DOM-bundled pure functions so node can import them without a DOM
-shim.
+Pure fns import from `./write-locales` (public) and `./internals` — a node entry
+(`src/internals.ts`) that re-exports them without the DOM bundle. The DOM-bound
+stale logic (`computeStale`, `unwrapLooseListItems`, …) is deliberately not
+unit-tested: it hinges on real ProseMirror↔Rosey HTML round-tripping a shim can't
+fake, so it's left to the fixtures + manual checklist rather than given false
+coverage.
 
 ## Integration — `npm run test:integration`
 
-`test/run-integration.sh` loops `test/fixtures/*`. Per fixture: `npm i` (symlinks
-the local `file:` build), `npm run build` (SSG build → `rosey generate` →
-`write-locales` via `.cloudcannon/postbuild`), then `npm run verify`:
+`test/run-integration.sh` per fixture: `npm i` (symlinks the local `file:` build)
+→ `npm run build` (SSG build → `rosey generate` → `write-locales`) →
+`npm run verify`:
 
-- `verify-bundle.mjs` — the local bundle is symlinked in (not `github:tomrcc/rcc-v2`)
-  and still emits its switcher/stale/selector contract + version stamp.
-- `verify-locales.mjs` — the locale JSON produced from a **real** Rosey `base.json`
-  has the expected shape (three fields, refreshed stale entry, pruned unused,
-  normalized `<br>`, manifest).
+- `verify-bundle.mjs` — the symlinked local bundle (not `github:tomrcc/rcc-v2`)
+  still emits its switcher/stale/selector contract + version stamp.
+- `verify-locales.mjs` — locale JSON from a real `base.json`: three fields, the
+  stale entry's `_base_original` refreshed to the live source, unused pruned,
+  `<br>` normalized, manifest.
 
-Fixtures:
-- `fixtures/astro` — primary. Scenario pages (nested keys, duplicate keys,
-  non-editable elements, intricate markdown + full toolbar, stale states), `ar`
-  RTL + `fr`.
-- `fixtures/eleventy-bookshop` — SSG-agnostic proof: `_site` build dir, the
-  Bookshop pause/resume path, and 3-layer Rosey config resolution (rosey.yml +
-  `ROSEY_LANGUAGES` env + `--source` flag).
+Fixtures (pages = markdown piped through a layout → a real CC collection):
 
-> The build rewrites each fixture's checked-in `rosey/locales/*.json` in place —
-> that is write-locales' real behavior (refresh `_base_original`, add/prune keys).
-> A dirty working tree after a local run is expected; `git restore` the fixture's
-> locale files to reset. **Commit them only in their pre-build state** (each stale
-> entry's `_base_original === original`, `stale:removed_me` present, no build-added
-> keys) — that clean state is what lets a fresh checkout observe the refresh,
-> prune, and create paths. Committing the post-build files makes those checks pass
-> without exercising anything. CI runs on a fresh checkout, so it is unaffected.
+- `astro` — primary: nested/duplicate keys, a non-editable element, markdown +
+  full toolbar, stale states; `fr` + RTL `ar`.
+- `eleventy-bookshop` — SSG-agnostic: `_site` dir, Bookshop render path, 3-layer
+  config (rosey.yml + `ROSEY_LANGUAGES` env + `--source`).
 
-## Manual Visual-Editor check
+> **Commit the fixture locale files only in their pre-build state** — stale entries
+> with `_base_original === original`, `stale:removed_me` present, no build-added
+> keys. That's what lets a fresh checkout *observe* the refresh/prune/create the
+> build performs; committing post-build files makes the checks pass without
+> exercising anything. The build rewrites them in place, so `git restore` after a
+> local run (CI checkouts are clean, so unaffected).
 
-1. `npm run build` in `rcc-v2/` (fresh `dist/`; fixture symlinks reflect it).
-2. Open a fixture as a CloudCannon site, enter the Visual Editor.
-3. Console shows `RCC: v<version> loaded` (proves the local build).
-4. Walk the fixture's `CHECKLIST.md`.
+## Build a fixture on CloudCannon
+
+Each fixture runs as its **own** CloudCannon site — all pointed at this repo,
+differing only by the build settings below. Create a site from the repo, then set
+**Site Settings → Build**:
+
+| Setting              | `astro`                                             | `eleventy-bookshop`                                             |
+| -------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| Install command      | `cd test/fixtures/astro && npm i`                   | `cd test/fixtures/eleventy-bookshop && npm i`                  |
+| Build command        | `cd test/fixtures/astro && npm run build`           | `cd test/fixtures/eleventy-bookshop && npm run build`         |
+| Output path          | `test/fixtures/astro/dist`                          | `test/fixtures/eleventy-bookshop/_site`                       |
+| Environment variable | `CLOUDCANNON_SYNC_PATHS=test/fixtures/astro/rosey/` | `CLOUDCANNON_SYNC_PATHS=test/fixtures/eleventy-bookshop/rosey/` |
+| Config file path     | `test/fixtures/astro/cloudcannon.config.yml`        | `test/fixtures/eleventy-bookshop/cloudcannon.config.yml`      |
+
+Then confirm that config file's `source:` scopes CloudCannon to the fixture dir —
+`test/fixtures/astro` / `test/fixtures/eleventy-bookshop` respectively (already set,
+so relative `path:`/`data_config` entries resolve). `CLOUDCANNON_SYNC_PATHS` syncs
+the generated `rosey/` locale files back to git so translations persist across
+builds.
+
+## Manual check
+
+Once the fixture site is building (above), open it in the Visual Editor, confirm
+`RCC: v<version> loaded` in the console — proof the local build loaded — then walk
+its `CHECKLIST.md`.

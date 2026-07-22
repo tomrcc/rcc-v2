@@ -20,20 +20,14 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      # Build first: unit tests import from dist/, and verify-bundle greps it.
-      - name: Build
-        run: npm run build
-
+      # `pretest:unit` builds dist first — the unit tests import from it and the
+      # fixtures' verify-bundle greps it, so the build is shared by both phases.
       - name: Unit tests
         run: npm run test:unit
 
-      # Fixtures run `npm i` (proving the real file: install path) then build
-      # offline and assert. This is also the end-to-end check of the local link.
+      # Each fixture is its own npm project that depends on this package via
+      # "file:../../..", so its `npm i` symlinks the local dist/ in and builds
+      # against it — the same resolution CloudCannon uses. Proves the packaged
+      # exports/bin work, not just the source.
       - name: Integration tests
         run: npm run test:integration

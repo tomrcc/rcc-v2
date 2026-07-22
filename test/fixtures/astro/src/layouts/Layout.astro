@@ -1,10 +1,11 @@
 ---
-export interface Props {
-  title: string;
-  // Rosey namespace root for this page — the first segment of every key on it.
-  roseyRoot: string;
-}
-const { title, roseyRoot } = Astro.props;
+// Markdown layout for the scenario pages: frontmatter carries `title`, the
+// rendered markdown body flows into the <main> slot.
+const { frontmatter } = Astro.props;
+const title = frontmatter?.title ?? "RCC test fixture";
+// Rosey namespace root = the page slug, derived from the URL so no page has to
+// thread it through frontmatter. "/" → "index".
+const roseyRoot = Astro.url.pathname.replace(/^\/|\/$/g, "") || "index";
 ---
 
 <!doctype html>

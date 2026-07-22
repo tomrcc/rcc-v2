@@ -4,15 +4,15 @@ paths:
   uploads: public
 
 # The scenario pages, so they show up in the Collection browser and open in the
-# Visual Editor for the smoke test. `[slug]` is the filename (index → "/"), which
-# matches Astro's file-based routes under the `always` trailing slash. The pages
-# are code-defined routes, so adding/renaming/deleting them from the editor is
-# off; editing happens live via the data-rosey regions RCC wires up.
+# Visual Editor for the smoke test. Markdown files piped through Layout.astro;
+# `[slug]` is the filename (index → "/") under the `always` trailing slash. The
+# curated fixture set isn't editor-extended, so file actions are off; the body's
+# data-rosey regions are edited live by RCC, the title via the input below.
 collections_config:
   pages:
     path: src/pages
     glob:
-      - "*.astro"
+      - "*.md"
     url: "/[slug]/"
     name: Pages
     icon: article
@@ -21,6 +21,11 @@ collections_config:
     disable_file_actions: true
     _enabled_editors:
       - visual
+    _inputs:
+      layout:
+        hidden: true
+      title:
+        type: text
 
 # RCC reads these to discover the locale files and expose the switcher.
 # write-locales warns during the build if a locales_<code> entry is missing.

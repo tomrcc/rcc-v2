@@ -149,7 +149,14 @@ Found a bug, hit a rough edge, or have a feature request? Please [open an issue]
 npm run build    # Build CJS + ESM output via tsup
 npm run dev      # Watch mode
 npm run biome    # Lint and format
+npm test         # Unit tests + integration fixture builds
 ```
+
+Unit tests (`npm run test:unit`) cover the pure locale/stale logic; the
+integration suite (`npm run test:integration`) builds the Astro and
+Eleventy+Bookshop fixtures against the local package. See
+[`test/README.md`](test/README.md) for the layout and the manual Visual-Editor
+checklist.
 
 ## License
 
