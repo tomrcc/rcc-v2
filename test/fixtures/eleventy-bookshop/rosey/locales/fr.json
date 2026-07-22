@@ -1,12 +1,12 @@
 {
-  "index:hero-1:heading": {
-    "original": "Old bookshop heading.",
-    "value": "Ancien titre Bookshop.",
-    "_base_original": "Old bookshop heading."
-  },
   "index:hero-1:body": {
     "original": "Rendered by the Bookshop Eleventy engine.",
     "value": "Rendu par le moteur Eleventy de Bookshop.",
     "_base_original": "Rendered by the Bookshop Eleventy engine."
+  },
+  "index:hero-1:heading": {
+    "original": "Old bookshop heading.",
+    "value": "Ancien titre Bookshop.",
+    "_base_original": "Welcome to the Bookshop fixture"
   }
 }
