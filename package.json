@@ -46,6 +46,7 @@
 		"biome": "biome check --write",
 		"lint": "biome check",
 		"typecheck": "tsc --noEmit",
+		"pretest:unit": "npm run build",
 		"test:unit": "node --test 'test/unit/*.test.mjs'",
 		"test:integration": "bash test/run-integration.sh",
 		"test": "npm run test:unit && npm run test:integration"

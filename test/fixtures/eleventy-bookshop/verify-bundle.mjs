@@ -1,7 +1,7 @@
-// Structural smoke test of the client bundle RCC actually serves — the
-// editable-regions verify-bundle.mjs pattern. Proves the LOCAL file: build is
-// wired in (a symlink into the repo, not a github tarball) and that the bundle
-// still emits its switcher/stale/selector contract. No browser: greps the file.
+// Structural smoke test of the client bundle RCC actually serves. Proves the
+// LOCAL file: build is wired in (a symlink into the repo, not a github tarball)
+// and that the bundle still emits its switcher/stale/selector contract. No
+// browser: greps the file.
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";

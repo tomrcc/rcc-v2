@@ -48,11 +48,15 @@ for (const [key, e] of Object.entries(fr)) {
   }
 }
 
-// Stale scenario carried over: the heading's source drifted from the crafted
-// `original`, so _base_original refreshes away from it; the body matches.
+// Stale scenario: the committed entry has _base_original === original ("Old
+// bookshop heading."). The build refreshes _base_original to the live rendered
+// source, so it must now equal the heading and differ from the preserved
+// `original` → base-stale. Asserting the refreshed value (not just "the two
+// differ") is what makes this observe the refresh rather than a static diff.
 check(
-  fr["index:hero-1:heading"]._base_original !== fr["index:hero-1:heading"].original,
-  "fr heading should be base-stale (refreshed _base_original differs from original)",
+  fr["index:hero-1:heading"]?._base_original === "Welcome to the Bookshop fixture" &&
+    fr["index:hero-1:heading"]._base_original !== fr["index:hero-1:heading"].original,
+  `fr heading _base_original should refresh to the live source, got ${JSON.stringify(fr["index:hero-1:heading"])}`,
 );
 check(
   fr["index:hero-1:body"]._base_original === fr["index:hero-1:body"].original,

@@ -3,9 +3,11 @@ import { test } from "node:test";
 import { normalizeSource } from "../../dist/internals.mjs";
 
 // normalizeSource is the compare-key canonicalizer behind stale detection
-// (src/stale.ts). Only the DOM-free paths are exercised here: with no <li> in
-// the input, unwrapLooseListItems early-returns, so no `document` is touched.
-// The <li> unwrap path is validated by the integration fixture instead.
+// (src/stale.ts). Only its DOM-free paths run here: with no <li>, the
+// unwrapLooseListItems step early-returns, so `document` is never touched. The
+// <li> unwrap path needs a real DOM (document.createElement) — node has none and
+// we keep zero test deps, so it's covered by the manual Visual-Editor checklist,
+// not by any automated test.
 
 test("folds <br> variants to a space", () => {
 	assert.equal(normalizeSource("a<br>b"), "a b");

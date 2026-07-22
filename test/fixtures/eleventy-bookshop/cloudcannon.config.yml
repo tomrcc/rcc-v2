@@ -2,6 +2,25 @@ source: /
 paths:
   static: ""
 
+# The Bookshop page, so it shows up in the Collection browser and opens in the
+# Visual Editor for the smoke test. `[slug]` is the filename (index → "/"),
+# matching Eleventy's output. Editing happens live via the data-rosey regions the
+# Bookshop component emits; the page itself is code-defined, so editor file
+# actions are off.
+collections_config:
+  pages:
+    path: src
+    glob:
+      - "*.liquid"
+    url: "/[slug]/"
+    name: Pages
+    icon: article
+    disable_add: true
+    disable_add_folder: true
+    disable_file_actions: true
+    _enabled_editors:
+      - visual
+
 # RCC reads these to discover the locale files and expose the switcher.
 data_config:
   locales_fr:

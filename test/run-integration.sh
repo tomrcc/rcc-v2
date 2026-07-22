@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Integration pipeline, mirroring editable-regions' run-integration-tests.sh.
-# For each fixture: install (symlinks the local file: build), run the real
-# build chain (SSG build → rosey generate → write-locales via .cloudcannon/
-# postbuild), then assert with the fixture's verify-*.mjs scripts.
+# Integration pipeline. For each fixture: install (symlinks the local file:
+# build), run the real build chain (SSG build → rosey generate → write-locales
+# via .cloudcannon/postbuild), then assert with the fixture's verify-*.mjs scripts.
 set -euo pipefail
 
 # Resolve repo root from this script's location so it works from any cwd.

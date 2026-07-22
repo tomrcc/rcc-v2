@@ -40,12 +40,15 @@ for (const [locale, data] of [["fr", fr], ["ar", ar]]) {
 }
 
 // --- Stale scenario: _base_original refreshed to the drifted source -------
-// The page changed; `original` (the review anchor) is preserved, so the two
-// differ and the entry reads as base-stale in the editor.
+// The committed entry has _base_original === original. The build refreshes
+// _base_original to the live page source, so it must equal that source and
+// differ from the preserved `original` → base-stale. Checking the refreshed
+// value (not just "the two differ") is what proves the refresh happened.
 check(
-  fr["stale:changed"] &&
+  fr["stale:changed"]?._base_original ===
+    "This sentence changed since it was last translated." &&
     fr["stale:changed"]._base_original !== fr["stale:changed"].original,
-  "fr stale:changed should have a refreshed _base_original that differs from original",
+  `fr stale:changed _base_original should refresh to the live source, got ${JSON.stringify(fr["stale:changed"])}`,
 );
 // Up-to-date entry: source matches, so the refreshed _base_original equals original.
 check(

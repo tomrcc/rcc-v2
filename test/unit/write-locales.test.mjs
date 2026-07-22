@@ -5,11 +5,11 @@ import path from "node:path";
 import { test } from "node:test";
 import { writeLocales } from "../../dist/write-locales.mjs";
 
-// writeLocales is the exact logic behind the false-stale investigation
-// (src/write-locales.ts): three-field entry creation, _base_original refresh,
-// <br>/trim normalization, unused-key and empty-source pruning, key sorting, and
-// the _rcc/locales.json manifest. Driven end-to-end against scratch dirs — this
-// also exercises normalizeStored via its only public caller.
+// writeLocales (src/write-locales.ts) merges Rosey's base.json into the locale
+// files: three-field entry creation, _base_original refresh, <br>/trim
+// normalization, unused-key and empty-source pruning, key sorting, and the
+// _rcc/locales.json manifest. Driven against scratch dirs, which also covers the
+// private normalizeStored via its only public caller.
 
 /** Fresh tmp fixture: writes rosey/base.json + optional rosey/locales/<code>.json. */
 function seed({ base, locales = {} }) {
@@ -146,4 +146,49 @@ test("auto-discovers locale codes from existing files when none passed", async (
 	assert.deepEqual([...manifest.locales].sort(), ["ar", "fr"]);
 	assert.equal(readLocale(roseyDir, "fr").greeting.value, "Hello");
 	assert.equal(readLocale(roseyDir, "ar").greeting.value, "Hello");
+});
+
+test("auto-discovery ignores *.urls.json sidecar files", async () => {
+	const { roseyDir, dest } = seed({
+		base: { greeting: baseKey("Hello") },
+		locales: { fr: {} },
+	});
+	// A url sidecar sitting next to a locale file must not be read as a locale.
+	fs.writeFileSync(path.join(roseyDir, "locales", "fr.urls.json"), "{}");
+
+	await writeLocales({ roseyDir, dest });
+	const manifest = JSON.parse(
+		fs.readFileSync(path.join(dest, "_rcc", "locales.json"), "utf-8"),
+	);
+	assert.deepEqual(manifest.locales, ["fr"]);
+});
+
+test("interior whitespace is preserved — only outer trim + <br> fold", async () => {
+	// normalizeStored is deliberately narrower than normalizeSource: it mutates
+	// strings rendered verbatim, so collapsing interior whitespace would corrupt
+	// <pre>/<code>. Pin that so the two normalizers can't be accidentally merged.
+	const { roseyDir, dest } = seed({
+		base: { code: baseKey("  const x =   1;\n  return x;  ") },
+	});
+
+	await writeLocales({ roseyDir, dest, locales: ["fr"] });
+
+	assert.equal(
+		readLocale(roseyDir, "fr").code.original,
+		"const x =   1;\n  return x;",
+	);
+});
+
+test("whitespace-only source is treated as empty and pruned", async () => {
+	const { roseyDir, dest } = seed({
+		base: { blank: baseKey("   \n  ") },
+		locales: { fr: { blank: { original: "", value: "", _base_original: "" } } },
+	});
+
+	await writeLocales({ roseyDir, dest, locales: ["fr"] });
+
+	assert.ok(
+		!("blank" in readLocale(roseyDir, "fr")),
+		"whitespace-only source pruned",
+	);
 });

@@ -7,7 +7,8 @@ against each fixture's `CHECKLIST.md`.
 
 ## Unit tests — `npm run test:unit`
 
-`node --test` over `test/unit/`. Pure logic behind the known false-stale bug:
+`node --test` over `test/unit/`. The pure logic stale detection and locale
+merging depend on:
 
 - `write-locales.test.mjs` — entry creation, `_base_original` refresh, `<br>`/trim
   normalization, unused/empty pruning, key sorting, manifest (imports the public
@@ -44,7 +45,11 @@ Fixtures:
 > The build rewrites each fixture's checked-in `rosey/locales/*.json` in place —
 > that is write-locales' real behavior (refresh `_base_original`, add/prune keys).
 > A dirty working tree after a local run is expected; `git restore` the fixture's
-> locale files to reset. CI runs on a fresh checkout, so it is unaffected.
+> locale files to reset. **Commit them only in their pre-build state** (each stale
+> entry's `_base_original === original`, `stale:removed_me` present, no build-added
+> keys) — that clean state is what lets a fresh checkout observe the refresh,
+> prune, and create paths. Committing the post-build files makes those checks pass
+> without exercising anything. CI runs on a fresh checkout, so it is unaffected.
 
 ## Manual Visual-Editor check
 

@@ -5,10 +5,11 @@ import path from "node:path";
 import { test } from "node:test";
 import { resolveRoseyConfig } from "../../dist/internals.mjs";
 
-// resolveRoseyConfig is the 3-layer (file → env; env wins) config resolution the
-// Eleventy fixture leans on, backed by a hand-rolled YAML scanner (src/rosey-config.ts)
-// — exactly where a regression would hide. cwd + env are injectable, so each case
-// runs against a scratch dir and an explicit env object.
+// resolveRoseyConfig merges the rosey config file with ROSEY_* env vars (env
+// wins), backed by a hand-rolled YAML scanner (src/rosey-config.ts) where a
+// regression would hide. CLI flags are the top layer but are applied by the
+// caller (src/cli/write-locales.ts), not here. cwd + env are injectable, so each
+// case runs against a scratch dir and an explicit env object.
 
 /** Write `files` into a fresh tmp dir and return its path. */
 function scratch(files) {
@@ -78,6 +79,20 @@ test("rosey.json is parsed and snake_case keys are camelCased", () => {
 	assert.equal(c.source, "dist");
 	assert.deepEqual(c.languages, ["fr"]);
 	assert.equal(c.defaultLanguage, "en");
+});
+
+test("rosey.yaml wins over rosey.yml (Rosey's file search order)", () => {
+	const dir = scratch({
+		"rosey.yaml": "source: from_yaml",
+		"rosey.yml": "source: from_yml",
+	});
+	assert.equal(resolveRoseyConfig(dir, {}).source, "from_yaml");
+});
+
+test("a malformed config file falls back to {} (env still applies)", () => {
+	const dir = scratch({ "rosey.json": "{ not valid json" });
+	const c = resolveRoseyConfig(dir, { ROSEY_SOURCE: "_site" });
+	assert.equal(c.source, "_site");
 });
 
 test("no config and no env yields an empty object", () => {
