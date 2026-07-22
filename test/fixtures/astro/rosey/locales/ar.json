@@ -1,4 +1,9 @@
 {
+  "duplicates:shared": {
+    "original": "Edit me once and both copies update.",
+    "value": "Edit me once and both copies update.",
+    "_base_original": "Edit me once and both copies update."
+  },
   "index:heading": {
     "original": "Welcome to the RCC test fixture",
     "value": "مرحبًا بك في تجهيزة اختبار RCC",
@@ -9,24 +14,34 @@
     "value": "A visual-editor smoke test for the Rosey CloudCannon connector.",
     "_base_original": "A visual-editor smoke test for the Rosey CloudCannon connector."
   },
-  "stale:uptodate": {
-    "original": "This translation is up to date.",
-    "value": "هذه الترجمة محدثة.",
-    "_base_original": "This translation is up to date."
+  "markdown:article": {
+    "original": "<h2>Rich content</h2> <p>A paragraph with <strong>bold</strong>, <em>italic</em>, and <code>inline code</code>.</p> <ul> <li>Top-level item\n<ol> <li>Nested ordered one</li> <li>Nested ordered two</li> </ol> </li> <li>Another top-level item</li> </ul> <blockquote> <p>A blockquote that should survive the round-trip unchanged.</p> </blockquote> <table> <thead> <tr><th>Locale</th><th>Direction</th></tr> </thead> <tbody> <tr><td>fr</td><td>ltr</td></tr> <tr><td>ar</td><td>rtl</td></tr> </tbody> </table> <pre><code>const greeting = \"hello\";\nconsole.log(greeting);</code></pre> <p>A <a href=\"https://cloudcannon.com/\">link</a> and an image:</p> <img alt=\"Example placeholder\" height=\"48\" src=\"/example.svg\" width=\"48\">",
+    "value": "<h2>Rich content</h2> <p>A paragraph with <strong>bold</strong>, <em>italic</em>, and <code>inline code</code>.</p> <ul> <li>Top-level item\n<ol> <li>Nested ordered one</li> <li>Nested ordered two</li> </ol> </li> <li>Another top-level item</li> </ul> <blockquote> <p>A blockquote that should survive the round-trip unchanged.</p> </blockquote> <table> <thead> <tr><th>Locale</th><th>Direction</th></tr> </thead> <tbody> <tr><td>fr</td><td>ltr</td></tr> <tr><td>ar</td><td>rtl</td></tr> </tbody> </table> <pre><code>const greeting = \"hello\";\nconsole.log(greeting);</code></pre> <p>A <a href=\"https://cloudcannon.com/\">link</a> and an image:</p> <img alt=\"Example placeholder\" height=\"48\" src=\"/example.svg\" width=\"48\">",
+    "_base_original": "<h2>Rich content</h2> <p>A paragraph with <strong>bold</strong>, <em>italic</em>, and <code>inline code</code>.</p> <ul> <li>Top-level item\n<ol> <li>Nested ordered one</li> <li>Nested ordered two</li> </ol> </li> <li>Another top-level item</li> </ul> <blockquote> <p>A blockquote that should survive the round-trip unchanged.</p> </blockquote> <table> <thead> <tr><th>Locale</th><th>Direction</th></tr> </thead> <tbody> <tr><td>fr</td><td>ltr</td></tr> <tr><td>ar</td><td>rtl</td></tr> </tbody> </table> <pre><code>const greeting = \"hello\";\nconsole.log(greeting);</code></pre> <p>A <a href=\"https://cloudcannon.com/\">link</a> and an image:</p> <img alt=\"Example placeholder\" height=\"48\" src=\"/example.svg\" width=\"48\">"
+  },
+  "nested:section:card:body": {
+    "original": "Its Rosey key is nested:section:card:body.",
+    "value": "Its Rosey key is nested:section:card:body.",
+    "_base_original": "Its Rosey key is nested:section:card:body."
+  },
+  "nested:section:card:title": {
+    "original": "Deeply namespaced heading",
+    "value": "Deeply namespaced heading",
+    "_base_original": "Deeply namespaced heading"
   },
   "stale:changed": {
     "original": "This sentence has not changed yet.",
     "value": "لم تتغير هذه الجملة بعد.",
-    "_base_original": "This sentence has not changed yet."
+    "_base_original": "This sentence changed since it was last translated."
   },
   "stale:untranslated": {
     "original": "This one has no translation yet.",
     "value": "",
     "_base_original": "This one has no translation yet."
   },
-  "stale:removed_me": {
-    "original": "Obsolete key not present on any page.",
-    "value": "مفتاح قديم غير موجود في أي صفحة.",
-    "_base_original": "Obsolete key not present on any page."
+  "stale:uptodate": {
+    "original": "This translation is up to date.",
+    "value": "هذه الترجمة محدثة.",
+    "_base_original": "This translation is up to date."
   }
 }
