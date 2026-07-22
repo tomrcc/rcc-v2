@@ -1,4 +1,4 @@
-source: /
+source: test/fixtures/astro
 paths:
   static: public
   uploads: public
