@@ -688,6 +688,20 @@ html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
 }
+
+/* Minimize the layout shift when a region becomes a CC ProseMirror editor.
+   The editor box is neutral (no padding/margin of its own), but its rich-text
+   schema wraps every list item's content in a <p>. Static markdown renders
+   tight lists (<li>text</li>); the wrapper <p> inherits the site's paragraph
+   margins, turning them loose and pushing list items apart \u2014 the obvious jump
+   between the static view and the locale view. Zero just those wrapper margins
+   so the tight rhythm is preserved. Scoped to list items, so real paragraphs
+   keep their spacing. Some shift is inherent and left as-is (e.g. CC's image
+   widget genuinely replaces an inline <img> with an image editor). */
+html[data-rcc-locale-active] [data-rcc-translation-root] :is(li, dd, dt) > p {
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+}
 `;
 function injectHideControlsStyle() {
   if (document.getElementById(STYLE_ID)) return;
@@ -1432,6 +1446,31 @@ async function switchLocaleInner(locale, myGeneration) {
       `Missing-entry keys (editable, new entry written on first edit): ${missingKeys.join(", ")}`
     );
   }
+  const SIBLING_SYNC_MS = 150;
+  const siblingSyncTimers = /* @__PURE__ */ new Map();
+  const syncDuplicateSiblings = (source, content) => {
+    if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
+      return;
+    }
+    const pending = siblingSyncTimers.get(source.roseyKey);
+    if (pending) clearTimeout(pending);
+    siblingSyncTimers.set(
+      source.roseyKey,
+      setTimeout(() => {
+        siblingSyncTimers.delete(source.roseyKey);
+        if (myGeneration !== state.switchGeneration) return;
+        for (const t of tracked) {
+          if (t === source || t.roseyKey !== source.roseyKey) continue;
+          if (!t.editor || t.focused) continue;
+          try {
+            t.editor.setContent(content);
+          } catch (err) {
+            warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
+          }
+        }
+      }, SIBLING_SYNC_MS)
+    );
+  };
   const setupEditor = async (t, value) => {
     try {
       const inputConfig = originalInputConfigs.get(t.roseyKey);
@@ -1465,6 +1504,7 @@ async function switchLocaleInner(locale, myGeneration) {
             } catch (err) {
               warn(`[${t.roseyKey}] failed to create locale entry:`, err);
             }
+            syncDuplicateSiblings(t, content);
             return;
           }
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
@@ -1472,6 +1512,7 @@ async function switchLocaleInner(locale, myGeneration) {
           if (t.stale) {
             resolveStale(t, file);
           }
+          syncDuplicateSiblings(t, content);
         },
         {
           elementType,
@@ -1607,7 +1648,6 @@ async function init() {
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
   console.log(`RCC: v${"0.0.1"} loaded`);
-  console.log("RCC[proto]: liveStale=visible-text");
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

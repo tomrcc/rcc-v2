@@ -41,6 +41,20 @@ html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
 }
+
+/* Minimize the layout shift when a region becomes a CC ProseMirror editor.
+   The editor box is neutral (no padding/margin of its own), but its rich-text
+   schema wraps every list item's content in a <p>. Static markdown renders
+   tight lists (<li>text</li>); the wrapper <p> inherits the site's paragraph
+   margins, turning them loose and pushing list items apart — the obvious jump
+   between the static view and the locale view. Zero just those wrapper margins
+   so the tight rhythm is preserved. Scoped to list items, so real paragraphs
+   keep their spacing. Some shift is inherent and left as-is (e.g. CC's image
+   widget genuinely replaces an inline <img> with an image editor). */
+html[data-rcc-locale-active] [data-rcc-translation-root] :is(li, dd, dt) > p {
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+}
 `;
 
 /** Inject the control-hiding stylesheet once. Idempotent. */
