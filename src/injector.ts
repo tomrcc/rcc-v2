@@ -399,13 +399,7 @@ async function switchLocaleInner(
 		source: TrackedElement,
 		content: string,
 	): void => {
-		const siblings = tracked.filter(
-			(t) => t !== source && t.roseyKey === source.roseyKey,
-		);
-		console.log(
-			`RCC[dupsync]: onChange source="${source.roseyKey}" siblings=${siblings.length}`,
-		);
-		if (siblings.length === 0) {
+		if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
 			return;
 		}
 		const pending = siblingSyncTimers.get(source.roseyKey);
@@ -419,16 +413,8 @@ async function switchLocaleInner(
 				// the cursor, so we never yank it from under a typing editor.
 				for (const t of tracked) {
 					if (t === source || t.roseyKey !== source.roseyKey) continue;
-					if (!t.editor || t.focused) {
-						console.log(
-							`RCC[dupsync]: timer SKIP "${t.roseyKey}" editor=${!!t.editor} focused=${t.focused}`,
-						);
-						continue;
-					}
+					if (!t.editor || t.focused) continue;
 					try {
-						console.log(
-							`RCC[dupsync]: timer setContent -> "${t.roseyKey}"`,
-						);
 						t.editor.setContent(content);
 					} catch (err) {
 						warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
@@ -519,11 +505,9 @@ async function switchLocaleInner(
 
 			t.element.addEventListener("focus", () => {
 				t.focused = true;
-				console.log(`RCC[dupsync]: focus "${t.roseyKey}"`);
 			});
 			t.element.addEventListener("blur", () => {
 				t.focused = false;
-				console.log(`RCC[dupsync]: blur "${t.roseyKey}"`);
 			});
 			return true;
 		} catch (err) {
@@ -600,6 +584,34 @@ async function switchLocaleInner(
 	state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
 	dataset.addEventListener("change", state.activeDatasetListener);
 	dataset.addEventListener("delete", state.activeDatasetDeleteListener);
+
+	// TEMP diagnostics (discard/Clear): log which object fires which event and
+	// what value is read back, so we can see what CC actually emits on Clear.
+	{
+		const probe = (label: string) => async () => {
+			const key = tracked.find((t) => t.editor)?.roseyKey ?? "(none)";
+			let val: unknown = "(no read)";
+			try {
+				const f = await resolveFile(dataset);
+				val = f ? (await f.data.get({ slug: key }))?.value : "(no file)";
+			} catch {
+				val = "(get threw)";
+			}
+			console.log(`RCC[discard]: ${label} key="${key}" file.value=`, val);
+		};
+		dataset.addEventListener("change", probe("dataset change"));
+		dataset.addEventListener("delete", probe("dataset delete"));
+		try {
+			const datasetFile = await resolveFile(dataset);
+			(datasetFile as any)?.addEventListener?.("change", probe("datasetFile change"));
+			(datasetFile as any)?.addEventListener?.("delete", probe("datasetFile delete"));
+			const currentFile = (cc as any).currentFile?.();
+			currentFile?.addEventListener?.("change", probe("currentFile change"));
+			currentFile?.addEventListener?.("delete", probe("currentFile delete"));
+		} catch (err) {
+			console.log("RCC[discard]: probe attach failed", err);
+		}
+	}
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (new array item) or stamp its

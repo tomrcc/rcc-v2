@@ -1443,13 +1443,7 @@ async function switchLocaleInner(locale, myGeneration) {
   const SIBLING_SYNC_MS = 150;
   const siblingSyncTimers = /* @__PURE__ */ new Map();
   const syncDuplicateSiblings = (source, content) => {
-    const siblings = tracked.filter(
-      (t) => t !== source && t.roseyKey === source.roseyKey
-    );
-    console.log(
-      `RCC[dupsync]: onChange source="${source.roseyKey}" siblings=${siblings.length}`
-    );
-    if (siblings.length === 0) {
+    if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
       return;
     }
     const pending = siblingSyncTimers.get(source.roseyKey);
@@ -1461,16 +1455,8 @@ async function switchLocaleInner(locale, myGeneration) {
         if (myGeneration !== state.switchGeneration) return;
         for (const t of tracked) {
           if (t === source || t.roseyKey !== source.roseyKey) continue;
-          if (!t.editor || t.focused) {
-            console.log(
-              `RCC[dupsync]: timer SKIP "${t.roseyKey}" editor=${!!t.editor} focused=${t.focused}`
-            );
-            continue;
-          }
+          if (!t.editor || t.focused) continue;
           try {
-            console.log(
-              `RCC[dupsync]: timer setContent -> "${t.roseyKey}"`
-            );
             t.editor.setContent(content);
           } catch (err) {
             warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
@@ -1533,11 +1519,9 @@ async function switchLocaleInner(locale, myGeneration) {
       applying = false;
       t.element.addEventListener("focus", () => {
         t.focused = true;
-        console.log(`RCC[dupsync]: focus "${t.roseyKey}"`);
       });
       t.element.addEventListener("blur", () => {
         t.focused = false;
-        console.log(`RCC[dupsync]: blur "${t.roseyKey}"`);
       });
       return true;
     } catch (err) {
@@ -1595,6 +1579,31 @@ async function switchLocaleInner(locale, myGeneration) {
   state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
   dataset.addEventListener("change", state.activeDatasetListener);
   dataset.addEventListener("delete", state.activeDatasetDeleteListener);
+  {
+    const probe = (label) => async () => {
+      const key = tracked.find((t) => t.editor)?.roseyKey ?? "(none)";
+      let val = "(no read)";
+      try {
+        const f = await resolveFile(dataset);
+        val = f ? (await f.data.get({ slug: key }))?.value : "(no file)";
+      } catch {
+        val = "(get threw)";
+      }
+      console.log(`RCC[discard]: ${label} key="${key}" file.value=`, val);
+    };
+    dataset.addEventListener("change", probe("dataset change"));
+    dataset.addEventListener("delete", probe("dataset delete"));
+    try {
+      const datasetFile = await resolveFile(dataset);
+      datasetFile?.addEventListener?.("change", probe("datasetFile change"));
+      datasetFile?.addEventListener?.("delete", probe("datasetFile delete"));
+      const currentFile = cc.currentFile?.();
+      currentFile?.addEventListener?.("change", probe("currentFile change"));
+      currentFile?.addEventListener?.("delete", probe("currentFile delete"));
+    } catch (err) {
+      console.log("RCC[discard]: probe attach failed", err);
+    }
+  }
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
