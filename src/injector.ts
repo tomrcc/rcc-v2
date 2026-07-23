@@ -399,7 +399,13 @@ async function switchLocaleInner(
 		source: TrackedElement,
 		content: string,
 	): void => {
-		if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
+		const siblings = tracked.filter(
+			(t) => t !== source && t.roseyKey === source.roseyKey,
+		);
+		console.log(
+			`RCC[dupsync]: onChange source="${source.roseyKey}" siblings=${siblings.length}`,
+		);
+		if (siblings.length === 0) {
 			return;
 		}
 		const pending = siblingSyncTimers.get(source.roseyKey);
@@ -413,8 +419,16 @@ async function switchLocaleInner(
 				// the cursor, so we never yank it from under a typing editor.
 				for (const t of tracked) {
 					if (t === source || t.roseyKey !== source.roseyKey) continue;
-					if (!t.editor || t.focused) continue;
+					if (!t.editor || t.focused) {
+						console.log(
+							`RCC[dupsync]: timer SKIP "${t.roseyKey}" editor=${!!t.editor} focused=${t.focused}`,
+						);
+						continue;
+					}
 					try {
+						console.log(
+							`RCC[dupsync]: timer setContent -> "${t.roseyKey}"`,
+						);
 						t.editor.setContent(content);
 					} catch (err) {
 						warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
@@ -505,9 +519,11 @@ async function switchLocaleInner(
 
 			t.element.addEventListener("focus", () => {
 				t.focused = true;
+				console.log(`RCC[dupsync]: focus "${t.roseyKey}"`);
 			});
 			t.element.addEventListener("blur", () => {
 				t.focused = false;
+				console.log(`RCC[dupsync]: blur "${t.roseyKey}"`);
 			});
 			return true;
 		} catch (err) {
