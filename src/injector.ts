@@ -382,6 +382,48 @@ async function switchLocaleInner(
 		);
 	}
 
+	// --- Duplicate-key live sync --------------------------------------------
+	// The same rosey key can appear on several elements (duplicates.md, or a nav
+	// item repeated desktop/mobile). They share one stored value, so editing one
+	// must update the rest. CC's dataset "change" event would do this via
+	// resyncEditors, but it's unreliable/slow for plain elements that aren't
+	// inside a re-rendering component — so push to the siblings directly.
+	//
+	// Debounced per key: onChange fires on every keystroke, and setting every
+	// duplicate on each key would thrash. A trailing timer coalesces a burst into
+	// one setContent with the latest value.
+	const SIBLING_SYNC_MS = 150;
+	const siblingSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+	const syncDuplicateSiblings = (
+		source: TrackedElement,
+		content: string,
+	): void => {
+		if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
+			return;
+		}
+		const pending = siblingSyncTimers.get(source.roseyKey);
+		if (pending) clearTimeout(pending);
+		siblingSyncTimers.set(
+			source.roseyKey,
+			setTimeout(() => {
+				siblingSyncTimers.delete(source.roseyKey);
+				if (myGeneration !== state.switchGeneration) return;
+				// Skip the edited element and any focused sibling: setContent resets
+				// the cursor, so we never yank it from under a typing editor.
+				for (const t of tracked) {
+					if (t === source || t.roseyKey !== source.roseyKey) continue;
+					if (!t.editor || t.focused) continue;
+					try {
+						t.editor.setContent(content);
+					} catch (err) {
+						warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
+					}
+				}
+			}, SIBLING_SYNC_MS),
+		);
+	};
+
 	// --- Phase 2: Sequential editor creation --------------------------------
 	// setupEditor is reused by the reconcile pass, so elements CC adds or
 	// re-keys later get wired the same way.
@@ -440,6 +482,7 @@ async function switchLocaleInner(
 						} catch (err) {
 							warn(`[${t.roseyKey}] failed to create locale entry:`, err);
 						}
+						syncDuplicateSiblings(t, content);
 						return;
 					}
 
@@ -448,6 +491,7 @@ async function switchLocaleInner(
 					if (t.stale) {
 						resolveStale(t, file);
 					}
+					syncDuplicateSiblings(t, content);
 				},
 				{
 					elementType,
@@ -635,9 +679,6 @@ async function init(): Promise<void> {
 	// Always-on (not verbose-gated) so you can confirm the connector loaded and
 	// which version CC served.
 	console.log(`RCC: v${__RCC_VERSION__} loaded`);
-	// TEMP prototype marker — remove before real commit. Confirms the
-	// text-based-liveStale build is what's actually running in the editor.
-	console.log("RCC[proto]: liveStale=visible-text");
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??

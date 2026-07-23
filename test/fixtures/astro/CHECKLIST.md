@@ -18,7 +18,8 @@ headlessly).
       container); switch to `fr` → back to LTR.
 - [ ] **Stale** (`/stale/`): only `stale:changed` shows the amber dashed outline
       and appears in the stale panel. `stale:uptodate` and `stale:untranslated`
-      do **not**.
+      do **not**. `stale:untranslated` renders its source text in a normal editor
+      (its `value` equals `original`) — no empty box.
 - [ ] Resolve the stale item (✓ in the panel) → the amber clears and the panel
       count drops.
 - [ ] **Duplicates** (`/duplicates/`): edit one `shared` paragraph → the other
