@@ -43,6 +43,10 @@ export interface CCFile {
 			value: string | LocaleEntry | LocaleEntryData;
 		}): Promise<unknown>;
 	};
+	// CC fires change/delete on the File (not the Dataset). change = external
+	// edit or own-write echo; delete = Clear/Discard of pending changes.
+	addEventListener(event: string, listener: () => void): void;
+	removeEventListener(event: string, listener: () => void): void;
 }
 
 export interface CCDataset {

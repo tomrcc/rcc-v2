@@ -180,24 +180,24 @@ function teardownEditors(): void {
 	}
 	state.reconcileScheduled = false;
 
-	if (state.activeDataset) {
-		if (state.activeDatasetListener) {
-			state.activeDataset.removeEventListener(
+	if (state.activeFile) {
+		if (state.activeFileChangeListener) {
+			state.activeFile.removeEventListener(
 				"change",
-				state.activeDatasetListener,
+				state.activeFileChangeListener,
 			);
 		}
-		if (state.activeDatasetDeleteListener) {
-			state.activeDataset.removeEventListener(
+		if (state.activeFileDeleteListener) {
+			state.activeFile.removeEventListener(
 				"delete",
-				state.activeDatasetDeleteListener,
+				state.activeFileDeleteListener,
 			);
 		}
 	}
 	state.activeDataset = null;
-	state.activeDatasetListener = null;
-	state.activeDatasetDeleteListener = null;
 	state.activeFile = null;
+	state.activeFileChangeListener = null;
+	state.activeFileDeleteListener = null;
 
 	for (const t of tracked) t.editor = undefined;
 	tracked.length = 0;
@@ -231,6 +231,10 @@ function teardownEditors(): void {
 // ---------------------------------------------------------------------------
 
 const DATASET_TIMEOUT_MS = 5000;
+
+// "change" fires on every own-write echo (i.e. every keystroke), so a trailing
+// debounce collapses a typing burst into one resync instead of one per key.
+const CHANGE_RESYNC_MS = 200;
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
 	const timeout = new Promise<null>((resolve) =>
@@ -541,10 +545,10 @@ async function switchLocaleInner(
 	// --- Listen for external data changes -----------------------------------
 
 	// Re-pull every editor's value from the file and apply it. Shared by the
-	// dataset "change" listener (external edits, own-write echo) and the
-	// "delete" listener (Clear/Discard of pending changes). On a delete we force
-	// focused editors too and re-evaluate stale: a discard must win over what's
-	// in the editor, and can roll an entry back to a stale — or absent — state.
+	// file "change" listener (external edits, own-write echo) and the "delete"
+	// listener (Clear/Discard of pending changes). On a delete we force focused
+	// editors too and re-evaluate stale: a discard must win over what's in the
+	// editor, and can roll an entry back to a stale — or absent — state.
 	const resyncEditors = async (opts: { force: boolean }): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
 		const freshFile = await resolveFile(dataset);
@@ -579,39 +583,26 @@ async function switchLocaleInner(
 		);
 	};
 
+	// CC fires change/delete on the dataset's FILE, never on the dataset handle
+	// itself, so the listeners must live on `file`. (An earlier version listened
+	// on `dataset` and never fired — which is why Clear/Discard didn't revert.)
+	// "delete" = Clear/Discard: force a resync even over a focused editor so the
+	// discard wins. "change" = external edit / own-write echo, debounced because
+	// our own onChange writes fire it on every keystroke.
 	state.activeDataset = dataset;
-	state.activeDatasetListener = () => void resyncEditors({ force: false });
-	state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
-	dataset.addEventListener("change", state.activeDatasetListener);
-	dataset.addEventListener("delete", state.activeDatasetDeleteListener);
+	state.activeFile = file;
 
-	// TEMP diagnostics (discard/Clear): log which object fires which event and
-	// what value is read back, so we can see what CC actually emits on Clear.
-	{
-		const probe = (label: string) => async () => {
-			const key = tracked.find((t) => t.editor)?.roseyKey ?? "(none)";
-			let val: unknown = "(no read)";
-			try {
-				const f = await resolveFile(dataset);
-				val = f ? (await f.data.get({ slug: key }))?.value : "(no file)";
-			} catch {
-				val = "(get threw)";
-			}
-			console.log(`RCC[discard]: ${label} key="${key}" file.value=`, val);
-		};
-		dataset.addEventListener("change", probe("dataset change"));
-		dataset.addEventListener("delete", probe("dataset delete"));
-		try {
-			const datasetFile = await resolveFile(dataset);
-			(datasetFile as any)?.addEventListener?.("change", probe("datasetFile change"));
-			(datasetFile as any)?.addEventListener?.("delete", probe("datasetFile delete"));
-			const currentFile = (cc as any).currentFile?.();
-			currentFile?.addEventListener?.("change", probe("currentFile change"));
-			currentFile?.addEventListener?.("delete", probe("currentFile delete"));
-		} catch (err) {
-			console.log("RCC[discard]: probe attach failed", err);
-		}
-	}
+	let changeResyncTimer: ReturnType<typeof setTimeout> | null = null;
+	state.activeFileChangeListener = () => {
+		if (changeResyncTimer) clearTimeout(changeResyncTimer);
+		changeResyncTimer = setTimeout(() => {
+			changeResyncTimer = null;
+			void resyncEditors({ force: false });
+		}, CHANGE_RESYNC_MS);
+	};
+	state.activeFileDeleteListener = () => void resyncEditors({ force: true });
+	file.addEventListener("change", state.activeFileChangeListener);
+	file.addEventListener("delete", state.activeFileDeleteListener);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (new array item) or stamp its

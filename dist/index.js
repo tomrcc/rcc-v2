@@ -252,11 +252,12 @@ var state = {
   originalContainer: null,
   translationContainer: null,
   activeDataset: null,
-  activeDatasetListener: null,
-  // Separate "delete" listener: Clear/Discard of pending changes fires delete,
-  // not change, and must revert the page even over a focused editor.
-  activeDatasetDeleteListener: null,
+  // CC fires change/delete on the File, not the Dataset, so the listeners live
+  // on activeFile. change = external edit / own-write echo (debounced); delete
+  // = Clear/Discard of pending changes, which must revert even a focused editor.
   activeFile: null,
+  activeFileChangeListener: null,
+  activeFileDeleteListener: null,
   // Watches the translation container for [data-rosey] elements CC adds or
   // re-keys after the initial switch pass (new array items, late-stamped ns).
   reconcileObserver: null,
@@ -1297,24 +1298,24 @@ function teardownEditors() {
     state.reconcileObserver = null;
   }
   state.reconcileScheduled = false;
-  if (state.activeDataset) {
-    if (state.activeDatasetListener) {
-      state.activeDataset.removeEventListener(
+  if (state.activeFile) {
+    if (state.activeFileChangeListener) {
+      state.activeFile.removeEventListener(
         "change",
-        state.activeDatasetListener
+        state.activeFileChangeListener
       );
     }
-    if (state.activeDatasetDeleteListener) {
-      state.activeDataset.removeEventListener(
+    if (state.activeFileDeleteListener) {
+      state.activeFile.removeEventListener(
         "delete",
-        state.activeDatasetDeleteListener
+        state.activeFileDeleteListener
       );
     }
   }
   state.activeDataset = null;
-  state.activeDatasetListener = null;
-  state.activeDatasetDeleteListener = null;
   state.activeFile = null;
+  state.activeFileChangeListener = null;
+  state.activeFileDeleteListener = null;
   for (const t of tracked) t.editor = void 0;
   tracked.length = 0;
   state.staleCount = 0;
@@ -1337,6 +1338,7 @@ function teardownEditors() {
   state.originalContainer = null;
 }
 var DATASET_TIMEOUT_MS = 5e3;
+var CHANGE_RESYNC_MS = 200;
 async function resolveFile(dataset) {
   const timeout = new Promise(
     (resolve) => setTimeout(() => resolve(null), DATASET_TIMEOUT_MS)
@@ -1575,35 +1577,18 @@ async function switchLocaleInner(locale, myGeneration) {
     );
   };
   state.activeDataset = dataset;
-  state.activeDatasetListener = () => void resyncEditors({ force: false });
-  state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
-  dataset.addEventListener("change", state.activeDatasetListener);
-  dataset.addEventListener("delete", state.activeDatasetDeleteListener);
-  {
-    const probe = (label) => async () => {
-      const key = tracked.find((t) => t.editor)?.roseyKey ?? "(none)";
-      let val = "(no read)";
-      try {
-        const f = await resolveFile(dataset);
-        val = f ? (await f.data.get({ slug: key }))?.value : "(no file)";
-      } catch {
-        val = "(get threw)";
-      }
-      console.log(`RCC[discard]: ${label} key="${key}" file.value=`, val);
-    };
-    dataset.addEventListener("change", probe("dataset change"));
-    dataset.addEventListener("delete", probe("dataset delete"));
-    try {
-      const datasetFile = await resolveFile(dataset);
-      datasetFile?.addEventListener?.("change", probe("datasetFile change"));
-      datasetFile?.addEventListener?.("delete", probe("datasetFile delete"));
-      const currentFile = cc.currentFile?.();
-      currentFile?.addEventListener?.("change", probe("currentFile change"));
-      currentFile?.addEventListener?.("delete", probe("currentFile delete"));
-    } catch (err) {
-      console.log("RCC[discard]: probe attach failed", err);
-    }
-  }
+  state.activeFile = file;
+  let changeResyncTimer = null;
+  state.activeFileChangeListener = () => {
+    if (changeResyncTimer) clearTimeout(changeResyncTimer);
+    changeResyncTimer = setTimeout(() => {
+      changeResyncTimer = null;
+      void resyncEditors({ force: false });
+    }, CHANGE_RESYNC_MS);
+  };
+  state.activeFileDeleteListener = () => void resyncEditors({ force: true });
+  file.addEventListener("change", state.activeFileChangeListener);
+  file.addEventListener("delete", state.activeFileDeleteListener);
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);

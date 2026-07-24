@@ -17,11 +17,12 @@ export const state = {
 	translationContainer: null as HTMLElement | null,
 
 	activeDataset: null as CCDataset | null,
-	activeDatasetListener: null as (() => void) | null,
-	// Separate "delete" listener: Clear/Discard of pending changes fires delete,
-	// not change, and must revert the page even over a focused editor.
-	activeDatasetDeleteListener: null as (() => void) | null,
+	// CC fires change/delete on the File, not the Dataset, so the listeners live
+	// on activeFile. change = external edit / own-write echo (debounced); delete
+	// = Clear/Discard of pending changes, which must revert even a focused editor.
 	activeFile: null as CCFile | null,
+	activeFileChangeListener: null as (() => void) | null,
+	activeFileDeleteListener: null as (() => void) | null,
 
 	// Watches the translation container for [data-rosey] elements CC adds or
 	// re-keys after the initial switch pass (new array items, late-stamped ns).
