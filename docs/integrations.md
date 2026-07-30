@@ -74,6 +74,8 @@ npx rosey build --source _untranslated_site --dest dist --default-language en --
 
 If your workflow doesn't need `write-locales` at all, replace it with your own script. See [write-locales: Using your own script](write-locales.md#using-your-own-script-instead-of-write-locales) for the five requirements the connector expects (flat JSON structure, `original`/`value`/`_base_original` fields, locale manifest, and `data_config` entries).
 
+Keep `npx rosey-cloudcannon-connector install-client` in your postbuild regardless. It's a separate command that copies the browser client into your build output, independent of how locale files get generated — see [SSG Setup](ssg-setup.md).
+
 ## Machine translation example
 
 A generic pattern for filling untranslated entries via an external API. This works with any translation service — swap `translateBatch()` for your provider's SDK.

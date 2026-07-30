@@ -34,8 +34,15 @@ coverage.
 → `npm run build` (SSG build → `rosey generate` → `write-locales`) →
 `npm run verify`:
 
-- `verify-bundle.mjs` — the symlinked local bundle (not `github:tomrcc/rcc-v2`)
-  still emits its switcher/stale/selector contract + version stamp.
+- `verify-bundle.mjs` — three things. The installed bundle is byte-identical to the
+  repo's `dist/index.mjs` (⇒ local changes under test, not `github:tomrcc/rcc-v2`;
+  holds whether npm symlinked or copied, and catches a rebuild landing after the
+  fixture's `npm i`). It still emits its switcher/stale/selector contract. And the
+  client is reachable from the built pages — `eleventy-bookshop` reads the
+  `import()` URL out of the emitted HTML and resolves it against `_site`, `astro`
+  requires a bundled chunk under `dist/` containing the client. Without that last
+  one, both fixtures pass with a `<script>` that 404s, which in the editor is
+  indistinguishable from a broken editor.
 - `verify-locales.mjs` — locale JSON from a real `base.json`: three fields, the
   stale entry's `_base_original` refreshed to the live source, unused pruned,
   untranslated preserved, `<br>` normalized, manifest, and `stale:fresh` absent
@@ -45,8 +52,17 @@ Fixtures (pages = markdown piped through a layout → a real CC collection):
 
 - `astro` — primary: nested/duplicate keys, a non-editable element, markdown +
   full toolbar, stale states, a key with no locale entry; `fr` + RTL `ar`.
-- `eleventy-bookshop` — SSG-agnostic: `_site` dir, Bookshop render path, 3-layer
-  config (rosey.yml + `ROSEY_LANGUAGES` env + `--source`).
+- `eleventy-bookshop` — SSG-agnostic: `_site` dir, 3-layer config (rosey.yml +
+  `ROSEY_LANGUAGES` env + `--source`), and the non-bundled client delivery path
+  (`install-client` → `/_rcc/client.mjs`, no Eleventy config for it). Two pages,
+  one per 11ty editing style: `index.md` (Bookshop components) and `regions.md`
+  (CloudCannon editable regions bound to frontmatter, no Bookshop).
+
+`npx @bookshop/generate` in the eleventy fixture's postbuild exits 1 locally — it
+augments `_cloudcannon/info.json`, which CloudCannon writes during its own build,
+so on a dev machine it has nothing to attach to. The postbuild tolerates that so
+the Rosey steps still run; on CloudCannon it succeeds and is what makes the
+Bookshop component editable.
 
 > **Commit the fixture locale files only in their pre-build state.** That's what
 > lets a fresh checkout *observe* the refresh/prune/create the build performs;
@@ -65,6 +81,19 @@ Fixtures (pages = markdown piped through a layout → a real CC collection):
 >
 > `stale:fresh` is the inverse and needs no upkeep — `strip-fresh-key.mjs` deletes
 > it after write-locales on every build, so it stays absent whatever gets synced back.
+>
+> For `eleventy-bookshop`:
+>
+> | Pre-build state | Build behaviour it exposes |
+> | --- | --- |
+> | `index:hero-1:heading._base_original === original` (`"Old bookshop heading."`) | refreshed to the live source → base-stale |
+> | `index:hero-1:body._base_original === original` | stays equal → not stale (the control) |
+> | `regions:heading` present with its French `value` | committed translation survives the merge |
+> | `regions:body` absent | created with `value` = source, over an HTML string |
+>
+> The failure mode to watch for: a `_base_original` committed in its *post*-build
+> state makes the stale-refresh assertion pass on a fresh checkout without the
+> build doing anything.
 
 ## Build a fixture on CloudCannon
 

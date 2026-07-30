@@ -4,8 +4,12 @@ const pluginBookshop = require("@bookshop/eleventy-bookshop");
 // SSG-agnostic (alternate `_site` build dir), that the Bookshop render path
 // produces the data-rosey markup Rosey scans, and that 3-layer Rosey config
 // resolves (rosey.yml + ROSEY_LANGUAGES env + CLI flag).
+//
+// Nothing RCC-specific belongs here: `install-client` writes the client into
+// _site after this build finishes.
 module.exports = function (eleventyConfig) {
   eleventyConfig.setLiquidOptions({ root: ["./src", "./component-library"] });
+
   eleventyConfig.addPlugin(
     pluginBookshop({ bookshopLocations: ["component-library"], pathPrefix: "" }),
   );

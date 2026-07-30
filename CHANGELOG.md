@@ -33,7 +33,7 @@ Ordered by what you touch to upgrade.
 6. **Package exports** — `rosey-cloudcannon-connector/utils` (`generateRoseyId`)
    removed; `rosey-cloudcannon-connector/write-locales` added.
 7. **CLI commands** — `generate`, `tag`, and `generate-config` replaced by
-   `write-locales` and `init`.
+   `write-locales`, `install-client`, and `init`.
 8. **Editing model** — form-based Data Editor editing replaced by inline Visual
    Editor editing with a floating locale switcher.
 
@@ -65,6 +65,14 @@ Ordered by what you touch to upgrade.
   JSON. `--dest` emits the runtime manifest; `--keep-unused` preserves old keys
   during migration; locales are auto-detected from existing files when
   `--locales` is omitted. See [write-locales](docs/write-locales.md).
+- **`install-client` CLI** — copies the browser client to `_rcc/client.mjs` in your
+  build output, so any SSG can load it from a URL. It runs after the site build, so
+  no generator needs build configuration for it. Build dir resolves like
+  `write-locales` (`--dest`, else `ROSEY_SOURCE`, else the Rosey config's
+  `source:`); independent of it, so sites running their own locale middleware still
+  get the client. `init` omits the step on frameworks that bundle layout scripts
+  (Astro, Next, Nuxt, SvelteKit, Gatsby, Remix), where the bare specifier resolves.
+  See [SSG Setup](docs/ssg-setup.md).
 - **`/_rcc/locales.json` manifest** — runtime locale discovery from a build-time
   manifest, so no HTML attributes are needed to detect locales.
 - **Composable postbuild pipeline** — one set of files and one `write-locales`

@@ -35,6 +35,25 @@ check(
   "base.json should contain the Bookshop component's UUID-namespaced keys",
 );
 
+// The other 11ty editing style: regions.md renders frontmatter props into
+// CloudCannon editable regions, no Bookshop. Same data-rosey contract, so the
+// keys must come through identically.
+check(
+  "regions:heading" in base.keys && "regions:body" in base.keys,
+  "base.json should contain the editable-regions page's keys",
+);
+// Seeded pre-build with a translation, so it must survive the merge untouched.
+check(
+  fr["regions:heading"]?.value === "Régions modifiables sur un SSG sans bundler",
+  `fr regions:heading should keep its committed translation, got ${JSON.stringify(fr["regions:heading"])}`,
+);
+// Absent pre-build ⇒ created here with `value` = source, over an HTML string.
+check(
+  fr["regions:body"]?.value === fr["regions:body"]?.original &&
+    /^<p>No Bookshop here/.test(fr["regions:body"]?.original ?? ""),
+  `fr regions:body should be created with value = source, got ${JSON.stringify(fr["regions:body"])}`,
+);
+
 // Every entry well-formed + no XHTML <br/> leaked into a stored string.
 for (const [key, e] of Object.entries(fr)) {
   check(

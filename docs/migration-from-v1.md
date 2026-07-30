@@ -41,7 +41,7 @@ Before migrating, make sure all translations are saved and up to date. Run a fin
 
 ### 2. Update the postbuild script
 
-Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, and an `--exclusions` override so JSON assets (like the `_rcc` manifest and `_cloudcannon/info.json`) pass through the Rosey build.
+Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, an `install-client` step (v1 had no client-side component at all), and an `--exclusions` override so JSON assets (like the `_rcc` manifest and `_cloudcannon/info.json`) pass through the Rosey build.
 
 **v1:**
 
@@ -60,9 +60,12 @@ npx rosey build --source untranslated_site --dest dist --default-language-at-roo
 #!/usr/bin/env bash
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+npx rosey-cloudcannon-connector install-client --dest dist
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
+
+`install-client` is only needed if your layout imports the client by URL rather than as a bare specifier — that is, on any SSG that doesn't bundle browser JS. It's harmless to include either way. See step 4.
 
 ### 3. Update `cloudcannon.config.yml`
 
@@ -115,24 +118,17 @@ Import the connector in your site's layout file. This is new in v2 — v1 had no
 
 Place this inside the `<body>`, before or after your `<main>` element. See [Getting Started: Step 2](getting-started.md#step-2-import-the-script-in-your-layout) for more detail.
 
-**Framework note:** The import above works in Astro and other Vite-based frameworks because Vite bundles `node_modules` imports automatically. In **11ty** (and other non-bundled SSGs), you need a passthrough copy since the browser can't resolve `node_modules` paths:
-
-```js
-// eleventy.config.js
-eleventyConfig.addPassthroughCopy({
-  "./node_modules/rosey-cloudcannon-connector/dist/index.mjs": "/_rcc/injector.mjs"
-});
-```
-
-Then import from the copied path in your layout:
+**Framework note:** The import above works in Astro and other Vite-based frameworks because Vite bundles `node_modules` imports automatically. On **11ty, Hugo, Jekyll** and other non-bundled SSGs the browser can't resolve a package name, so add `install-client` to your postbuild (step 2 above) and import the URL it writes instead:
 
 ```html
 <script>
   if (window?.inEditorMode) {
-    import("/_rcc/injector.mjs");
+    import("/_rcc/client.mjs").catch(console.error);
   }
 </script>
 ```
+
+No build configuration is needed for this on any generator — `install-client` runs after your site build and copies the client into the output directory. See [SSG Setup](ssg-setup.md) for the layout snippet in each generator's template language.
 
 ### 5. Set the snapshot boundary
 

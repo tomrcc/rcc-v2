@@ -14,9 +14,28 @@ export interface ProjectContext {
 	postbuildExists: boolean;
 	postbuildContent: string | null;
 	bookshopDetected: boolean;
+	/** Framework that bundles layout `<script>` tags, so a bare specifier resolves. */
+	bundledFramework: string | null;
 }
 
 const BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
+
+// Frameworks that put layout <script> tags through a bundler, so the browser can
+// resolve `import("rosey-cloudcannon-connector")` and install-client is redundant.
+//
+// Deliberately not vite/webpack/rollup/esbuild on their own: a site can depend on
+// those to build a separate asset entry while its templates stay unbundled (11ty
+// + esbuild is a common shape). Reading them as "bundled" would drop
+// install-client from a site that needs it, which fails silently in the editor —
+// so only positive framework matches count, and everything else gets the URL.
+const BUNDLED_FRAMEWORKS = [
+	"astro",
+	"next",
+	"nuxt",
+	"@sveltejs/kit",
+	"gatsby",
+	"@remix-run/dev",
+];
 
 const LOCK_FILES: { file: string; pm: ProjectContext["packageManager"] }[] = [
 	{ file: "pnpm-lock.yaml", pm: "pnpm" },
@@ -90,6 +109,7 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 	const hasPackageJson = fileExists(pkgPath);
 	let roseyInstalled = false;
 	let rccInstalled = false;
+	let bundledFramework: string | null = null;
 
 	if (hasPackageJson) {
 		try {
@@ -100,8 +120,10 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 			};
 			roseyInstalled = "rosey" in allDeps;
 			rccInstalled = "rosey-cloudcannon-connector" in allDeps;
+			bundledFramework =
+				BUNDLED_FRAMEWORKS.find((name) => name in allDeps) ?? null;
 		} catch {
-			// malformed package.json — treat as no deps
+			// malformed config — treat as no deps
 		}
 	}
 
@@ -133,5 +155,6 @@ export function detectProject(cwd: string = process.cwd()): ProjectContext {
 		postbuildExists,
 		postbuildContent,
 		bookshopDetected,
+		bundledFramework,
 	};
 }

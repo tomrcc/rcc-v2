@@ -1,8 +1,10 @@
 import { run as init } from "./init";
+import { run as installClient } from "./install-client";
 import { run as writeLocales } from "./write-locales";
 
 const COMMANDS: Record<string, (argv: string[]) => void | Promise<void>> = {
 	"write-locales": writeLocales,
+	"install-client": installClient,
 	init,
 };
 
@@ -11,7 +13,8 @@ function printUsage(): void {
 		"Usage: rosey-cloudcannon-connector <command> [options]\n\n" +
 			"Commands:\n" +
 			"  init            Setup wizard for Rosey + CloudCannon (interactive or headless)\n" +
-			"  write-locales   Write/update locale files from Rosey base.json\n\n" +
+			"  write-locales   Write/update locale files from Rosey base.json\n" +
+			"  install-client  Copy the browser client into your build output (non-bundled SSGs)\n\n" +
 			"Run rosey-cloudcannon-connector <command> --help for command-specific options.\n",
 	);
 }

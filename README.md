@@ -19,7 +19,7 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 npm install rosey-cloudcannon-connector
 ```
 
-The package ships a **client-side injector** (auto-runs in the Visual Editor) and two **CLI tools** (`init`, `write-locales`). **Agent skills** for AI-assisted translation and setup are maintained separately in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills).
+The package ships a **client-side injector** (auto-runs in the Visual Editor) and three **CLI tools** (`init`, `write-locales`, `install-client`). **Agent skills** for AI-assisted translation and setup are maintained separately in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills).
 
 ## Quick Start
 
@@ -75,6 +75,7 @@ data_config:
 #!/usr/bin/env bash
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+npx rosey-cloudcannon-connector install-client --dest dist
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
@@ -82,6 +83,18 @@ npx rosey build --source _untranslated_site --dest dist --default-language en --
 The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through the build as assets. Without it, those files are excluded and must be manually copied back.
 
 > **Note: Rosey JSON translation users.** If your site uses [Rosey's JSON translation feature](https://rosey.app/docs/translating-json/) (`.rosey.json` schema files), be aware that this exclusion override lets all JSON files pass through as-is — including any JSON data files that Rosey would normally process via their `.rosey.json` schemas. If you use both the RCC and Rosey JSON translation, you may need a more targeted exclusion regex (e.g. keeping specific JSON files excluded) or handle the translated JSON output separately.
+
+**3. Import the client** in your layout. `install-client` puts it in your build output, so this works on any SSG:
+
+```html
+<script>
+  if (window?.inEditorMode) {
+    import("/_rcc/client.mjs").catch(console.error);
+  }
+</script>
+```
+
+On Astro and other bundled frameworks you can import the bare specifier `rosey-cloudcannon-connector` instead and skip `install-client`. On 11ty, Hugo, Jekyll and anything else that doesn't bundle browser JS, the URL form is required — see **[SSG Setup](docs/ssg-setup.md)**.
 
 ## Data Attributes
 
@@ -127,6 +140,7 @@ If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, o
 
 - **[Getting Started](docs/getting-started.md)** — Full setup guide with complete examples
 - **[Tagging Content](docs/tagging-content.md)** — How to tag elements and use namespacing
+- **[SSG Setup](docs/ssg-setup.md)** — Loading the client in Eleventy, Hugo, Jekyll, Astro, and how `install-client` works
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
 - **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, and the agent skills for it

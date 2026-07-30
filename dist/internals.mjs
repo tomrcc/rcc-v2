@@ -1,6 +1,167 @@
-// src/rosey-config.ts
+// src/cli/init/detect.ts
 import fs from "fs";
 import path from "path";
+
+// src/cc-config-files.ts
+var CC_CONFIG_FILES = [
+  { file: "cloudcannon.config.yml", format: "yml" },
+  { file: "cloudcannon.config.yaml", format: "yaml" },
+  { file: "cloudcannon.config.json", format: "json" },
+  { file: "cloudcannon.config.cjs", format: "cjs" }
+];
+
+// src/cli/init/detect.ts
+var BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
+var BUNDLED_FRAMEWORKS = [
+  "astro",
+  "next",
+  "nuxt",
+  "@sveltejs/kit",
+  "gatsby",
+  "@remix-run/dev"
+];
+var LOCK_FILES = [
+  { file: "pnpm-lock.yaml", pm: "pnpm" },
+  { file: "yarn.lock", pm: "yarn" },
+  { file: "bun.lock", pm: "bun" },
+  { file: "bun.lockb", pm: "bun" },
+  { file: "package-lock.json", pm: "npm" }
+];
+function fileExists(filePath) {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+function dirExists(dirPath) {
+  try {
+    return fs.statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function detectProject(cwd = process.cwd()) {
+  let ccConfigPath = null;
+  let ccConfigFormat = null;
+  let ccSource = null;
+  for (const candidate of CC_CONFIG_FILES) {
+    const full = path.join(cwd, candidate.file);
+    if (fileExists(full)) {
+      ccConfigPath = full;
+      ccConfigFormat = candidate.format;
+      break;
+    }
+  }
+  if (ccConfigPath) {
+    try {
+      const raw = fs.readFileSync(ccConfigPath, "utf-8");
+      if (ccConfigFormat === "json") {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.source === "string") ccSource = parsed.source;
+      } else if (ccConfigFormat === "yml" || ccConfigFormat === "yaml") {
+        const match = /^source:\s*['"]?([^'"#\n]+)['"]?\s*$/m.exec(raw);
+        if (match) ccSource = match[1].trim();
+      }
+    } catch {
+    }
+  }
+  let buildDir = null;
+  for (const dir of BUILD_DIR_CANDIDATES) {
+    if (dirExists(path.join(cwd, dir))) {
+      buildDir = dir;
+      break;
+    }
+  }
+  let packageManager = "npm";
+  for (const lock of LOCK_FILES) {
+    if (fileExists(path.join(cwd, lock.file))) {
+      packageManager = lock.pm;
+      break;
+    }
+  }
+  const pkgPath = path.join(cwd, "package.json");
+  const hasPackageJson = fileExists(pkgPath);
+  let roseyInstalled = false;
+  let rccInstalled = false;
+  let bundledFramework = null;
+  if (hasPackageJson) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      const allDeps = {
+        ...pkg.dependencies,
+        ...pkg.devDependencies
+      };
+      roseyInstalled = "rosey" in allDeps;
+      rccInstalled = "rosey-cloudcannon-connector" in allDeps;
+      bundledFramework = BUNDLED_FRAMEWORKS.find((name) => name in allDeps) ?? null;
+    } catch {
+    }
+  }
+  const postbuildPath = path.join(cwd, ".cloudcannon", "postbuild");
+  const postbuildExists = fileExists(postbuildPath);
+  let postbuildContent = null;
+  if (postbuildExists) {
+    try {
+      postbuildContent = fs.readFileSync(postbuildPath, "utf-8");
+    } catch {
+    }
+  }
+  const bookshopDetected = fileExists(path.join(cwd, "bookshop.config.cjs")) || dirExists(path.join(cwd, "_bookshop")) || dirExists(path.join(cwd, "component-library", "bookshop"));
+  return {
+    ccConfigPath,
+    ccConfigFormat,
+    ccSource,
+    buildDir,
+    packageManager,
+    hasPackageJson,
+    roseyInstalled,
+    rccInstalled,
+    postbuildExists,
+    postbuildContent,
+    bookshopDetected,
+    bundledFramework
+  };
+}
+
+// src/install-client.ts
+import fs2 from "fs";
+import path2 from "path";
+var CLIENT_FILENAME = "client.mjs";
+async function installClient(options) {
+  const { clientPath, dest } = options;
+  if (!dest) {
+    throw new Error("dest is required. Pass the build output directory.");
+  }
+  let destStat;
+  try {
+    destStat = await fs2.promises.stat(dest);
+  } catch {
+    throw new Error(
+      `Build output directory "${dest}" does not exist. Run install-client after your site build, not before.`
+    );
+  }
+  if (!destStat.isDirectory()) {
+    throw new Error(`Build output directory "${dest}" is not a directory.`);
+  }
+  try {
+    await fs2.promises.access(clientPath, fs2.constants.R_OK);
+  } catch {
+    throw new Error(
+      `Could not read the client bundle at "${clientPath}". Reinstall rosey-cloudcannon-connector.`
+    );
+  }
+  const rccDir = path2.join(dest, "_rcc");
+  await fs2.promises.mkdir(rccDir, { recursive: true });
+  const outPath = path2.join(rccDir, CLIENT_FILENAME);
+  await fs2.promises.copyFile(clientPath, outPath);
+  console.log(`RCC: Wrote client \u2192 ${outPath}`);
+  return outPath;
+}
+
+// src/rosey-config.ts
+import fs3 from "fs";
+import path3 from "path";
 var CONFIG_FILES = ["rosey.yaml", "rosey.yml", "rosey.json"];
 function unquote(s) {
   return s.replace(/^(['"])([\s\S]*)\1$/, "$2");
@@ -68,10 +229,10 @@ function clean(c) {
 }
 function readConfigFile(cwd) {
   for (const file of CONFIG_FILES) {
-    const full = path.join(cwd, file);
+    const full = path3.join(cwd, file);
     let raw;
     try {
-      raw = fs.readFileSync(full, "utf-8");
+      raw = fs3.readFileSync(full, "utf-8");
     } catch {
       continue;
     }
@@ -81,7 +242,7 @@ function readConfigFile(cwd) {
       return {};
     }
   }
-  if (fs.existsSync(path.join(cwd, "rosey.toml"))) {
+  if (fs3.existsSync(path3.join(cwd, "rosey.toml"))) {
     console.warn(
       "RCC: found rosey.toml, which this tool doesn't read. Use rosey.yml/.yaml/.json, or pass values via flags."
     );
@@ -121,6 +282,9 @@ function normalizeSource(s) {
   return unwrapLooseListItems(s.replace(/>\s+</g, "><")).replace(/<br\b[^>]*>/gi, " ").replace(/\s+/g, " ").trim();
 }
 export {
+  CLIENT_FILENAME,
+  detectProject,
+  installClient,
   normalizeSource,
   resolveRoseyConfig
 };

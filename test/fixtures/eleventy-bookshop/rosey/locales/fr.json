@@ -7,6 +7,11 @@
   "index:hero-1:heading": {
     "original": "Old bookshop heading.",
     "value": "Ancien titre Bookshop.",
-    "_base_original": "Welcome to the Bookshop fixture"
+    "_base_original": "Old bookshop heading."
+  },
+  "regions:heading": {
+    "original": "Editable regions on a non-bundled SSG",
+    "value": "Régions modifiables sur un SSG sans bundler",
+    "_base_original": "Editable regions on a non-bundled SSG"
   }
 }

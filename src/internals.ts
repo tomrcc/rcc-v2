@@ -3,5 +3,7 @@
 // `normalizeSource` only into the DOM client bundle (importing that in node
 // risks evaluating `document`). This tiny entry makes both importable from
 // node without a DOM shim. Not part of the public API — test-only.
+export { detectProject } from "./cli/init/detect";
+export { CLIENT_FILENAME, installClient } from "./install-client";
 export { resolveRoseyConfig } from "./rosey-config";
 export { normalizeSource } from "./stale";
