@@ -12,3 +12,7 @@ set -euo pipefail
 # the merged locale files.
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist --locales fr,ar
+
+# Deliberately after write-locales: re-opens the "key in the build, no locale
+# entry" state that write-locales just filled in.
+node strip-fresh-key.mjs

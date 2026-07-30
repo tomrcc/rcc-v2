@@ -38,21 +38,33 @@ coverage.
   still emits its switcher/stale/selector contract + version stamp.
 - `verify-locales.mjs` — locale JSON from a real `base.json`: three fields, the
   stale entry's `_base_original` refreshed to the live source, unused pruned,
-  `<br>` normalized, manifest.
+  untranslated preserved, `<br>` normalized, manifest, and `stale:fresh` absent
+  from every locale file (the missing-entry scenario the postbuild re-opens).
 
 Fixtures (pages = markdown piped through a layout → a real CC collection):
 
 - `astro` — primary: nested/duplicate keys, a non-editable element, markdown +
-  full toolbar, stale states; `fr` + RTL `ar`.
+  full toolbar, stale states, a key with no locale entry; `fr` + RTL `ar`.
 - `eleventy-bookshop` — SSG-agnostic: `_site` dir, Bookshop render path, 3-layer
   config (rosey.yml + `ROSEY_LANGUAGES` env + `--source`).
 
-> **Commit the fixture locale files only in their pre-build state** — stale entries
-> with `_base_original === original`, `stale:removed_me` present, no build-added
-> keys. That's what lets a fresh checkout *observe* the refresh/prune/create the
-> build performs; committing post-build files makes the checks pass without
-> exercising anything. The build rewrites them in place, so `git restore` after a
-> local run (CI checkouts are clean, so unaffected).
+> **Commit the fixture locale files only in their pre-build state.** That's what
+> lets a fresh checkout *observe* the refresh/prune/create the build performs;
+> committing post-build files makes the checks pass without exercising anything.
+> The build rewrites them in place, so `git restore` after a local run (CI
+> checkouts are clean, so unaffected). `CLOUDCANNON_SYNC_PATHS` commits post-build
+> locale files back too, so an `Updated N files via CloudCannon` commit will retire
+> these invariants unless you restore them. For `astro` they are:
+>
+> | Pre-build state | Build behaviour it exposes |
+> | --- | --- |
+> | `stale:changed._base_original === original` | refreshed away from `original` → base-stale |
+> | `markdown:article._base_original === original` (space-collapsed form) | same, over HTML |
+> | `stale:removed_me` present | pruned (not in `base.json`) |
+> | `nested:section:card:body` absent | created with `value` = source |
+>
+> `stale:fresh` is the inverse and needs no upkeep — `strip-fresh-key.mjs` deletes
+> it after write-locales on every build, so it stays absent whatever gets synced back.
 
 ## Build a fixture on CloudCannon
 

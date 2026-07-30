@@ -56,17 +56,35 @@ check(
     fr["stale:uptodate"]._base_original === fr["stale:uptodate"].original,
   "fr stale:uptodate should have _base_original === original",
 );
-// Untranslated entry preserved with an empty value.
-check(fr["stale:untranslated"]?.value === "", "fr stale:untranslated value should stay empty");
+// Untranslated: write-locales seeds value from the source and never overwrites it.
+check(
+  fr["stale:untranslated"]?.value === fr["stale:untranslated"]?.original &&
+    fr["stale:untranslated"]?.value === fr["stale:untranslated"]?._base_original,
+  `fr stale:untranslated should keep value === original === _base_original, got ${JSON.stringify(fr["stale:untranslated"])}`,
+);
 
 // --- Unused key pruned ----------------------------------------------------
 check(!("stale:removed_me" in fr), "fr stale:removed_me (unused) should be pruned");
+check(!("stale:removed_me" in ar), "ar stale:removed_me (unused) should be pruned");
 
 // --- Create path: keys not pre-crafted were added from base ---------------
+// :body is deliberately absent pre-build; its :title sibling stays translated so
+// the manual walk still sees French/Arabic there.
 check(
   fr["nested:section:card:body"]?.value === fr["nested:section:card:body"]?.original,
   "auto-created nested key should default value to its source",
 );
+
+// --- Missing-entry scenario: stripped back out after write-locales ---------
+// It's on the page (so base.json has it) but must reach the editor with no locale
+// entry — the only state that exercises the create-a-full-entry path.
+check("stale:fresh" in base.keys, "base.json should contain stale:fresh");
+for (const [locale, data] of [["fr", fr], ["ar", ar]]) {
+  check(
+    !("stale:fresh" in data),
+    `${locale} stale:fresh should be stripped by strip-fresh-key.mjs (postbuild)`,
+  );
+}
 
 // --- Duplicate-key collapse happened at generate time ---------------------
 check(
