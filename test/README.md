@@ -38,10 +38,10 @@ coverage.
   repo's `dist/index.mjs` (⇒ local changes under test, not `github:tomrcc/rcc-v2`;
   holds whether npm symlinked or copied, and catches a rebuild landing after the
   fixture's `npm i`). It still emits its switcher/stale/selector contract. And the
-  client is reachable from the built pages — `eleventy-bookshop` reads the
-  `import()` URL out of the emitted HTML and resolves it against `_site`, `astro`
-  requires a bundled chunk under `dist/` containing the client. Without that last
-  one, both fixtures pass with a `<script>` that 404s, which in the editor is
+  client is reachable from the built pages — `eleventy` reads the `import()` URL
+  out of the emitted HTML and resolves it against `_site`, `astro` requires a
+  bundled chunk under `dist/` containing the client. Without that last one, both
+  fixtures pass with a `<script>` that 404s, which in the editor is
   indistinguishable from a broken editor.
 - `verify-locales.mjs` — locale JSON from a real `base.json`: three fields, the
   stale entry's `_base_original` refreshed to the live source, unused pruned,
@@ -52,7 +52,7 @@ Fixtures (pages = markdown piped through a layout → a real CC collection):
 
 - `astro` — primary: nested/duplicate keys, a non-editable element, markdown +
   full toolbar, stale states, a key with no locale entry; `fr` + RTL `ar`.
-- `eleventy-bookshop` — SSG-agnostic: `_site` dir, 3-layer config (rosey.yml +
+- `eleventy` — SSG-agnostic: `_site` dir, 3-layer config (rosey.yml +
   `ROSEY_LANGUAGES` env + `--source`), and the non-bundled client delivery path
   (`install-client` → `/_rcc/client.mjs`, no Eleventy config for it). Two pages,
   one per 11ty editing style: `index.md` (Bookshop components) and `regions.md`
@@ -82,7 +82,7 @@ Bookshop component editable.
 > `stale:fresh` is the inverse and needs no upkeep — `strip-fresh-key.mjs` deletes
 > it after write-locales on every build, so it stays absent whatever gets synced back.
 >
-> For `eleventy-bookshop`:
+> For `eleventy`:
 >
 > | Pre-build state | Build behaviour it exposes |
 > | --- | --- |
@@ -101,17 +101,17 @@ Each fixture runs as its **own** CloudCannon site — all pointed at this repo,
 differing only by the build settings below. Create a site from the repo, then set
 **Site Settings → Build**:
 
-| Setting              | `astro`                                             | `eleventy-bookshop`                                             |
-| -------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| Install command      | `cd test/fixtures/astro && npm i`                   | `cd test/fixtures/eleventy-bookshop && npm i`                  |
-| Build command        | `cd test/fixtures/astro && npm run build`           | `cd test/fixtures/eleventy-bookshop && npm run build`         |
-| Output path          | `test/fixtures/astro/dist`                          | `test/fixtures/eleventy-bookshop/_site`                       |
-| Environment variable | `CLOUDCANNON_SYNC_PATHS=test/fixtures/astro/rosey/` | `CLOUDCANNON_SYNC_PATHS=test/fixtures/eleventy-bookshop/rosey/` |
-| Config file path     | `test/fixtures/astro/cloudcannon.config.yml`        | `test/fixtures/eleventy-bookshop/cloudcannon.config.yml`      |
+| Setting              | `astro`                                             | `eleventy`                                             |
+| -------------------- | --------------------------------------------------- | ------------------------------------------------------ |
+| Install command      | `cd test/fixtures/astro && npm i`                   | `cd test/fixtures/eleventy && npm i`                   |
+| Build command        | `cd test/fixtures/astro && npm run build`           | `cd test/fixtures/eleventy && npm run build`           |
+| Output path          | `test/fixtures/astro/dist`                          | `test/fixtures/eleventy/_site`                         |
+| Environment variable | `CLOUDCANNON_SYNC_PATHS=test/fixtures/astro/rosey/` | `CLOUDCANNON_SYNC_PATHS=test/fixtures/eleventy/rosey/` |
+| Config file path     | `test/fixtures/astro/cloudcannon.config.yml`        | `test/fixtures/eleventy/cloudcannon.config.yml`        |
 
 Then confirm that config file's `source:` scopes CloudCannon to the fixture dir —
-`test/fixtures/astro` / `test/fixtures/eleventy-bookshop` respectively (already set,
-so relative `path:`/`data_config` entries resolve). `CLOUDCANNON_SYNC_PATHS` syncs
+`test/fixtures/astro` / `test/fixtures/eleventy` respectively (already set, so
+relative `path:`/`data_config` entries resolve). `CLOUDCANNON_SYNC_PATHS` syncs
 the generated `rosey/` locale files back to git so translations persist across
 builds.
 

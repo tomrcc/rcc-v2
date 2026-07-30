@@ -69,7 +69,7 @@ instead — and give the matching CloudCannon collection an explicit `url:`, sin
 a collection with no `url:` can't resolve to a page and will open in the Data
 Editor instead of the Visual Editor.
 
-A working example lives in `test/fixtures/eleventy-bookshop`.
+A working example lives in `test/fixtures/eleventy`.
 
 ## Hugo
 
@@ -166,17 +166,21 @@ generator above:
 - **Plain `data-rosey`** — the client creates its own inline editors. Nothing
   else needed.
 - **CloudCannon editable regions** — put `data-rosey` on the same element as
-  `data-editable`/`data-prop`. A `data-editable="source"` region gets the content
-  toolbar in the locale clone too. Rich-text and source regions need
-  `data-type="block"` (or `"text"`), or the entry reads as perpetually stale and
-  won't open an editor.
+  `data-editable="text"`/`data-prop`, and the client inherits that region's
+  toolbar config for its locale editors. A field holding HTML needs
+  `data-type="block"` (or `"text"`) on the region *and* a `type: html` input in
+  `cloudcannon.config.yml` — the on-canvas region and the sidebar input are
+  independent channels, so configuring one doesn't configure the other. Without a
+  `data-type`, a rich field defaults to `span` and reads as perpetually stale.
+  Note `data-editable="source"` is a different thing: it edits whole HTML files
+  via `data-path`, not frontmatter, and isn't what you want here.
 - **Bookshop components** — components emit `data-rosey` from their own
   templates; keys namespace under the component's `_uuid`. The client pauses and
   resumes Bookshop live editing around a locale switch. Bookshop sites also need
   `npx @bookshop/generate` in the postbuild.
 
-`test/fixtures/eleventy-bookshop` covers the editable-regions and Bookshop styles
-on the same Eleventy site, one page each.
+`test/fixtures/eleventy` covers the editable-regions and Bookshop styles on the
+same Eleventy site, one page each.
 
 ## Troubleshooting
 

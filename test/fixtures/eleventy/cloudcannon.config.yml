@@ -1,4 +1,4 @@
-source: test/fixtures/eleventy-bookshop
+source: test/fixtures/eleventy
 paths:
   static: ""
 
@@ -25,6 +25,12 @@ collections_config:
         hidden: true
       title:
         type: text
+      # regions.md. `html` because the value holds HTML elements — a textarea
+      # would escape them. Pairs with data-type="block" on the region.
+      heading:
+        type: text
+      body:
+        type: html
 
 # RCC reads these to discover the locale files and expose the switcher.
 data_config:

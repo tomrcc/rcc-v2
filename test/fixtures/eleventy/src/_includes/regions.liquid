@@ -1,0 +1,12 @@
+---
+layout: base.liquid
+---
+{% comment %}
+  The editable-regions editing style; index.md covers Bookshop. heading takes no
+  data-type so it defaults to `span` (plain, no toolbar). body holds HTML, so it
+  needs data-type="block" here AND `type: html` in cloudcannon.config.yml — the
+  on-canvas region and the sidebar input are independent channels.
+{% endcomment %}
+<h1 data-editable="text" data-prop="heading" data-rosey="heading">{{ heading }}</h1>
+<div data-editable="text" data-type="block" data-prop="body" data-rosey="body">{{ body }}</div>
+<p>Sibling with no data-rosey — must stay uneditable.</p>

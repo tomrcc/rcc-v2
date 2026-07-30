@@ -6,9 +6,8 @@ import { test } from "node:test";
 import { detectProject } from "../../dist/internals.mjs";
 
 // bundledFramework decides whether `init` writes an install-client step and which
-// import snippet it prints. A false positive drops install-client from a site that
-// needs it, which fails silently in the editor — so anything short of a known
-// framework must come back null.
+// import snippet it prints. A false positive drops the step from a site that needs
+// it and fails silently, so anything short of a known framework must be null.
 
 function projectWith(deps) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rcc-detect-"));
@@ -37,7 +36,7 @@ test("finds it in devDependencies too", () => {
 });
 
 test("a bare bundler is not a bundled framework", () => {
-	// 11ty + esbuild builds a separate asset entry while its templates stay
+	// 11ty + esbuild bundles a separate asset entry while templates stay
 	// unbundled, so the layout still needs the URL form.
 	assert.equal(detect({ "@11ty/eleventy": "^3.0.0", esbuild: "^0.24.0" }), null);
 	assert.equal(detect({ vite: "^6.0.0" }), null);

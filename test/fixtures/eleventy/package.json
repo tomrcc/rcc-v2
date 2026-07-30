@@ -1,5 +1,5 @@
 {
-  "name": "rcc-fixture-eleventy-bookshop",
+  "name": "rcc-fixture-eleventy",
   "private": true,
   "scripts": {
     "build": "eleventy && bash .cloudcannon/postbuild",

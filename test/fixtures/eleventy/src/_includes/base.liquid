@@ -5,8 +5,10 @@
     <title>{{ title }}</title>
   </head>
   <body>
-    <!-- data-rcc-verbose: without it, init()'s early returns are silent and a
-         failure prints "RCC: loaded" and nothing else. -->
+    {% comment %}
+      data-rcc-verbose: without it, init()'s early returns are silent and a
+      failure prints "RCC: loaded" and nothing else.
+    {% endcomment %}
     <div data-rcc data-rcc-verbose>
       <main data-rosey-root="{{ page.fileSlug | default: 'index' }}">
         {{ content }}

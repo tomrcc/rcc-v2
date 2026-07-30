@@ -1,7 +1,7 @@
-// Eleventy + Bookshop assertions. Focus (deliberately narrow — the Astro fixture
-// covers markdown/toolbar/duplicates): the alternate `_site` build dir, the
-// Bookshop render path producing data-rosey keys, and 3-layer Rosey config
-// resolution (rosey.yml + ROSEY_LANGUAGES env + --source CLI flag).
+// Eleventy assertions. Focus (deliberately narrow — the Astro fixture covers
+// markdown/toolbar/duplicates): the alternate `_site` build dir, both the Bookshop
+// and editable-regions render paths producing data-rosey keys, and 3-layer Rosey
+// config resolution (rosey.yml + ROSEY_LANGUAGES env + --source CLI flag).
 import fs from "node:fs";
 
 const failures = [];
@@ -67,11 +67,10 @@ for (const [key, e] of Object.entries(fr)) {
   }
 }
 
-// Stale scenario: the committed entry has _base_original === original ("Old
-// bookshop heading."). The build refreshes _base_original to the live rendered
-// source, so it must now equal the heading and differ from the preserved
-// `original` → base-stale. Asserting the refreshed value (not just "the two
-// differ") is what makes this observe the refresh rather than a static diff.
+// Stale scenario: committed with _base_original === original, so the build must
+// refresh it to the live source and away from `original` → base-stale. Asserting
+// the exact refreshed value (not just "they differ") is what observes the refresh
+// rather than a static diff.
 check(
   fr["index:hero-1:heading"]?._base_original === "Welcome to the Bookshop fixture" &&
     fr["index:hero-1:heading"]._base_original !== fr["index:hero-1:heading"].original,
