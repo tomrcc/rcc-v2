@@ -20,14 +20,10 @@ export interface ProjectContext {
 
 const BUILD_DIR_CANDIDATES = ["dist", "_site", "build", "out"];
 
-// Frameworks that put layout <script> tags through a bundler, so the browser can
-// resolve `import("rosey-cloudcannon-connector")` and install-client is redundant.
-//
-// Deliberately not vite/webpack/rollup/esbuild on their own: a site can depend on
-// those to build a separate asset entry while its templates stay unbundled (11ty
-// + esbuild is a common shape). Reading them as "bundled" would drop
-// install-client from a site that needs it, which fails silently in the editor —
-// so only positive framework matches count, and everything else gets the URL.
+// Not vite/webpack/rollup/esbuild on their own — a site can bundle a separate
+// asset entry while its templates stay unbundled (11ty + esbuild). Reading those
+// as bundled would drop install-client from a site that needs it, which fails
+// silently, so only these positive matches count.
 const BUNDLED_FRAMEWORKS = [
 	"astro",
 	"next",

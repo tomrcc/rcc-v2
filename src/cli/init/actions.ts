@@ -83,10 +83,9 @@ export function buildPostbuildBlock(answers: WizardAnswers): string {
 		);
 	}
 
-	// Skipped on bundled frameworks, where the layout imports the bare specifier
-	// and this file would ship unused. Outside the branch above otherwise, since
-	// it's needed whichever way locale files get generated — and before the `mv`,
-	// so it lands inside the tree Rosey copies.
+	// Skipped on bundled frameworks, where the file would ship unused. Outside the
+	// branch above otherwise — needed whichever way locale files get generated —
+	// and before the `mv`, so it lands inside the tree Rosey copies.
 	if (!bundledFramework) {
 		lines.push("");
 		lines.push(
