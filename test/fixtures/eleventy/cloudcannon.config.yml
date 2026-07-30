@@ -2,11 +2,9 @@ source: test/fixtures/eleventy
 paths:
   static: ""
 
-# The Bookshop page, so it shows up in the Collection browser and opens in the
-# Visual Editor for the smoke test. Markdown file piped through _includes/
-# base.liquid; `[slug]` is the filename (index → "/"), matching Eleventy's output.
-# Editing happens live via the data-rosey regions the Bookshop component emits,
-# the title via the input below; the curated fixture isn't editor-extended.
+# Both pages, so they show up in the Collection browser and open in the Visual
+# Editor for the smoke test. `[slug]` is the filename (index → "/"), matching
+# Eleventy's output. The curated fixture isn't editor-extended.
 collections_config:
   pages:
     path: src
@@ -31,6 +29,12 @@ collections_config:
         type: text
       body:
         type: html
+
+# index.md's Bookshop array. The component values come from the library via
+# `@bookshop/generate` → _cloudcannon/info.json, so only presentation is set here.
+_structures:
+  content_blocks:
+    style: modal
 
 # RCC reads these to discover the locale files and expose the switcher.
 data_config:

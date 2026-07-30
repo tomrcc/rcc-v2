@@ -16,8 +16,15 @@ Two pages, one per 11ty editing style: `index.md` (Bookshop) and `regions.md`
    log says which.
 
 ## Walk — `index.md` (Bookshop)
-- [ ] The Bookshop `hero` component renders; its heading/body are editable
-      (keys `index:hero-1:heading` / `:body`).
+- [ ] **The original is editable**, not just the locales: click the hero heading
+      with no locale selected and type — it saves to `content_blocks[0].heading`
+      in frontmatter. This is what `bind: block` buys; with literal params in the
+      tag there'd be nothing to write to and only the locale views would edit.
+- [ ] The component panel opens and reordering/adding a block works (the array is
+      real frontmatter, and new blocks get a `_uuid` from the blueprint's
+      `instance_value: UUID` — without it keys fall back to the array index and
+      shift on reorder).
+- [ ] Keys are `index:hero-1:heading` / `:body`, from the block's own `_uuid`.
 - [ ] The locale-switcher FAB appears; switching to `ar` (added via the
       `ROSEY_LANGUAGES` env override, not `rosey.yml`) works.
 - [ ] **Bookshop pause/resume** (src/bookshop.ts): switching locale does not
