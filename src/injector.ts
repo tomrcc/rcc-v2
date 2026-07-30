@@ -40,9 +40,6 @@ import {
 } from "./ui/hide-controls";
 import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
-// Injected by tsup at build time (see tsup.config.ts) for the build banner.
-declare const __RCC_VERSION__: string;
-
 // Translatable elements: tagged with data-rosey, not opted out via data-rcc-ignore.
 const TRANSLATABLE_SELECTOR = "[data-rosey]:not([data-rcc-ignore])";
 
@@ -695,9 +692,8 @@ async function init(): Promise<void> {
 	}
 	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	// Always-on (not verbose-gated) so you can confirm the connector loaded and
-	// which version CC served.
-	console.log(`RCC: v${__RCC_VERSION__} loaded`);
+	// Always-on (not verbose-gated) so you can confirm the connector loaded.
+	console.log("RCC: loaded");
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??

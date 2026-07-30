@@ -49,16 +49,12 @@ if (fs.existsSync(bundlePath)) {
     "createTextEditableRegion",
     "CloudCannonAPI",
     "inEditorMode",
-    // Version stamp — printed to the console as `RCC: v<version> loaded`.
-    "RCC: v",
-    "loaded",
+    // Load banner — printed to the console as `RCC: loaded`.
+    "RCC: loaded",
   ];
   for (const m of markers) {
     check(src.includes(m), `bundle should contain marker: ${JSON.stringify(m)}`);
   }
-  // The tsup `define` must have inlined the version; the raw token surviving
-  // means the local build didn't run.
-  check(!src.includes("__RCC_VERSION__"), "__RCC_VERSION__ should be substituted at build time");
 }
 
 if (failures.length) {

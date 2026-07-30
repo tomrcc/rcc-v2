@@ -34,8 +34,7 @@ const roseyRoot = Astro.url.pathname.replace(/^\/|\/$/g, "") || "index";
     <script>
       // RCC only runs inside CloudCannon's Visual Editor. The static build ships
       // the data-rosey attributes regardless; this wires live editing + the
-      // locale switcher on top of them. The console prints `RCC: v<version>
-      // loaded` — proof the local file: build (not github:tomrcc/rcc-v2) loaded.
+      // locale switcher on top of them. The console prints `RCC: loaded`.
       if (window.inEditorMode) {
         import("rosey-cloudcannon-connector");
       }

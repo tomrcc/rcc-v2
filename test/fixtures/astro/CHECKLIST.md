@@ -9,8 +9,7 @@ headlessly).
 1. In `rcc-v2/`, run `npm run build` (fresh `dist/`; the fixture symlink reflects
    it instantly — no reinstall needed).
 2. Open `test/fixtures/astro` as its own CloudCannon site; enter the Visual Editor.
-3. Open the browser console — it must print **`RCC: v<version> loaded`**. This is
-   the proof the local `file:` build loaded, not `github:tomrcc/rcc-v2`.
+3. Open the browser console — it must print **`RCC: loaded`**.
 
 ## Walk
 - [ ] The locale-switcher FAB appears (bottom corner).

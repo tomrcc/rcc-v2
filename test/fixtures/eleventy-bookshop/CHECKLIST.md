@@ -6,7 +6,7 @@ config. This list covers the live-editor-only Bookshop behavior.
 ## Setup
 1. In `rcc-v2/`, run `npm run build`.
 2. Open `test/fixtures/eleventy-bookshop` as a CloudCannon site; enter the Visual Editor.
-3. Console prints `RCC: v<version> loaded` (proves the local `file:` build).
+3. Console prints `RCC: loaded`.
 
 ## Walk
 - [ ] The Bookshop `hero` component renders; its heading/body are editable

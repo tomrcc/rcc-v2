@@ -77,5 +77,4 @@ builds.
 ## Manual check
 
 Once the fixture site is building (above), open it in the Visual Editor, confirm
-`RCC: v<version> loaded` in the console — proof the local build loaded — then walk
-its `CHECKLIST.md`.
+`RCC: loaded` in the console, then walk its `CHECKLIST.md`.

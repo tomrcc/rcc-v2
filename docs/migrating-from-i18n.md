@@ -23,7 +23,7 @@ If your site already uses a translation system — Astro's built-in i18n, `astro
 | `t("key")` function / translation dictionaries | `data-rosey="key"` attributes on HTML elements |
 | Per-locale page copies (`/fr/about.astro`) | Rosey clones pages and injects translations from locale JSON files |
 | Translation files (JSON/YAML/PO dictionaries) | `rosey/locales/{code}.json` with `{ original, value, _base_original }` per entry |
-| Language picker with locale URL helpers | Static picker with `data-rosey-ignore` on links ([details](../skills/make-site-multilingual/astro.md#visitor-facing-locale-picker)) |
+| Language picker with locale URL helpers | Static picker with `data-rosey-ignore` on links ([details](https://github.com/CloudCannon/agent-skills/blob/main/skills/make-site-multilingual/astro.md#visitor-facing-locale-picker)) |
 | Locale fallbacks (page-level) | Rosey falls back per-key to default-language text |
 | `Astro.currentLocale` / locale detection | Not needed — pages are built once, Rosey handles locale output |
 
@@ -40,10 +40,10 @@ If your site already uses a translation system — Astro's built-in i18n, `astro
 
 ### Using agent skills (recommended)
 
-The package includes agent skills with detailed step-by-step migration workflows. Add them to your project:
+Agent skills with detailed step-by-step migration workflows are maintained in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills). Add them to your project:
 
 ```bash
-npx rosey-cloudcannon-connector add-skills
+npx skills add CloudCannon/agent-skills --all
 ```
 
 The `make-site-multilingual` skill walks through the full process in its "Migrating from an existing i18n system" appendix: detecting the current system, extracting translations, removing old infrastructure, applying the Rosey stack, and verifying the result. Its `astro.md` companion includes an Astro-specific supplement with concrete before/after patterns for Astro's built-in i18n.
@@ -68,4 +68,4 @@ This means the migration is mainly about:
 - Deleting duplicate page directories (for pages where only strings differ)
 - Replacing `getRelativeLocaleUrl()` calls with plain paths (Rosey rewrites links automatically)
 
-For detailed before/after code patterns, use the `make-site-multilingual` agent skill (its "Migrating from an existing i18n system" appendix), or see the [Astro migration patterns](../skills/make-site-multilingual/astro.md) directly (the "Migrating an Astro Site Off Its Existing i18n" section).
+For detailed before/after code patterns, use the `make-site-multilingual` agent skill (its "Migrating from an existing i18n system" appendix), or see the [Astro migration patterns](https://github.com/CloudCannon/agent-skills/blob/main/skills/make-site-multilingual/astro.md) directly (the "Migrating an Astro Site Off Its Existing i18n" section).

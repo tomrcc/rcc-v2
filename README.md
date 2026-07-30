@@ -19,7 +19,7 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 npm install rosey-cloudcannon-connector
 ```
 
-The package ships a **client-side injector** (auto-runs in the Visual Editor), three **CLI tools** (`init`, `write-locales`, `add-skills`), and **agent skills** for AI-assisted translation and setup.
+The package ships a **client-side injector** (auto-runs in the Visual Editor) and two **CLI tools** (`init`, `write-locales`). **Agent skills** for AI-assisted translation and setup are maintained separately in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills).
 
 ## Quick Start
 
@@ -105,10 +105,10 @@ Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-ba
 
 Rosey locale files are flat JSON with a predictable three-field structure per entry (`original`, `value`, `_base_original`). This makes them ideal for AI translation — untranslated entries are instantly detectable (`value === original`), stale entries are flagged (`original !== _base_original`), and already-translated content is left untouched. No wasted tokens, reviewable diffs, idempotent runs.
 
-The package includes agent skills that guide AI coding assistants through translation and setup workflows. Add them to your project:
+Agent skills that guide AI coding assistants through translation and setup workflows live in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills). Add them to your project:
 
 ```bash
-npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
+npx skills add CloudCannon/agent-skills --all
 ```
 
 See [AI-Powered Translation](docs/ai-translation.md) for the full guide.
@@ -121,7 +121,7 @@ Accurate stale detection and element activation depend on each element having a 
 
 ## Already Using an i18n System?
 
-If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. The package also includes an agent skill (`make-site-multilingual`, whose "Migrating from an existing i18n system" appendix covers this) with detailed step-by-step instructions — run `npx rosey-cloudcannon-connector add-skills` to add it to your project.
+If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. There's also an agent skill (`make-site-multilingual`, whose "Migrating from an existing i18n system" appendix covers this) with detailed step-by-step instructions — run `npx skills add CloudCannon/agent-skills --all` to add it to your project.
 
 ## Documentation
 
@@ -129,7 +129,7 @@ If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, o
 - **[Tagging Content](docs/tagging-content.md)** — How to tag elements and use namespacing
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
-- **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, agent skills, and the `add-skills` CLI
+- **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, and the agent skills for it
 - **[External Integrations](docs/integrations.md)** — Machine translation APIs, TMS platforms, CI-driven translation, and custom middleware
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
