@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "keys": {
+    "index:hero-1:body": {
+      "original": "Rendered by the Bookshop Eleventy engine.",
+      "value": null,
+      "pages": {
+        "index.html": 1
+      },
+      "total": 1
+    },
+    "index:hero-1:heading": {
+      "original": "Welcome to the Bookshop fixture",
+      "value": null,
+      "pages": {
+        "index.html": 1
+      },
+      "total": 1
+    },
+    "regions:body": {
+      "original": "<p>No Bookshop here — just CloudCannon editable regions bound to frontmatter, with <strong>data-rosey</strong> on the same elements.</p>",
+      "value": null,
+      "pages": {
+        "regions/index.html": 1
+      },
+      "total": 1
+    },
+    "regions:heading": {
+      "original": "Editable regions on a non-bundled SSG",
+      "value": null,
+      "pages": {
+        "regions/index.html": 1
+      },
+      "total": 1
+    }
+  }
+}
