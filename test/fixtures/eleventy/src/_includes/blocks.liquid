@@ -1,0 +1,14 @@
+---
+layout: base.liquid
+---
+{% comment %}
+  `bind:` spreads the block's fields into the component, so its params trace back
+  to frontmatter rather than being literals in the tag. That's what makes the
+  original editable in the Visual Editor, not just the locale values RCC owns.
+
+  Each block carries its own `_uuid`, which the component uses for data-rosey-ns.
+  Without it Bookshop falls back to the array index, and keys shift on reorder.
+{% endcomment %}
+{% for block in content_blocks %}
+  {% bookshop "{{block._bookshop_name}}" bind: block %}
+{% endfor %}

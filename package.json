@@ -25,19 +25,30 @@
 				"types": "./dist/write-locales.d.ts",
 				"default": "./dist/write-locales.js"
 			}
+		},
+		"./internals": {
+			"import": {
+				"types": "./dist/internals.d.mts",
+				"default": "./dist/internals.mjs"
+			}
 		}
 	},
 	"bin": {
 		"rosey-cloudcannon-connector": "./dist/cli/index.js"
 	},
 	"files": [
-		"dist",
-		"skills"
+		"dist"
 	],
 	"scripts": {
 		"build": "rm -rf dist && tsup",
 		"dev": "tsup --watch",
-		"biome": "biome check --write"
+		"biome": "biome check --write",
+		"lint": "biome check",
+		"typecheck": "tsc --noEmit",
+		"pretest:unit": "npm run build",
+		"test:unit": "node --test 'test/unit/*.test.mjs'",
+		"test:integration": "bash test/run-integration.sh",
+		"test": "npm run test:unit && npm run test:integration"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.4",

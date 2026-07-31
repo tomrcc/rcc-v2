@@ -5,7 +5,7 @@ This guide walks you through going from zero to a working translation editing se
 1. Mark up your HTML with `data-rosey` attributes
 2. Import the client-side script in your layout
 3. Configure `cloudcannon.config.yml` with `data_config` entries for each locale
-4. Set up a postbuild script to run `write-locales` and `rosey build`
+4. Set up a postbuild script to run `write-locales`, `install-client` and `rosey build`
 
 ## Quick Start (non-interactive)
 
@@ -52,9 +52,21 @@ See [Tagging Content](tagging-content.md) for full details on namespacing and ke
 
 ## Step 2: Import the script in your layout
 
-Import the package in your site's layout file. The script self-initializes when the CloudCannon Visual Editor fires the `cloudcannon:load` event — it does nothing outside the editor, so there's no performance cost in production.
+Import the client in your site's layout file. It self-initializes when the CloudCannon Visual Editor fires the `cloudcannon:load` event — it does nothing outside the editor, so there's no performance cost in production.
 
-**Astro (recommended — lazy-load in editor only):**
+The `install-client` command in your postbuild (Step 4) copies the client into your build output at `_rcc/client.mjs`, so you import it by URL. This works on every static site generator:
+
+```html
+<script>
+  if (window?.inEditorMode) {
+    import("/_rcc/client.mjs").catch(console.error);
+  }
+</script>
+```
+
+The `window.inEditorMode` flag is set by CloudCannon's Visual Editor before your scripts run. Keep the `.catch` — without it a missing file is an unhandled rejection that's easy to miss, and "the client didn't load" otherwise looks identical to "the editor isn't working".
+
+**If your site is bundled** (Astro or another Vite-based framework), you can instead import the bare specifier and let the bundler resolve it, which gets you its hashing and versioning:
 
 ```astro
 <script>
@@ -64,7 +76,9 @@ Import the package in your site's layout file. The script self-initializes when 
 </script>
 ```
 
-The `window.inEditorMode` flag is set by CloudCannon's Visual Editor before your scripts run.
+Only bundled sites can do this — a browser has no `node_modules` lookup, so on 11ty, Hugo, Jekyll and friends a bare specifier throws `Failed to resolve module specifier` and the client never loads. That's what `install-client` exists for.
+
+See [SSG Setup](ssg-setup.md) for the layout snippet in each generator's template language, including how to derive `data-rosey-root`.
 
 > **Note:** The script must be loaded as a module (`type="module"` or via a bundler `import`). It does not support `<script src="...">` without `type="module"`.
 
@@ -87,7 +101,7 @@ This tells CloudCannon to expose these JSON files through its data API. The conn
 
 ## Step 4: Set up the postbuild script
 
-Create `.cloudcannon/postbuild` in your repo root. This runs after every CloudCannon build and handles three things: generating `base.json`, creating/updating locale files, and building the translated site.
+Create `.cloudcannon/postbuild` in your repo root. This runs after every CloudCannon build and handles four things: generating `base.json`, creating/updating locale files, installing the browser client, and building the translated site.
 
 ```bash
 #!/usr/bin/env bash
@@ -98,12 +112,21 @@ npx rosey generate --source dist
 # 2. Create/update locale JSON files + write the locale manifest
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 
-# 3. Build the translated site with Rosey
+# 3. Copy the browser client to dist/_rcc/client.mjs (what Step 2 imports)
+npx rosey-cloudcannon-connector install-client --dest dist
+
+# 4. Build the translated site with Rosey
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
 
 Adjust `--source dist` and `--default-language en` if your SSG outputs to a different directory or uses a different source language.
+
+Steps 2 and 3 are independent — if you generate locale files with your own script instead of `write-locales`, you still run `install-client` exactly as above. Both resolve the build directory the same way (`--dest`, else `ROSEY_SOURCE`, else `source:` in your Rosey config), so on a site whose Rosey config already sets `source: dist` you can drop the flag entirely.
+
+Step 3 is only needed if your layout imports the client by URL. On a bundled framework using the bare specifier, omit it — `init` detects those and leaves it out.
+
+Step 3 must come before the `mv`, so the client is inside the tree Rosey copies through.
 
 ### Why `--exclusions`?
 
@@ -195,6 +218,8 @@ npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
+
+No `install-client` here: this example takes the bundled path above, so Vite pulls the client in at build time. Any generator that doesn't bundle needs the `install-client` step — see [SSG Setup](ssg-setup.md).
 
 ### A page with translatable content
 

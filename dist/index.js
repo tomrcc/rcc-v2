@@ -252,11 +252,12 @@ var state = {
   originalContainer: null,
   translationContainer: null,
   activeDataset: null,
-  activeDatasetListener: null,
-  // Separate "delete" listener: Clear/Discard of pending changes fires delete,
-  // not change, and must revert the page even over a focused editor.
-  activeDatasetDeleteListener: null,
+  // CC fires change/delete on the File, not the Dataset, so the listeners live
+  // on activeFile. change = external edit / own-write echo (debounced); delete
+  // = Clear/Discard of pending changes, which must revert even a focused editor.
   activeFile: null,
+  activeFileChangeListener: null,
+  activeFileDeleteListener: null,
   // Watches the translation container for [data-rosey] elements CC adds or
   // re-keys after the initial switch pass (new array items, late-stamped ns).
   reconcileObserver: null,
@@ -687,6 +688,14 @@ html[data-rcc-locale-active] :is(
 html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-rcc-ignore]):not([data-rcc-stale]) {
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
+}
+
+/* ProseMirror re-wraps tight list items (<li>text</li>) as <li><p>text</p></li>;
+   the injected <p> picks up the default paragraph margin and the list goes
+   loose \u2014 the obvious shift on locale switch. No !important, so a site that
+   deliberately styles loose lists (higher specificity) keeps them. */
+html[data-rcc-locale-active] [data-rcc-translation-root] :is(li, dd, dt) > p {
+	margin-block: 0;
 }
 `;
 function injectHideControlsStyle() {
@@ -1289,24 +1298,24 @@ function teardownEditors() {
     state.reconcileObserver = null;
   }
   state.reconcileScheduled = false;
-  if (state.activeDataset) {
-    if (state.activeDatasetListener) {
-      state.activeDataset.removeEventListener(
+  if (state.activeFile) {
+    if (state.activeFileChangeListener) {
+      state.activeFile.removeEventListener(
         "change",
-        state.activeDatasetListener
+        state.activeFileChangeListener
       );
     }
-    if (state.activeDatasetDeleteListener) {
-      state.activeDataset.removeEventListener(
+    if (state.activeFileDeleteListener) {
+      state.activeFile.removeEventListener(
         "delete",
-        state.activeDatasetDeleteListener
+        state.activeFileDeleteListener
       );
     }
   }
   state.activeDataset = null;
-  state.activeDatasetListener = null;
-  state.activeDatasetDeleteListener = null;
   state.activeFile = null;
+  state.activeFileChangeListener = null;
+  state.activeFileDeleteListener = null;
   for (const t of tracked) t.editor = void 0;
   tracked.length = 0;
   state.staleCount = 0;
@@ -1329,6 +1338,7 @@ function teardownEditors() {
   state.originalContainer = null;
 }
 var DATASET_TIMEOUT_MS = 5e3;
+var CHANGE_RESYNC_MS = 200;
 async function resolveFile(dataset) {
   const timeout = new Promise(
     (resolve) => setTimeout(() => resolve(null), DATASET_TIMEOUT_MS)
@@ -1432,6 +1442,31 @@ async function switchLocaleInner(locale, myGeneration) {
       `Missing-entry keys (editable, new entry written on first edit): ${missingKeys.join(", ")}`
     );
   }
+  const SIBLING_SYNC_MS = 150;
+  const siblingSyncTimers = /* @__PURE__ */ new Map();
+  const syncDuplicateSiblings = (source, content) => {
+    if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
+      return;
+    }
+    const pending = siblingSyncTimers.get(source.roseyKey);
+    if (pending) clearTimeout(pending);
+    siblingSyncTimers.set(
+      source.roseyKey,
+      setTimeout(() => {
+        siblingSyncTimers.delete(source.roseyKey);
+        if (myGeneration !== state.switchGeneration) return;
+        for (const t of tracked) {
+          if (t === source || t.roseyKey !== source.roseyKey) continue;
+          if (!t.editor || t.focused) continue;
+          try {
+            t.editor.setContent(content);
+          } catch (err) {
+            warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
+          }
+        }
+      }, SIBLING_SYNC_MS)
+    );
+  };
   const setupEditor = async (t, value) => {
     try {
       const inputConfig = originalInputConfigs.get(t.roseyKey);
@@ -1465,6 +1500,7 @@ async function switchLocaleInner(locale, myGeneration) {
             } catch (err) {
               warn(`[${t.roseyKey}] failed to create locale entry:`, err);
             }
+            syncDuplicateSiblings(t, content);
             return;
           }
           log(`[${t.roseyKey}] onChange \u2192 set(".value")`);
@@ -1472,6 +1508,7 @@ async function switchLocaleInner(locale, myGeneration) {
           if (t.stale) {
             resolveStale(t, file);
           }
+          syncDuplicateSiblings(t, content);
         },
         {
           elementType,
@@ -1540,10 +1577,18 @@ async function switchLocaleInner(locale, myGeneration) {
     );
   };
   state.activeDataset = dataset;
-  state.activeDatasetListener = () => void resyncEditors({ force: false });
-  state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
-  dataset.addEventListener("change", state.activeDatasetListener);
-  dataset.addEventListener("delete", state.activeDatasetDeleteListener);
+  state.activeFile = file;
+  let changeResyncTimer = null;
+  state.activeFileChangeListener = () => {
+    if (changeResyncTimer) clearTimeout(changeResyncTimer);
+    changeResyncTimer = setTimeout(() => {
+      changeResyncTimer = null;
+      void resyncEditors({ force: false });
+    }, CHANGE_RESYNC_MS);
+  };
+  state.activeFileDeleteListener = () => void resyncEditors({ force: true });
+  file.addEventListener("change", state.activeFileChangeListener);
+  file.addEventListener("delete", state.activeFileDeleteListener);
   const reconcileElement = async (el) => {
     if (myGeneration !== state.switchGeneration) return;
     const key = resolveRoseyKey(el);
@@ -1606,8 +1651,7 @@ async function init() {
     return;
   }
   state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
-  console.log(`RCC: v${"0.0.1"} loaded`);
-  console.log("RCC[proto]: liveStale=visible-text");
+  console.log("RCC: loaded");
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;
   const allLocales = await discoverLocales();

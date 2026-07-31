@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{ title }}</title>
+  </head>
+  <body>
+    {% comment %}
+      data-rcc-verbose: without it, init()'s early returns are silent and a
+      failure prints "RCC: loaded" and nothing else.
+    {% endcomment %}
+    <div data-rcc data-rcc-verbose>
+      <main data-rosey-root="{{ page.fileSlug | default: 'index' }}">
+        {{ content }}
+      </main>
+    </div>
+    <script>
+      // A URL, not the bare specifier: nothing bundles this HTML, so the browser
+      // can't resolve a package name. install-client puts the file here.
+      // The .catch turns a missing file into a visible error, not a silent
+      // unhandled rejection.
+      if (window.inEditorMode) {
+        import("/_rcc/client.mjs").catch((e) =>
+          console.error("RCC: /_rcc/client.mjs failed to load — did install-client run?", e),
+        );
+      }
+    </script>
+  </body>
+</html>

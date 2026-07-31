@@ -139,6 +139,8 @@ If you roll your own workflow, here's what the connector expects:
 4. **A locale manifest** at `{dest}/_rcc/locales.json` — a JSON object with a `locales` array (see [Manifest format](#manifest-format) above): `{ "locales": ["fr", "de"] }`
 5. **Matching `data_config` entries** in `cloudcannon.config.yml` following the `locales_{code}` naming convention
 
+Note that only the locale files and the manifest are `write-locales`' job. Getting the browser client into your build output is a separate command, `install-client`, so replacing `write-locales` doesn't affect it — keep that line in your postbuild either way. It writes to the same `_rcc` directory but neither command touches the other's output. See [SSG Setup](ssg-setup.md).
+
 You could also use `write-locales` as your baseline and run your own middleware on top — for example, calling an external translation API to fill in empty `value` fields before handing off to Rosey.
 
 For detailed integration patterns — pipeline insertion points, machine translation examples, TMS sync, CI-driven workflows — see [External Integrations](integrations.md).

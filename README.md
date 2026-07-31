@@ -19,7 +19,7 @@ The connector auto-detects all `data-rosey` tagged elements on the page, injects
 npm install rosey-cloudcannon-connector
 ```
 
-The package ships a **client-side injector** (auto-runs in the Visual Editor), three **CLI tools** (`init`, `write-locales`, `add-skills`), and **agent skills** for AI-assisted translation and setup.
+The package ships a **client-side injector** (auto-runs in the Visual Editor) and three **CLI tools** (`init`, `write-locales`, `install-client`). **Agent skills** for AI-assisted translation and setup are maintained separately in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills).
 
 ## Quick Start
 
@@ -75,6 +75,7 @@ data_config:
 #!/usr/bin/env bash
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+npx rosey-cloudcannon-connector install-client --dest dist
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
@@ -82,6 +83,18 @@ npx rosey build --source _untranslated_site --dest dist --default-language en --
 The `--exclusions` flag overrides Rosey's default (`\.(html?|json)$`) so that JSON files like `_rcc/locales.json` and `_cloudcannon/info.json` flow through the build as assets. Without it, those files are excluded and must be manually copied back.
 
 > **Note: Rosey JSON translation users.** If your site uses [Rosey's JSON translation feature](https://rosey.app/docs/translating-json/) (`.rosey.json` schema files), be aware that this exclusion override lets all JSON files pass through as-is — including any JSON data files that Rosey would normally process via their `.rosey.json` schemas. If you use both the RCC and Rosey JSON translation, you may need a more targeted exclusion regex (e.g. keeping specific JSON files excluded) or handle the translated JSON output separately.
+
+**3. Import the client** in your layout. `install-client` puts it in your build output, so this works on any SSG:
+
+```html
+<script>
+  if (window?.inEditorMode) {
+    import("/_rcc/client.mjs").catch(console.error);
+  }
+</script>
+```
+
+On Astro and other bundled frameworks you can import the bare specifier `rosey-cloudcannon-connector` instead and skip `install-client`. On 11ty, Hugo, Jekyll and anything else that doesn't bundle browser JS, the URL form is required — see **[SSG Setup](docs/ssg-setup.md)**.
 
 ## Data Attributes
 
@@ -105,10 +118,10 @@ Sites using [Bookshop](https://github.com/CloudCannon/bookshop) for component-ba
 
 Rosey locale files are flat JSON with a predictable three-field structure per entry (`original`, `value`, `_base_original`). This makes them ideal for AI translation — untranslated entries are instantly detectable (`value === original`), stale entries are flagged (`original !== _base_original`), and already-translated content is left untouched. No wasted tokens, reviewable diffs, idempotent runs.
 
-The package includes agent skills that guide AI coding assistants through translation and setup workflows. Add them to your project:
+Agent skills that guide AI coding assistants through translation and setup workflows live in [CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills). Add them to your project:
 
 ```bash
-npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
+npx skills add CloudCannon/agent-skills --all
 ```
 
 See [AI-Powered Translation](docs/ai-translation.md) for the full guide.
@@ -121,15 +134,16 @@ Accurate stale detection and element activation depend on each element having a 
 
 ## Already Using an i18n System?
 
-If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. The package also includes an agent skill (`make-site-multilingual`, whose "Migrating from an existing i18n system" appendix covers this) with detailed step-by-step instructions — run `npx rosey-cloudcannon-connector add-skills` to add it to your project.
+If your site already uses Astro's built-in i18n, `astro-i18next`, `next-intl`, or another translation system, see the [migration guide](docs/migrating-from-i18n.md) for what changes and how to move to Rosey. There's also an agent skill (`make-site-multilingual`, whose "Migrating from an existing i18n system" appendix covers this) with detailed step-by-step instructions — run `npx skills add CloudCannon/agent-skills --all` to add it to your project.
 
 ## Documentation
 
 - **[Getting Started](docs/getting-started.md)** — Full setup guide with complete examples
 - **[Tagging Content](docs/tagging-content.md)** — How to tag elements and use namespacing
+- **[SSG Setup](docs/ssg-setup.md)** — Loading the client in Eleventy, Hugo, Jekyll, Astro, and how `install-client` works
 - **[Configuration](docs/configuration.md)** — Snapshot boundary, locale exclusion, CloudCannon config
 - **[write-locales CLI](docs/write-locales.md)** — CLI reference, programmatic API, locale file format
-- **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, agent skills, and the `add-skills` CLI
+- **[AI-Powered Translation](docs/ai-translation.md)** — Using AI to translate locale files, and the agent skills for it
 - **[External Integrations](docs/integrations.md)** — Machine translation APIs, TMS platforms, CI-driven translation, and custom middleware
 - **[Stale Translation Detection](docs/stale-translations.md)** — Detecting and resolving out-of-date translations
 - **[Split-by-Directory Translation](docs/split-by-directory.md)** — Translating body content via per-locale content collections alongside Rosey
@@ -149,7 +163,14 @@ Found a bug, hit a rough edge, or have a feature request? Please [open an issue]
 npm run build    # Build CJS + ESM output via tsup
 npm run dev      # Watch mode
 npm run biome    # Lint and format
+npm test         # Unit tests + integration fixture builds
 ```
+
+Unit tests (`npm run test:unit`) cover the pure locale/stale logic; the
+integration suite (`npm run test:integration`) builds the Astro and
+Eleventy+Bookshop fixtures against the local package. See
+[`test/README.md`](test/README.md) for the layout and the manual Visual-Editor
+checklist.
 
 ## License
 

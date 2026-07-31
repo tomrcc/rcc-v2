@@ -40,13 +40,13 @@ Rosey keys encode page and section information: `nav:about`, `index:hero:title`,
 
 ### 1. AI coding agent (recommended)
 
-The package ships agent skills that guide an AI coding assistant through the translation process. Add them to your project:
+Agent skills guide an AI coding assistant through the translation process. Add them to your project:
 
 ```bash
-npx rosey-cloudcannon-connector add-skills
+npx skills add CloudCannon/agent-skills --all
 ```
 
-This copies skill files into your project (default: `.cursor/skills/`). The `translate-multilingual` skill walks the agent through reading the locale file, classifying entries, translating in context-aware batches, and writing back valid JSON — and covers split-by-directory content collections in the same skill.
+The `translate-multilingual` skill walks the agent through reading the locale file, classifying entries, translating in context-aware batches, and writing back valid JSON — and covers split-by-directory content collections in the same skill.
 
 With the skill installed, tell your AI assistant:
 
@@ -116,7 +116,10 @@ This means:
 
 ## Agent Skills
 
-The package includes several agent skills for AI coding assistants. These are structured markdown files that guide agents through common workflows:
+Agent skills for AI coding assistants are maintained in
+[CloudCannon/agent-skills](https://github.com/CloudCannon/agent-skills), not
+shipped with this package. These are structured markdown files that guide agents
+through common workflows:
 
 | Skill | Purpose |
 |-------|---------|
@@ -126,7 +129,7 @@ The package includes several agent skills for AI coding assistants. These are st
 Install them with:
 
 ```bash
-npx rosey-cloudcannon-connector add-skills [--dest .cursor/skills]
+npx skills add CloudCannon/agent-skills --all
 ```
 
-The default destination is `.cursor/skills/` (Cursor's auto-discovery path). Use `--dest` to place them anywhere — the files are plain markdown and work with any AI tool that reads instructions from files.
+The files are plain markdown and work with any AI tool that reads instructions from files.

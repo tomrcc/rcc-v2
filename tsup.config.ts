@@ -1,14 +1,4 @@
-import { readFileSync } from "node:fs";
 import { defineConfig } from "tsup";
-
-const pkg = JSON.parse(readFileSync("./package.json", "utf8"));
-
-// Stamped into the client bundle so the editor can confirm the connector
-// version CC actually loaded (test sites install from github:tomrcc/rcc-v2, so
-// only pushed commits are served).
-const buildDefine = {
-	__RCC_VERSION__: JSON.stringify(pkg.version),
-};
 
 export default defineConfig([
 	{
@@ -17,11 +7,20 @@ export default defineConfig([
 		dts: true,
 		target: "es2020",
 		splitting: false,
-		define: buildDefine,
 	},
 	{
 		entry: ["src/write-locales.ts"],
 		format: ["cjs", "esm"],
+		dts: true,
+		target: "node18",
+		platform: "node",
+		splitting: false,
+	},
+	{
+		// Test-only node entry exposing the pure logic (resolveRoseyConfig,
+		// normalizeSource) so test/unit can import it without a DOM shim.
+		entry: ["src/internals.ts"],
+		format: ["esm"],
 		dts: true,
 		target: "node18",
 		platform: "node",

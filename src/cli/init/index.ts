@@ -21,6 +21,7 @@ export interface WizardAnswers {
 	buildDir: string;
 	roseyDir: string;
 	ccSource: string | null;
+	bundledFramework: string | null;
 }
 
 interface InitFlags {
@@ -144,6 +145,11 @@ export async function run(argv: string[]): Promise<void> {
 	if (ctx.bookshopDetected) {
 		console.log("  Bookshop detected: yes");
 	}
+	if (ctx.bundledFramework) {
+		console.log(
+			`  Bundled framework: ${ctx.bundledFramework} (client imports as a bare specifier)`,
+		);
+	}
 	console.log("");
 
 	// ── Headless mode (--yes) ───────────────────────────────────────
@@ -170,6 +176,7 @@ export async function run(argv: string[]): Promise<void> {
 			buildDir: flags.buildDir ?? rosey.source ?? ctx.buildDir ?? "dist",
 			roseyDir: flags.roseyDir ?? roseyDirDefault,
 			ccSource: ctx.ccSource,
+			bundledFramework: ctx.bundledFramework,
 		};
 
 		console.log(`  Locales: ${answers.locales.join(", ")}`);
@@ -283,6 +290,7 @@ export async function run(argv: string[]): Promise<void> {
 		buildDir,
 		roseyDir,
 		ccSource: ctx.ccSource,
+		bundledFramework: ctx.bundledFramework,
 	};
 
 	// ── Postbuild confirmation (before closing prompts) ──────────────

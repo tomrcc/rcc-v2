@@ -1,0 +1,44 @@
+source: test/fixtures/eleventy
+paths:
+  static: ""
+
+# Both pages, so they show up in the Collection browser and open in the Visual
+# Editor for the smoke test. `[slug]` is the filename (index → "/"), matching
+# Eleventy's output. The curated fixture isn't editor-extended.
+collections_config:
+  pages:
+    path: src
+    glob:
+      - "*.md"
+    url: "/[slug]/"
+    name: Pages
+    icon: article
+    disable_add: true
+    disable_add_folder: true
+    disable_file_actions: true
+    _enabled_editors:
+      - visual
+    _inputs:
+      layout:
+        hidden: true
+      title:
+        type: text
+      # regions.md. `html` because the value holds HTML elements — a textarea
+      # would escape them. Pairs with data-type="block" on the region.
+      heading:
+        type: text
+      body:
+        type: html
+
+# index.md's Bookshop array. The component values come from the library via
+# `@bookshop/generate` → _cloudcannon/info.json, so only presentation is set here.
+_structures:
+  content_blocks:
+    style: modal
+
+# RCC reads these to discover the locale files and expose the switcher.
+data_config:
+  locales_fr:
+    path: rosey/locales/fr.json
+  locales_ar:
+    path: rosey/locales/ar.json

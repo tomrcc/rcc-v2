@@ -47,6 +47,10 @@ A `data-rosey` element added to the source but not yet present in the locale fil
 - Ensure at least one `data-rosey` element exists inside the snapshot boundary
 - Check that a `<main>` element or `[data-rcc]` element exists on the page
 
+**Nothing in the console at all** means the client never loaded. On a non-bundled SSG that's usually one of two things: the layout is importing the bare specifier `rosey-cloudcannon-connector` (which no browser can resolve — you'd see `Failed to resolve module specifier`), or `install-client` didn't run so `/_rcc/client.mjs` 404s. See [SSG Setup](ssg-setup.md).
+
+**`RCC: loaded` and then nothing** means the client loaded but returned early. Add `data-rcc-verbose` to your `[data-rcc]` element (or `<main>`) and reload — the verbose log names which of the three early exits it hit (no boundary, no locales in the manifest, no `data-rosey` elements). Without that attribute those exits are silent, which reads as a broken editor rather than a configuration problem.
+
 ### Translations aren't loading
 
 - Check that `data_config` entries exist in `cloudcannon.config.yml` with the correct `locales_{code}` naming

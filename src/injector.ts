@@ -40,9 +40,6 @@ import {
 } from "./ui/hide-controls";
 import { injectSwitcher, updateButtonStates } from "./ui/switcher";
 
-// Injected by tsup at build time (see tsup.config.ts) for the build banner.
-declare const __RCC_VERSION__: string;
-
 // Translatable elements: tagged with data-rosey, not opted out via data-rcc-ignore.
 const TRANSLATABLE_SELECTOR = "[data-rosey]:not([data-rcc-ignore])";
 
@@ -180,24 +177,24 @@ function teardownEditors(): void {
 	}
 	state.reconcileScheduled = false;
 
-	if (state.activeDataset) {
-		if (state.activeDatasetListener) {
-			state.activeDataset.removeEventListener(
+	if (state.activeFile) {
+		if (state.activeFileChangeListener) {
+			state.activeFile.removeEventListener(
 				"change",
-				state.activeDatasetListener,
+				state.activeFileChangeListener,
 			);
 		}
-		if (state.activeDatasetDeleteListener) {
-			state.activeDataset.removeEventListener(
+		if (state.activeFileDeleteListener) {
+			state.activeFile.removeEventListener(
 				"delete",
-				state.activeDatasetDeleteListener,
+				state.activeFileDeleteListener,
 			);
 		}
 	}
 	state.activeDataset = null;
-	state.activeDatasetListener = null;
-	state.activeDatasetDeleteListener = null;
 	state.activeFile = null;
+	state.activeFileChangeListener = null;
+	state.activeFileDeleteListener = null;
 
 	for (const t of tracked) t.editor = undefined;
 	tracked.length = 0;
@@ -231,6 +228,10 @@ function teardownEditors(): void {
 // ---------------------------------------------------------------------------
 
 const DATASET_TIMEOUT_MS = 5000;
+
+// "change" fires on every own-write echo (i.e. every keystroke), so a trailing
+// debounce collapses a typing burst into one resync instead of one per key.
+const CHANGE_RESYNC_MS = 200;
 
 async function resolveFile(dataset: CCDataset): Promise<CCFile | null> {
 	const timeout = new Promise<null>((resolve) =>
@@ -382,6 +383,48 @@ async function switchLocaleInner(
 		);
 	}
 
+	// --- Duplicate-key live sync --------------------------------------------
+	// The same rosey key can appear on several elements (duplicates.md, or a nav
+	// item repeated desktop/mobile). They share one stored value, so editing one
+	// must update the rest. CC's dataset "change" event would do this via
+	// resyncEditors, but it's unreliable/slow for plain elements that aren't
+	// inside a re-rendering component — so push to the siblings directly.
+	//
+	// Debounced per key: onChange fires on every keystroke, and setting every
+	// duplicate on each key would thrash. A trailing timer coalesces a burst into
+	// one setContent with the latest value.
+	const SIBLING_SYNC_MS = 150;
+	const siblingSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+	const syncDuplicateSiblings = (
+		source: TrackedElement,
+		content: string,
+	): void => {
+		if (!tracked.some((t) => t !== source && t.roseyKey === source.roseyKey)) {
+			return;
+		}
+		const pending = siblingSyncTimers.get(source.roseyKey);
+		if (pending) clearTimeout(pending);
+		siblingSyncTimers.set(
+			source.roseyKey,
+			setTimeout(() => {
+				siblingSyncTimers.delete(source.roseyKey);
+				if (myGeneration !== state.switchGeneration) return;
+				// Skip the edited element and any focused sibling: setContent resets
+				// the cursor, so we never yank it from under a typing editor.
+				for (const t of tracked) {
+					if (t === source || t.roseyKey !== source.roseyKey) continue;
+					if (!t.editor || t.focused) continue;
+					try {
+						t.editor.setContent(content);
+					} catch (err) {
+						warn(`[${t.roseyKey}] failed to sync duplicate sibling:`, err);
+					}
+				}
+			}, SIBLING_SYNC_MS),
+		);
+	};
+
 	// --- Phase 2: Sequential editor creation --------------------------------
 	// setupEditor is reused by the reconcile pass, so elements CC adds or
 	// re-keys later get wired the same way.
@@ -440,6 +483,7 @@ async function switchLocaleInner(
 						} catch (err) {
 							warn(`[${t.roseyKey}] failed to create locale entry:`, err);
 						}
+						syncDuplicateSiblings(t, content);
 						return;
 					}
 
@@ -448,6 +492,7 @@ async function switchLocaleInner(
 					if (t.stale) {
 						resolveStale(t, file);
 					}
+					syncDuplicateSiblings(t, content);
 				},
 				{
 					elementType,
@@ -497,10 +542,10 @@ async function switchLocaleInner(
 	// --- Listen for external data changes -----------------------------------
 
 	// Re-pull every editor's value from the file and apply it. Shared by the
-	// dataset "change" listener (external edits, own-write echo) and the
-	// "delete" listener (Clear/Discard of pending changes). On a delete we force
-	// focused editors too and re-evaluate stale: a discard must win over what's
-	// in the editor, and can roll an entry back to a stale — or absent — state.
+	// file "change" listener (external edits, own-write echo) and the "delete"
+	// listener (Clear/Discard of pending changes). On a delete we force focused
+	// editors too and re-evaluate stale: a discard must win over what's in the
+	// editor, and can roll an entry back to a stale — or absent — state.
 	const resyncEditors = async (opts: { force: boolean }): Promise<void> => {
 		if (myGeneration !== state.switchGeneration) return;
 		const freshFile = await resolveFile(dataset);
@@ -535,11 +580,26 @@ async function switchLocaleInner(
 		);
 	};
 
+	// CC fires change/delete on the dataset's FILE, never on the dataset handle
+	// itself, so the listeners must live on `file`. (An earlier version listened
+	// on `dataset` and never fired — which is why Clear/Discard didn't revert.)
+	// "delete" = Clear/Discard: force a resync even over a focused editor so the
+	// discard wins. "change" = external edit / own-write echo, debounced because
+	// our own onChange writes fire it on every keystroke.
 	state.activeDataset = dataset;
-	state.activeDatasetListener = () => void resyncEditors({ force: false });
-	state.activeDatasetDeleteListener = () => void resyncEditors({ force: true });
-	dataset.addEventListener("change", state.activeDatasetListener);
-	dataset.addEventListener("delete", state.activeDatasetDeleteListener);
+	state.activeFile = file;
+
+	let changeResyncTimer: ReturnType<typeof setTimeout> | null = null;
+	state.activeFileChangeListener = () => {
+		if (changeResyncTimer) clearTimeout(changeResyncTimer);
+		changeResyncTimer = setTimeout(() => {
+			changeResyncTimer = null;
+			void resyncEditors({ force: false });
+		}, CHANGE_RESYNC_MS);
+	};
+	state.activeFileDeleteListener = () => void resyncEditors({ force: true });
+	file.addEventListener("change", state.activeFileChangeListener);
+	file.addEventListener("delete", state.activeFileDeleteListener);
 
 	// --- Reconcile elements CC adds or re-keys after this pass ----------------
 	// CC can insert a [data-rosey] element (new array item) or stamp its
@@ -632,12 +692,8 @@ async function init(): Promise<void> {
 	}
 	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
 
-	// Always-on (not verbose-gated) so you can confirm the connector loaded and
-	// which version CC served.
-	console.log(`RCC: v${__RCC_VERSION__} loaded`);
-	// TEMP prototype marker — remove before real commit. Confirms the
-	// text-based-liveStale build is what's actually running in the editor.
-	console.log("RCC[proto]: liveStale=visible-text");
+	// Always-on (not verbose-gated) so you can confirm the connector loaded.
+	console.log("RCC: loaded");
 
 	const container =
 		document.querySelector<HTMLElement>("[data-rcc]") ??

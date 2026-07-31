@@ -14,30 +14,24 @@ This guide covers upgrading from RCC v1 (form-based YAML editing in CloudCannon'
 | **Stale detection**           | None                                              | Built-in (amber indicators, resolve panel)         |
 | **Client-side script**        | None                                              | Injector with floating locale switcher             |
 | **Auto-tagger**               | `data-rosey-tagger` attribute + `tag` CLI command | Removed                                            |
-| `**generateRoseyId` utility** | Exported from `rosey-cloudcannon-connector/utils` | Removed                                            |
-| **Smartling integration**     | Built-in                                          | Removed (planned as separate package)              |
+| **`generateRoseyId` utility** | Exported from `rosey-cloudcannon-connector/utils` | Removed                                            |
+| **Smartling integration**     | Built-in                                          | Removed — write your own postbuild step            |
 | **Postbuild commands**        | `tag` + `generate` + `rosey build`                | `rosey generate` + `write-locales` + `rosey build` |
 | **CloudCannon collection**    | `translations` collection with YAML files         | `data_config` entries for locale JSON files        |
+| **Staging site**              | Separate staging-to-production workflow           | Not needed — single site covers all cases          |
 
+For the complete itemised list of what was added and removed, see the
+[changelog](../CHANGELOG.md). The steps below cover everything you need to *do*.
 
-### Removed features
+Two notes before you start:
 
-- **Auto-tagger (`data-rosey-tagger`):** The `tag` CLI command and `data-rosey-tagger` attribute are gone. Add `data-rosey` attributes manually to your templates. See [Tagging Content](tagging-content.md#automatic-tagging) for alternatives.
-- `**generateRoseyId` utility:** The `/utils` export no longer exists. Use static, descriptive keys instead — v2's stale detection makes content-derived keys unnecessary.
-- **Smartling integration:** Not included in v2. If you need machine translations, you can run your own middleware after `write-locales` — see [write-locales: Using your own script](write-locales.md#using-your-own-script-instead-of-write-locales).
-- `**rcc.yaml` config file:** All configuration now lives in `cloudcannon.config.yml` (`data_config` entries) and HTML attributes (`data-rcc-*`).
-- **Namespace pages:** The `namespace_pages` config option is gone. In v2, shared translations are simply handled through consistent `data-rosey-root` / `data-rosey-ns` attributes and live in the same locale file as everything else.
-- **Staging-to-production workflow:** v2 doesn't require a separate staging site. The single-site setup works for all cases (including with a root redirect page if desired).
-
-### Added features
-
-- **Inline Visual Editor editing** — edit translations directly on the page
-- **Floating locale switcher** — draggable FAB with popover menu
-- **Stale translation detection** — amber indicators when source text has changed
-- `**_base_original` field** — powers stale detection in locale files
-- `**write-locales` CLI** — replaces the `generate` command with a simpler, JSON-only workflow
-- `**data-rcc-ignore`** — opt individual elements out of locale switching
-- `**data-rcc-exclude**` — hide specific locales per page
+- **Machine translation.** v2 bundles no translation service. Because everything
+  now lives in one JSON format, plugging one in is a standalone postbuild step
+  that reads and writes `rosey/locales/*.json` — see
+  [External Integrations](integrations.md). Smartling users will need to port
+  their integration, but it's a smaller job than v1's multi-step chain.
+- **Staging sites.** If you ran the v1 staging-to-production split, you can
+  decommission the staging site once the migration is verified.
 
 ## Migration steps
 
@@ -47,7 +41,7 @@ Before migrating, make sure all translations are saved and up to date. Run a fin
 
 ### 2. Update the postbuild script
 
-Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, and an `--exclusions` override so JSON assets (like the `_rcc` manifest and `_cloudcannon/info.json`) pass through the Rosey build.
+Replace the v1 postbuild with the v2 version. The key differences: no `tag` command, `write-locales` instead of `generate`, an `install-client` step (v1 had no client-side component at all), and an `--exclusions` override so JSON assets (like the `_rcc` manifest and `_cloudcannon/info.json`) pass through the Rosey build.
 
 **v1:**
 
@@ -66,9 +60,12 @@ npx rosey build --source untranslated_site --dest dist --default-language-at-roo
 #!/usr/bin/env bash
 npx rosey generate --source dist
 npx rosey-cloudcannon-connector write-locales --source rosey --dest dist
+npx rosey-cloudcannon-connector install-client --dest dist
 mv ./dist ./_untranslated_site
 npx rosey build --source _untranslated_site --dest dist --default-language en --default-language-at-root --exclusions "\.(html?)$"
 ```
+
+`install-client` is only needed if your layout imports the client by URL rather than as a bare specifier — that is, on any SSG that doesn't bundle browser JS. It's harmless to include either way. See step 4.
 
 ### 3. Update `cloudcannon.config.yml`
 
@@ -121,24 +118,17 @@ Import the connector in your site's layout file. This is new in v2 — v1 had no
 
 Place this inside the `<body>`, before or after your `<main>` element. See [Getting Started: Step 2](getting-started.md#step-2-import-the-script-in-your-layout) for more detail.
 
-**Framework note:** The import above works in Astro and other Vite-based frameworks because Vite bundles `node_modules` imports automatically. In **11ty** (and other non-bundled SSGs), you need a passthrough copy since the browser can't resolve `node_modules` paths:
-
-```js
-// eleventy.config.js
-eleventyConfig.addPassthroughCopy({
-  "./node_modules/rosey-cloudcannon-connector/dist/index.mjs": "/_rcc/injector.mjs"
-});
-```
-
-Then import from the copied path in your layout:
+**Framework note:** The import above works in Astro and other Vite-based frameworks because Vite bundles `node_modules` imports automatically. On **11ty, Hugo, Jekyll** and other non-bundled SSGs the browser can't resolve a package name, so add `install-client` to your postbuild (step 2 above) and import the URL it writes instead:
 
 ```html
 <script>
   if (window?.inEditorMode) {
-    import("/_rcc/injector.mjs");
+    import("/_rcc/client.mjs").catch(console.error);
   }
 </script>
 ```
+
+No build configuration is needed for this on any generator — `install-client` runs after your site build and copies the client into the output directory. See [SSG Setup](ssg-setup.md) for the layout snippet in each generator's template language.
 
 ### 5. Set the snapshot boundary
 

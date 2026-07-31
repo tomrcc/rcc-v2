@@ -1,0 +1,20 @@
+# Rosey config — the LOWEST-precedence layer. Effective value resolves as:
+#   CLI flag  >  ROSEY_* env var  >  this file.
+#
+# This fixture deliberately spreads settings across all three layers to prove
+# the connector's resolution (src/rosey-config.ts):
+#   * baseline (everything here)      ← this file
+#   * languages / locales             ← ROSEY_LANGUAGES env (.cloudcannon/postbuild)
+#   * connector roseyDir              ← --source CLI flag  (.cloudcannon/postbuild)
+#
+# Terminology: Rosey `source` = build dir (connector --dest), Rosey `locales` =
+# the locale-files directory, Rosey `languages` = connector --locales.
+source: _site
+locales: rosey/locales
+separator: ":"
+tag: data-rosey
+default_language: en
+# Baseline is French only. The env var below overrides this to add Arabic —
+# verify-locales asserts ar.json appears, proving the env layer won.
+languages:
+  - fr

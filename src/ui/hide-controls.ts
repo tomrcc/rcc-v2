@@ -41,6 +41,14 @@ html[data-rcc-locale-active] [data-rcc-translation-root] [data-rosey]:not([data-
 	outline: var(--ccve-editable-outline-width, 2px) solid var(--ccve-color-sol, #f7c948) !important;
 	outline-offset: calc(var(--ccve-editable-outline-width, 2px) * -1) !important;
 }
+
+/* ProseMirror re-wraps tight list items (<li>text</li>) as <li><p>text</p></li>;
+   the injected <p> picks up the default paragraph margin and the list goes
+   loose — the obvious shift on locale switch. No !important, so a site that
+   deliberately styles loose lists (higher specificity) keeps them. */
+html[data-rcc-locale-active] [data-rcc-translation-root] :is(li, dd, dt) > p {
+	margin-block: 0;
+}
 `;
 
 /** Inject the control-hiding stylesheet once. Idempotent. */

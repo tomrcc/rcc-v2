@@ -54,6 +54,7 @@ export function buildPostbuildBlock(answers: WizardAnswers): string {
 		useBuiltinWriteLocales,
 		contentAtRoot,
 		defaultLanguage,
+		bundledFramework,
 	} = answers;
 	const langFlag = `--default-language ${defaultLanguage}`;
 	const rootFlag = contentAtRoot ? "--default-language-at-root" : "";
@@ -79,6 +80,16 @@ export function buildPostbuildBlock(answers: WizardAnswers): string {
 		);
 		lines.push(
 			`# npx rosey-cloudcannon-connector write-locales --source ${roseyDir} --dest ${buildDir}`,
+		);
+	}
+
+	// Skipped on bundled frameworks, where the file would ship unused. Outside the
+	// branch above otherwise — needed whichever way locale files get generated —
+	// and before the `mv`, so it lands inside the tree Rosey copies.
+	if (!bundledFramework) {
+		lines.push("");
+		lines.push(
+			`npx rosey-cloudcannon-connector install-client --dest ${buildDir}`,
 		);
 	}
 
@@ -571,9 +582,23 @@ export function printInstructions(
 	console.log("   locale editing in CloudCannon:\n");
 	console.log("     <script>");
 	console.log("       if (window?.inEditorMode) {");
-	console.log('         import("rosey-cloudcannon-connector");');
-	console.log("       }");
-	console.log("     </script>\n");
+	if (answers.bundledFramework) {
+		console.log('         import("rosey-cloudcannon-connector");');
+		console.log("       }");
+		console.log("     </script>\n");
+		console.log(
+			`   ${answers.bundledFramework} bundles this, so the bare specifier`,
+		);
+		console.log("   resolves and no postbuild step is needed for it.");
+	} else {
+		console.log('         import("/_rcc/client.mjs").catch(console.error);');
+		console.log("       }");
+		console.log("     </script>\n");
+		console.log("   A URL, not a bare specifier: nothing bundles your layout,");
+		console.log("   so the browser can't resolve a package name. The");
+		console.log("   postbuild's install-client step puts the file there.");
+	}
+	console.log("   See docs/ssg-setup.md.\n");
 
 	console.log("5. First run");
 	console.log("   Build your site, then run:");
