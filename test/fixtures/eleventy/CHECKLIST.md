@@ -20,6 +20,9 @@ Two pages, one per 11ty editing style: `index.md` (Bookshop) and `regions.md`
       with no locale selected and type — it saves to `content_blocks[0].heading`
       in frontmatter. This is what `bind: block` buys; with literal params in the
       tag there'd be nothing to write to and only the locale views would edit.
+- [ ] **Editing a prop in the sidebar re-renders the component live** (Bookshop's
+      connector + `_cloudcannon/bookshop-live.js`, both produced by
+      `@bookshop/generate`).
 - [ ] The component panel opens and reordering/adding a block works (the array is
       real frontmatter, and new blocks get a `_uuid` from the blueprint's
       `instance_value: UUID` — without it keys fall back to the array index and

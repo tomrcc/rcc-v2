@@ -2,8 +2,8 @@
   "name": "rcc-fixture-eleventy",
   "private": true,
   "scripts": {
-    "build": "eleventy && bash .cloudcannon/postbuild",
-    "verify": "node verify-bundle.mjs && node verify-locales.mjs"
+    "build": "eleventy && node stub-cc-info.mjs && bash .cloudcannon/postbuild",
+    "verify": "node verify-bundle.mjs && node verify-locales.mjs && node verify-bookshop-live.mjs"
   },
   "dependencies": {
     "@11ty/eleventy": "^3.0.0",

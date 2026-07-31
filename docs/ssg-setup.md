@@ -177,7 +177,11 @@ generator above:
 - **Bookshop components** — components emit `data-rosey` from their own
   templates; keys namespace under the component's `_uuid`. The client pauses and
   resumes Bookshop live editing around a locale switch. Bookshop sites also need
-  `npx @bookshop/generate` in the postbuild.
+  `npx @bookshop/generate` in the postbuild, which builds the live script and
+  injects its connector. For sidebar edits to re-render, the component must be
+  bound to data (`bind:`, not literal params), its config must sit at
+  `<library>/bookshop/bookshop.config.cjs`, and its `spec.structures` must name
+  the array it belongs to.
 
 `test/fixtures/eleventy` covers the editable-regions and Bookshop styles on the
 same Eleventy site, one page each.

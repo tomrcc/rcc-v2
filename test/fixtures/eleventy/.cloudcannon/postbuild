@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Adds Bookshop structures to _site/_cloudcannon/info.json, making the hero
-# editable as a component. It augments that file rather than creating it —
-# CloudCannon writes info.json during its own build — so it exits 1 locally.
-# Non-fatal so the Rosey steps below still run on a dev machine and in CI.
-npx @bookshop/generate || echo "Bookshop generate skipped — no _cloudcannon/info.json (CloudCannon writes it during its build)"
+# Builds _cloudcannon/bookshop-live.js, injects the live-editing connector into
+# pages containing components, and adds the components as CloudCannon structures.
+npx @bookshop/generate
 
 # 3-layer Rosey config resolution (CLI flag > env > rosey.yml):
 #   rosey.yml  : baseline — source (=_site), locales dir, separator, tag,

@@ -35,15 +35,6 @@ check(
   "base.json should contain the Bookshop component's UUID-namespaced keys",
 );
 
-// The hero's params must resolve to frontmatter, not be literals in the tag —
-// that's what makes the ORIGINAL editable in the editor and not just the locale
-// views RCC owns. Bookshop records which in its live comment.
-const indexHtml = fs.readFileSync("_site/index.html", "utf-8");
-check(
-  /context\(block: content_blocks\[\d+\]\)/.test(indexHtml),
-  "hero should be bound to content_blocks (bind: block), so the original is editable",
-);
-
 // The other 11ty editing style: regions.md renders frontmatter props into
 // CloudCannon editable regions, no Bookshop. Same data-rosey contract, so the
 // keys must come through identically.

@@ -1,4 +1,9 @@
 spec:
+  # Attaches the component to the `content_blocks` structure, which is what makes
+  # it addable to index.md's array. Without this @bookshop/generate emits an empty
+  # `_structures` and the component can't be added or bound to.
+  structures:
+    - content_blocks
   label: Hero
   icon: flag
 blueprint:

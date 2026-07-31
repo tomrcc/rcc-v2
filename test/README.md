@@ -30,8 +30,9 @@ coverage.
 
 ## Integration — `npm run test:integration`
 
-`test/run-integration.sh` per fixture: `npm i` (symlinks the local `file:` build)
-→ `npm run build` (SSG build → `rosey generate` → `write-locales`) →
+`test/run-integration.sh` per fixture: `npm i` (installs the local `file:` build)
+→ `npm run build` (SSG build → `.cloudcannon/postbuild`, i.e. `rosey generate` →
+`write-locales` → `install-client`, plus `@bookshop/generate` on eleventy) →
 `npm run verify`:
 
 - `verify-bundle.mjs` — three things. The installed bundle is byte-identical to the
@@ -43,6 +44,10 @@ coverage.
   bundled chunk under `dist/` containing the client. Without that last one, both
   fixtures pass with a `<script>` that 404s, which in the editor is
   indistinguishable from a broken editor.
+- `verify-bookshop-live.mjs` (eleventy only) — the three requirements below: the
+  component is bound to frontmatter, the live script built and its connector was
+  injected into the Bookshop page (and only that page), and the component
+  registered as an addable structure with a UUID instance value.
 - `verify-locales.mjs` — locale JSON from a real `base.json`: three fields, the
   stale entry's `_base_original` refreshed to the live source, unused pruned,
   untranslated preserved, `<br>` normalized, manifest, and `stale:fresh` absent
@@ -58,11 +63,22 @@ Fixtures (pages = markdown piped through a layout → a real CC collection):
   one per 11ty editing style: `index.md` (Bookshop components) and `regions.md`
   (CloudCannon editable regions bound to frontmatter, no Bookshop).
 
-`npx @bookshop/generate` in the eleventy fixture's postbuild exits 1 locally — it
-augments `_cloudcannon/info.json`, which CloudCannon writes during its own build,
-so on a dev machine it has nothing to attach to. The postbuild tolerates that so
-the Rosey steps still run; on CloudCannon it succeeds and is what makes the
-Bookshop component editable.
+`npx @bookshop/generate` augments `_cloudcannon/info.json`, which CloudCannon
+writes into the output before running the postbuild. Locally nothing writes it, so
+`stub-cc-info.mjs` does — it runs between the Eleventy build and the postbuild in
+the fixture's `build` script, standing in for CloudCannon. That keeps
+`.cloudcannon/postbuild` byte-for-byte what a real site would have, and means
+generate runs for real locally and in CI, with failures fatal.
+
+Bookshop live editing — sidebar prop changes re-rendering the component — needs
+three things, and missing any one of them leaves the page rendering fine but never
+updating:
+
+| Requirement | Where | If missing |
+| --- | --- | --- |
+| `bind:` on the component tag | `src/_includes/blocks.liquid` | params are literals, so nothing binds and only locale views edit |
+| config at `<library>/bookshop/bookshop.config.cjs` | `component-library/bookshop/` | discovery finds the library but `@bookshop/builder` can't build the live script |
+| `spec.structures: [content_blocks]` | `hero.bookshop.yml` | `_structures` generates empty, so the component can't be added or bound |
 
 > **Commit the fixture locale files only in their pre-build state.** That's what
 > lets a fresh checkout *observe* the refresh/prune/create the build performs;
