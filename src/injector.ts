@@ -28,7 +28,6 @@ import {
 } from "./stale";
 import { state, tracked } from "./state";
 import type {
-	CCApi,
 	CCDataset,
 	CCFile,
 	LocaleEntryData,
@@ -118,14 +117,20 @@ async function fetchInputConfig(
 		el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
 	if (!prop || !isEditable) return null;
 
-	const configPromise = new Promise<any>((resolve) => {
-		el.dispatchEvent(
-			new CustomEvent("cloudcannon-api", {
-				bubbles: true,
-				detail: { action: "get-input-config", source: prop, callback: resolve },
-			}),
-		);
-	});
+	const configPromise = new Promise<Record<string, unknown> | null>(
+		(resolve) => {
+			el.dispatchEvent(
+				new CustomEvent("cloudcannon-api", {
+					bubbles: true,
+					detail: {
+						action: "get-input-config",
+						source: prop,
+						callback: resolve,
+					},
+				}),
+			);
+		},
+	);
 	const timeout = new Promise<null>((resolve) =>
 		setTimeout(() => resolve(null), CONFIG_TIMEOUT_MS),
 	);
@@ -685,12 +690,12 @@ async function switchLocaleInner(
 // ---------------------------------------------------------------------------
 
 async function init(): Promise<void> {
-	const ccWindow = window as any;
-	if (!ccWindow.CloudCannonAPI) {
+	const api = window.CloudCannonAPI;
+	if (!api) {
 		warn("CloudCannonAPI not available");
 		return;
 	}
-	state.api = ccWindow.CloudCannonAPI.useVersion("v1", true) as CCApi;
+	state.api = api.useVersion("v1", true);
 
 	// Always-on (not verbose-gated) so you can confirm the connector loaded.
 	console.log("RCC: loaded");
@@ -733,7 +738,7 @@ async function init(): Promise<void> {
 	log(`Ready — ${locales.length} locales, ${elementCount} elements`);
 }
 
-if ((window as any).inEditorMode && (window as any).CloudCannonAPI) {
+if (window.inEditorMode && window.CloudCannonAPI) {
 	init();
 } else {
 	document.addEventListener("cloudcannon:load", init);

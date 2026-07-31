@@ -1,14 +1,14 @@
 import { log, warn } from "./logger";
+import type { BookshopLive } from "./types";
 
 // ---------------------------------------------------------------------------
 // Bookshop live-editing pause/resume
 // ---------------------------------------------------------------------------
 
-let originalBookshopUpdate: ((...args: any[]) => Promise<boolean>) | null =
-	null;
+let originalBookshopUpdate: BookshopLive["update"] | null = null;
 
 export function pauseBookshop(): void {
-	const bsl = (window as any).bookshopLive;
+	const bsl = window.bookshopLive;
 	if (!bsl) {
 		log(
 			"pauseBookshop: window.bookshopLive not found (not a Bookshop site, or not loaded yet)",
@@ -33,7 +33,7 @@ export function resumeBookshop(): void {
 		log("resumeBookshop: nothing to resume (was not paused)");
 		return;
 	}
-	const bsl = (window as any).bookshopLive;
+	const bsl = window.bookshopLive;
 	if (!bsl) {
 		warn("resumeBookshop: window.bookshopLive disappeared — cannot restore");
 		originalBookshopUpdate = null;
@@ -64,8 +64,8 @@ export function stripCmsBindForRerender(container: HTMLElement): void {
 }
 
 function forceBookshopRerender(): void {
-	const cc = (window as any).CloudCannon;
-	const bsl = (window as any).bookshopLive;
+	const cc = window.CloudCannon;
+	const bsl = window.bookshopLive;
 
 	if (!bsl || typeof bsl.update !== "function") {
 		if (typeof cc?.refreshInterface === "function") {
@@ -95,7 +95,7 @@ function forceBookshopRerender(): void {
 				keepMarkdownAsHTML: false,
 				preferBlobs: true,
 			});
-			const options = (window as any).bookshopLiveOptions || {};
+			const options = window.bookshopLiveOptions || {};
 			const rendered = await bsl.update(data, options);
 			if (rendered) {
 				cc.refreshInterface();

@@ -53,6 +53,70 @@ interface RoseyConfig {
  */
 declare function resolveRoseyConfig(cwd?: string, env?: NodeJS.ProcessEnv): RoseyConfig;
 
+/** A single entry in a Rosey locale file. */
+interface LocaleEntry {
+    original: string;
+    value: string;
+    /** Source text as of the last build; powers stale detection. RCC-only field. */
+    _base_original?: string;
+}
+/**
+ * A locale entry as read back from the CC data API: any field may be absent
+ * (partial writes, newly-created entries) and the whole entry may be null.
+ */
+type LocaleEntryData = Partial<LocaleEntry>;
+interface CCFile {
+    data: {
+        get(opts?: {
+            slug?: string;
+        }): Promise<LocaleEntryData | null>;
+        set(opts: {
+            slug: string;
+            value: string | LocaleEntry | LocaleEntryData;
+        }): Promise<unknown>;
+    };
+    addEventListener(event: string, listener: () => void): void;
+    removeEventListener(event: string, listener: () => void): void;
+}
+interface CCDataset {
+    items(): Promise<CCFile | CCFile[]>;
+    addEventListener(event: string, listener: () => void): void;
+    removeEventListener(event: string, listener: () => void): void;
+}
+interface CCApi {
+    dataset(key: string): CCDataset;
+    createTextEditableRegion(element: HTMLElement, onChange: (content?: string | null) => void, options?: {
+        elementType?: string;
+        editableType?: string;
+        inputConfig?: Record<string, unknown>;
+    }): Promise<{
+        setContent: (content?: string | null) => void;
+    }>;
+}
+/** Bookshop's live-render runtime. Only present on Bookshop sites. */
+interface BookshopLive {
+    update(data: unknown, options?: unknown): Promise<boolean>;
+}
+/** The parts of the v0 `window.CloudCannon` global that RCC calls. */
+interface CloudCannonGlobal {
+    value(opts?: {
+        keepMarkdownAsHTML?: boolean;
+        preferBlobs?: boolean;
+    }): Promise<unknown>;
+    refreshInterface(): void;
+}
+declare global {
+    interface Window {
+        CloudCannon?: CloudCannonGlobal;
+        CloudCannonAPI?: {
+            useVersion(version: string, strict?: boolean): CCApi;
+        };
+        bookshopLive?: BookshopLive;
+        bookshopLiveOptions?: unknown;
+        inEditorMode?: boolean;
+    }
+}
+
 declare function normalizeSource(s: string): string;
 
 export { CLIENT_FILENAME, detectProject, installClient, normalizeSource, resolveRoseyConfig };

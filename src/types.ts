@@ -67,3 +67,31 @@ export interface CCApi {
 		},
 	): Promise<{ setContent: (content?: string | null) => void }>;
 }
+
+/** Bookshop's live-render runtime. Only present on Bookshop sites. */
+export interface BookshopLive {
+	update(data: unknown, options?: unknown): Promise<boolean>;
+}
+
+/** The parts of the v0 `window.CloudCannon` global that RCC calls. */
+export interface CloudCannonGlobal {
+	value(opts?: {
+		keepMarkdownAsHTML?: boolean;
+		preferBlobs?: boolean;
+	}): Promise<unknown>;
+	refreshInterface(): void;
+}
+
+declare global {
+	interface Window {
+		// All optional: each is injected by the editor or by Bookshop, so on a
+		// plain browser load none of them exist. The methods are declared
+		// non-optional, but the runtime typeof guards still stand — an older
+		// editor can hand back a partial API.
+		CloudCannon?: CloudCannonGlobal;
+		CloudCannonAPI?: { useVersion(version: string, strict?: boolean): CCApi };
+		bookshopLive?: BookshopLive;
+		bookshopLiveOptions?: unknown;
+		inEditorMode?: boolean;
+	}
+}

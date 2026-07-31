@@ -1256,14 +1256,20 @@ async function fetchInputConfig(el) {
   const prop = el.dataset.prop;
   const isEditable = el.dataset.editable === "text" || el.tagName === "EDITABLE-TEXT";
   if (!prop || !isEditable) return null;
-  const configPromise = new Promise((resolve) => {
-    el.dispatchEvent(
-      new CustomEvent("cloudcannon-api", {
-        bubbles: true,
-        detail: { action: "get-input-config", source: prop, callback: resolve }
-      })
-    );
-  });
+  const configPromise = new Promise(
+    (resolve) => {
+      el.dispatchEvent(
+        new CustomEvent("cloudcannon-api", {
+          bubbles: true,
+          detail: {
+            action: "get-input-config",
+            source: prop,
+            callback: resolve
+          }
+        })
+      );
+    }
+  );
   const timeout = new Promise(
     (resolve) => setTimeout(() => resolve(null), CONFIG_TIMEOUT_MS)
   );
@@ -1645,12 +1651,12 @@ async function switchLocaleInner(locale, myGeneration) {
   log(`Switched to ${locale}`);
 }
 async function init() {
-  const ccWindow = window;
-  if (!ccWindow.CloudCannonAPI) {
+  const api = window.CloudCannonAPI;
+  if (!api) {
     warn("CloudCannonAPI not available");
     return;
   }
-  state.api = ccWindow.CloudCannonAPI.useVersion("v1", true);
+  state.api = api.useVersion("v1", true);
   console.log("RCC: loaded");
   const container = document.querySelector("[data-rcc]") ?? document.querySelector("main");
   if (!container) return;

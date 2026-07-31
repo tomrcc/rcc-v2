@@ -38,7 +38,10 @@ test("finds it in devDependencies too", () => {
 test("a bare bundler is not a bundled framework", () => {
 	// 11ty + esbuild bundles a separate asset entry while templates stay
 	// unbundled, so the layout still needs the URL form.
-	assert.equal(detect({ "@11ty/eleventy": "^3.0.0", esbuild: "^0.24.0" }), null);
+	assert.equal(
+		detect({ "@11ty/eleventy": "^3.0.0", esbuild: "^0.24.0" }),
+		null,
+	);
 	assert.equal(detect({ vite: "^6.0.0" }), null);
 	assert.equal(detect({ webpack: "^5.0.0" }), null);
 	assert.equal(detect({ rollup: "^4.0.0" }), null);
